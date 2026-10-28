@@ -1,0 +1,24 @@
+# TODO
+
+- Bump `Package.swift` to macOS 27 once Xcode 27 / the macOS 27 SDK is installed
+- M1: `hobo box build` from a recipe: IPSW fetch (pinned), `VZMacOSInstaller`, guest provisioning options, Vagrant conventions, cleanup + zero, package `.box`
+- M1: `Recipes/macos-27.toml` and `Recipes/macos-27-xcode.toml` (opt-in SIP off + TCC pre-grants)
+- M1: box store in `~/.hobo/boxes/`, DiskImageKit overlays per machine in `.hobo/machines/`
+- M1: `hobo _vm-run` VM process + LaunchAgent registration + `HoboControl` socket protocol
+- M1: `up` / `ssh` / `halt` / `destroy` / `status`, NAT via vmnet, virtio-fs synced folders
+- M1: `hobo view` on-demand window (`.accessory` NSApplication)
+- M2: `hobo mcp` stdio server (lifecycle, exec, copy_in/out, screenshot, provision, snapshot, box_list, box_build)
+- M2: `--json` output on every command
+- M2: `hobo run -- <cmd>` ephemeral runs with declared copy-out paths
+- M2: `hobo snapshot save|restore|list|delete`
+- M3: Linux guests (cloud image + cloud-init recipes, `/vagrant` mount)
+- M3: forwarded ports, private networks across VM processes, multi-machine boot order
+- M3: provisioner run-state tracking, `hobo provision`, rsync synced folders
+- Later: `hobo sim` for host iOS Simulator (headless simctl; input via idb/XCUITest) and Android Emulator (`-no-window`, adb)
+- Later: static box catalog, `hobo box publish|outdated|update`, resumable checksum-verified downloads
+- Later: Developer ID + notarization, private Homebrew tap, `.app` bundle for VM window identity
+- Later: `hobo-agent` over virtio-vsock
+- Later: external provisioner JSON contract, Ansible plugin
+- Later: `hobo init --from-vagrantfile` importer for simple Vagrantfiles
+- Later: Android emulator inside Linux guests via nested virtualization (M3+ hosts)
+- Later: bridged networking (`public_network`) via privileged helper
