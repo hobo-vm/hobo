@@ -24,6 +24,53 @@ import Testing
         #expect(result.file == depot.file(sha256: sha))
     }
 
+    @Test func downloadsVerifiesAndIndexes() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "hobo-depot-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let served = root.appending(path: "served")
+        try FileManager.default.createDirectory(at: served, withIntermediateDirectories: true)
+        let payload = served.appending(path: "mac.ipsw")
+        try Data((0..<300_000).map { UInt8($0 % 251) }).write(to: payload)
+        let sha = try shasum(payload)
+
+        let server = try HTTPServer(directory: served)
+        defer { server.stop() }
+        let url = server.url(for: "mac.ipsw")
+        let depot = Depot(directory: root.appending(path: "depot"))
+
+        // Unpinned: the computed hash is trusted and recorded.
+        let fetched = try await depot.fetch(url, expectedSHA256: nil) { _, _ in }
+        #expect(fetched.sha256 == sha)
+        #expect(fetched.file == depot.file(sha256: sha))
+        let index = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: depot.directory.appending(path: "index.json")))
+        #expect(index == [url.absoluteString: sha])
+        #expect(!FileManager.default.fileExists(atPath: depot.directory.appending(path: "download.part").path))
+
+        // Cached: served from the index with the server gone.
+        server.stop()
+        #expect(try await depot.fetch(url, expectedSHA256: nil) { _, _ in }.file == fetched.file)
+    }
+
+    @Test func rejectsWrongHashAndHTTPErrors() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "hobo-depot-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let served = root.appending(path: "served")
+        try FileManager.default.createDirectory(at: served, withIntermediateDirectories: true)
+        try Data("not an ipsw".utf8).write(to: served.appending(path: "mac.ipsw"))
+        let server = try HTTPServer(directory: served)
+        defer { server.stop() }
+        let depot = Depot(directory: root.appending(path: "depot"))
+        let wrong = String(repeating: "0", count: 64)
+
+        await #expect(throws: DepotError.self) {
+            try await depot.fetch(server.url(for: "mac.ipsw"), expectedSHA256: wrong) { _, _ in }
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: depot.directory.path).isEmpty)
+        await #expect(throws: DepotError.httpStatus(server.url(for: "missing.ipsw").absoluteString, 404)) {
+            try await depot.fetch(server.url(for: "missing.ipsw"), expectedSHA256: nil) { _, _ in }
+        }
+    }
+
     private func shasum(_ file: URL) throws -> String {
         let process = Process()
         process.executableURL = URL(filePath: "/usr/bin/shasum")
@@ -112,5 +159,40 @@ import Testing
 
     @Test func shellQuoteEscapesSingleQuotes() {
         #expect(shellQuote("it's") == #"'it'\''s'"#)
+    }
+}
+
+/// `python3 -m http.server` on a free port, serving `directory`.
+final class HTTPServer {
+    private let process = Process()
+    let port: Int
+
+    init(directory: URL) throws {
+        process.executableURL = URL(filePath: "/usr/bin/python3")
+        process.arguments = ["-u", "-m", "http.server", "0", "--bind", "127.0.0.1", "--directory", directory.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        // First line: "Serving HTTP on 127.0.0.1 port 54321 (http://127.0.0.1:54321/) ..."
+        var line = Data()
+        while let byte = try pipe.fileHandleForReading.read(upToCount: 1), !byte.isEmpty, byte != Data("\n".utf8) {
+            line += byte
+        }
+        let words = String(decoding: line, as: UTF8.self).split(separator: " ")
+        guard let index = words.firstIndex(of: "port"), index + 1 < words.count, let port = Int(words[index + 1]) else {
+            process.terminate()
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        self.port = port
+    }
+
+    func url(for path: String) -> URL { URL(string: "http://127.0.0.1:\(port)/\(path)")! }
+
+    func stop() {
+        if process.isRunning {
+            process.terminate()
+            process.waitUntilExit()
+        }
     }
 }
