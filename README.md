@@ -25,7 +25,7 @@ hobo mcp                  # let an agent drive VMs over MCP
 make install                 # release build, ad-hoc signed, installs to ~/.local/bin/hobo
 HOBO_SIGN_IDENTITY="Developer ID Application: …" make install
 make test                    # unit tests
-make integration-test        # boots real VMs (HOBO_TEST_IPSW=… adds a full box build)
+make integration-test        # boots real VMs; full box build with the depot's 27.2 IPSW or HOBO_TEST_IPSW=…
 make box RECIPE=Recipes/macos-27.toml
 ```
 
