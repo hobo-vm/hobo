@@ -1,6 +1,5 @@
 # TODO
 
-- M1: `hobo box build` from a recipe: IPSW fetch (pinned), `VZMacOSInstaller`, guest provisioning options, Vagrant conventions, cleanup + zero, package `.box`
 - M1: `Recipes/macos-27.toml` and `Recipes/macos-27-xcode.toml` (opt-in SIP off + TCC pre-grants)
 - M1: box store in `~/.hobo/boxes/`, DiskImageKit overlays per machine in `.hobo/machines/`
 - M1: `hobo df` and `hobo prune [--depot|--boxes|--machines] [--all]` across the depot, installed boxes, machine overlays and roundhouse (build dirs + checkpoints), like `docker system df/prune`
