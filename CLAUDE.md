@@ -19,5 +19,4 @@ Deferred work lives in `TODO.md`.
   `HoboControl` over a Unix socket. On-disk state is the source of truth; no central daemon.
 - VM processes never take focus (`.accessory` activation policy). Agents test inside guests via
   SSH, never by driving the host UI.
-- Target platform is macOS 27; `Package.swift` is pinned to 26 until the 27 SDK is available.
-  Gate 27-only APIs with `@available(macOS 27, *)` meanwhile.
+- Target platform is macOS 27 (`Package.swift` minimum); no availability gating needed for 27 APIs.

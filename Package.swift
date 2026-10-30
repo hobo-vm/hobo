@@ -1,11 +1,10 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.4
 import PackageDescription
 
 let package = Package(
     name: "hobo",
-    // Target is macOS 27 (vmnet topologies, DiskImageKit, guest provisioning).
-    // Pinned to 26 until the macOS 27 SDK is available on the build machine.
-    platforms: [.macOS(.v26)],
+    // macOS 27 for vmnet topologies, DiskImageKit, and guest provisioning.
+    platforms: [.macOS(.v27)],
     products: [
         .executable(name: "hobo", targets: ["hobo"]),
     ],
