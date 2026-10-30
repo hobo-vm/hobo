@@ -59,17 +59,37 @@ were reached in a design interview on 2026-10-28.
     - `hobo snapshot save|restore <tag>` freezes and stacks overlays;
     - `hobo run [--machine m] -- <cmd>` boots a throwaway overlay, rsyncs folders in, runs the command,
       copies declared outputs back, destroys the VM, and passes through the exit code.
-14. **Box building.** `hobo box build <recipe.toml>`:
-    1. source: IPSW (`latest`, version, or local path; resolved like Mist) or Linux arm64 cloud image + SHA;
-    2. base install: `VZMacOSInstaller` + guest provisioning options, or cloud-init;
-    3. conventions: `vagrant`/`vagrant`, passwordless sudo, insecure key, no sleep/screensaver;
-    4. recipe steps (shell/file provisioners);
-    5. optional GUI-testing prep (opt-in): disable SIP via recovery boot, pre-grant Accessibility and
-       Screen Recording in TCC.db so ephemeral runs never prompt;
-    6. cleanup: caches, logs, history, zero free space, compact;
-    7. package `<name>-<version>.box` with `metadata.json` (provider `hobo`, guest OS, arch, min host) + checksum.
+14. **Box building.** `hobo box build <recipe.toml> [--output dir] [--fresh] [--hold-on-failure]`
+    (decided 2026-10-30):
+    1. source: `[source] ipsw = "latest"` (`VZMacOSRestoreImage.latestSupported`, warns as unpinned and
+       prints the pin) or a URL/local path with a required `sha256`. Version lookup ("27.1") is deferred.
+       Downloads land in the **depot**, `~/.hobo/depot/<sha256>.ipsw` (via `download.part`, renamed once
+       verified); `index.json` maps URL → hash so `latest` downloads once;
+    2. base install: `VZMacOSInstaller`, then a first boot with `VZMacGuestProvisioningOptions`
+       (`vagrant`/`vagrant`, auto-login, Remote Login);
+    3. conventions, over password SSH: passwordless sudo, Vagrant's insecure keys (ed25519 + RSA) in
+       `authorized_keys`, no sleep/screensaver, no automatic updates. The disk is then checkpointed in the
+       **roundhouse** (`~/.hobo/roundhouse/checkpoints/<key>`, keyed by IPSW hash, disk size and
+       `Conventions.version`) and rebuilds clone it (APFS clone) unless `--fresh`;
+    4. recipe steps: Boxcar `[[provision]]` steps (shell/file), run once each over key SSH;
+    5. optional GUI-testing prep (opt-in `[gui_testing]`, not yet implemented): disable SIP via recovery
+       boot, pre-grant Accessibility and Screen Recording in TCC.db so ephemeral runs never prompt;
+    6. cleanup: caches, logs, history, temp files, then a clean guest shutdown. The disk is ASIF, which
+       returns blocks to the host when the guest's APFS TRIMs them, so no zero-fill or compaction pass
+       (zero-filling would inflate an ASIF, and `diskutil image` has no compact). Verified on the host
+       (an attached ASIF shrinks from 1 GB to 14 MB after delete + unmount); the build logs the
+       resulting disk size so a VZ path that drops TRIM is visible;
+    7. package `<name>-<version>.box` (slash → dash), an uncompressed tar of `disk.asif`, `aux.img`,
+       `hardware-model.bin`, `machine-identifier.bin` and `metadata.json` (provider `hobo`, guest OS +
+       version, arch, min host, default cpus/memory/disk, content and recipe hashes), plus a `.sha256`.
+       Installing into the box store is `hobo box add`'s job.
 
-    `hobo package` (Vagrant-style package-from-running-machine) is also exposed.
+    The build VM runs in-process in the foreground on VZ NAT; the guest IP comes from
+    `/var/db/dhcpd_leases` by its (random) MAC. SSH is the system `ssh`/`scp`, with the password supplied
+    through `SSH_ASKPASS` until the insecure key is in place. A failed build keeps its roundhouse
+    directory; `--hold-on-failure` keeps the VM up and prints the SSH command. `hobo box validate-recipe`
+    checks a recipe without building. `hobo package` (Vagrant-style package-from-running-machine) is
+    also exposed.
 15. **Sharing.** Recipe-first. Recipes must pin sources (IPSW build + SHA, image URL + SHA, Xcode
     version + SHA), unpinned fetches produce warnings, and built boxes carry a content hash. A static
     box catalog (Vagrant-style versioned metadata JSON on S3/HTTPS, `hobo box publish`, resumable
@@ -86,8 +106,12 @@ were reached in a design interview on 2026-10-28.
     - `HoboControl`: client ↔ VM-process socket protocol
     - `HoboMCP`: MCP tools
     - `hobo`: CLI plus hidden `_vm-run` and `mcp` subcommands
-    - `HoboVMTests` boot real VMs only with `HOBO_INTEGRATION=1`.
+    - `HoboVMTests` boot real VMs only with `HOBO_INTEGRATION=1`. The test runner can't hold the
+      virtualization entitlement, so they drive the signed `hobo` binary (`make integration-test`).
+      There is no CI; GitHub is a backup.
 18. **Repo.** `ggal625/hobo`, private, Apache-2.0, `main`.
+19. **Naming.** "Hobo" plays on "Vagrant"; new names follow the hobo-and-trains metaphor (depot,
+    roundhouse). Built artifacts stay `box`es and the project file stays the `Boxcar`.
 
 ## Milestones
 

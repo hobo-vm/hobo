@@ -1,14 +1,15 @@
 import ArgumentParser
 import Foundation
 import HoboCore
+import HoboVM
 
 @main
-struct HoboCommand: ParsableCommand {
+struct HoboCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "hobo",
         abstract: "Vagrant-style VMs on Apple's Virtualization framework.",
         version: Hobo.version,
-        subcommands: [Init.self, Validate.self]
+        subcommands: [Init.self, Validate.self, Box.self]
     )
 }
 
@@ -39,6 +40,55 @@ struct Validate: ParsableCommand {
         for machine in boxcar.machines {
             let settings = boxcar.resolved(machine)
             print("\(machine.name)\t\(settings.box ?? "(no box)")")
+        }
+    }
+}
+
+struct Box: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Build and manage boxes.",
+        subcommands: [Build.self, ValidateRecipe.self]
+    )
+
+    struct Build: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Build a .box from a recipe.")
+
+        @Argument(help: "Recipe file, e.g. Recipes/macos-27.toml.")
+        var recipe: String
+
+        @Option(help: "Directory to write the .box into.")
+        var output: String = "."
+
+        @Flag(help: "Reinstall from the IPSW instead of reusing the install checkpoint.")
+        var fresh = false
+
+        @Flag(help: "On failure, keep the VM running for SSH until interrupted.")
+        var holdOnFailure = false
+
+        @MainActor
+        func run() async throws {
+            let options = BoxBuilder.Options(
+                output: URL(filePath: output, directoryHint: .isDirectory), fresh: fresh, holdOnFailure: holdOnFailure
+            )
+            let builder = try BoxBuilder(recipeFile: URL(filePath: recipe), options: options) { print($0) }
+            let result = try await builder.build()
+            print("Built \(result.box.path)")
+        }
+    }
+
+    struct ValidateRecipe: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Check a recipe without building it.")
+
+        @Argument(help: "Recipe file.")
+        var recipe: String
+
+        func run() throws {
+            let recipe = try Recipe.load(from: URL(filePath: recipe))
+            try recipe.checkFilesExist()
+            if !recipe.source.isPinned {
+                print("warning: source is unpinned (ipsw = \"latest\")")
+            }
+            print("\(recipe.name) \(recipe.version): \(recipe.provisioners.count) provision step(s) -> \(recipe.boxFileName)")
         }
     }
 }

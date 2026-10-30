@@ -11,7 +11,7 @@ hobo run -- ./run-tests.sh   # pristine throwaway VM, exit code passed through
 hobo mcp                  # let an agent drive VMs over MCP
 ```
 
-> Status: **M0 skeleton.** Only `hobo init` and `hobo validate` work today.
+> Status: **M1 in progress.** `hobo init`, `hobo validate` and `hobo box build` are implemented.
 > See [docs/design.md](docs/design.md) for the design and milestones.
 
 ## Requirements
@@ -25,7 +25,8 @@ hobo mcp                  # let an agent drive VMs over MCP
 make install                 # release build, ad-hoc signed, installs to ~/.local/bin/hobo
 HOBO_SIGN_IDENTITY="Developer ID Application: …" make install
 make test                    # unit tests
-make integration-test        # boots real VMs
+make integration-test        # boots real VMs (HOBO_TEST_IPSW=… adds a full box build)
+make box RECIPE=Recipes/macos-27.toml
 ```
 
 ## License
