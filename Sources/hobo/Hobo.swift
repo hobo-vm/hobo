@@ -70,7 +70,10 @@ struct Box: AsyncParsableCommand {
             let options = BoxBuilder.Options(
                 output: URL(filePath: output, directoryHint: .isDirectory), fresh: fresh, holdOnFailure: holdOnFailure
             )
-            let builder = try BoxBuilder(recipeFile: URL(filePath: recipe), options: options) { print($0) }
+            let builder = try BoxBuilder(recipeFile: URL(filePath: recipe), options: options) {
+                print($0)
+                fflush(stdout)
+            }
             let result = try await builder.build()
             print("Built \(result.box.path)")
         }

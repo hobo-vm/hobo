@@ -41,7 +41,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         '''
         """.write(to: recipe, atomically: true, encoding: .utf8)
 
-        #expect(try run(hobo, ["box", "build", recipe.path, "--output", work.path]) == 0)
+        try #require(try run(hobo, ["box", "build", recipe.path, "--output", work.path]) == 0)
 
         let box = work.appending(path: "hobo-integration-0.0.1.box")
         let listing = try output("/usr/bin/tar", ["-tf", box.path])

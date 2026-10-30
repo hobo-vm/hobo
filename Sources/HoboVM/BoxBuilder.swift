@@ -111,10 +111,14 @@ public struct BoxBuilder {
     }
 
     private func installAndApplyConventions(_ bundle: MacVMBundle, ipsw: URL, cpus: Int, memory: UInt64) async throws {
-        let vm = try GuestVM(bundle: bundle, cpus: cpus, memoryBytes: memory)
+        let installer = try GuestVM(bundle: bundle, cpus: cpus, memoryBytes: memory)
         log("Installing macOS (this takes a while)")
         let progress = ProgressLine(log: log)
-        try await vm.install(ipsw: ipsw) { progress.report(Int64($0 * 100), 100) }
+        try await installer.install(ipsw: ipsw) { progress.report(Int64($0 * 100), 100) }
+        // The installer leaves its VM running; boot a fresh one for unattended setup.
+        try await installer.forceStop()
+
+        let vm = try GuestVM(bundle: bundle, cpus: cpus, memoryBytes: memory)
 
         let provisioning = VZMacGuestProvisioningOptions()
         provisioning.fullName = Conventions.fullName
