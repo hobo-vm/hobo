@@ -23,5 +23,5 @@ inline = "softwareupdate --install-rosetta --agree-to-license"
 Planned:
 
 - `macos-27.toml`: base macOS 27 guest with Vagrant conventions
-- `macos-27-xcode.toml`: adds Xcode and GUI-testing prep (SIP off, TCC pre-grants)
+- `macos-27-xcode.toml` (later): adds Xcode and GUI-testing prep (SIP off, TCC pre-grants)
 - `ubuntu-24.04.toml`: arm64 cloud image with cloud-init

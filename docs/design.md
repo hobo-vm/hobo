@@ -54,8 +54,10 @@ were reached in a design interview on 2026-10-28.
 ### Boxes and testing
 
 13. **Pristine runs.** Boxes are installed read-only in `~/.hobo/boxes/<name>/<version>/`. Each machine is
-    a copy-on-write overlay:
-    - persistent machine overlay in `.hobo/machines/<name>/` (removed on `destroy`);
+    copy-on-write:
+    - persistent machine in `.hobo/machines/<name>/`, an APFS clone of the box files (plain copy across
+      volumes), removed on `destroy` (decided 2026-10-30; DiskImageKit overlays are only for the two
+      cases below, where stacking matters);
     - `hobo snapshot save|restore <tag>` freezes and stacks overlays;
     - `hobo run [--machine m] -- <cmd>` boots a throwaway overlay, rsyncs folders in, runs the command,
       copies declared outputs back, destroys the VM, and passes through the exit code.
@@ -72,7 +74,7 @@ were reached in a design interview on 2026-10-28.
        **roundhouse** (`~/.hobo/roundhouse/checkpoints/<key>`, keyed by IPSW hash, disk size and
        `Conventions.version`) and rebuilds clone it (APFS clone) unless `--fresh`;
     4. recipe steps: Boxcar `[[provision]]` steps (shell/file), run once each over key SSH;
-    5. optional GUI-testing prep (opt-in `[gui_testing]`, not yet implemented): disable SIP via recovery
+    5. optional GUI-testing prep (opt-in `[gui_testing]`, deferred to Later): disable SIP via recovery
        boot, pre-grant Accessibility and Screen Recording in TCC.db so ephemeral runs never prompt;
     6. cleanup: caches, logs, history, temp files, then a clean guest shutdown. The disk is ASIF, which
        returns blocks to the host when the guest's APFS TRIMs them, so no zero-fill or compaction pass
@@ -117,7 +119,9 @@ were reached in a design interview on 2026-10-28.
 
 - **M0, skeleton:** package layout, Boxcar parsing, `hobo init`/`validate`, signing Makefile, docs.
 - **M1, macOS guest end to end:** `box build` from recipe, `up`/`ssh`/`halt`/`destroy`/`status`, launchd
-  VM processes, NAT, virtio-fs, `hobo view`.
+  VM processes, NAT, virtio-fs, `hobo view`. Ordered for an early GUI boot (2026-10-30): `box add` and
+  a foreground `up` that boots in-process with a window come first; `_vm-run` later makes `up` headless
+  and detached and moves the window to `hobo view`.
 - **M2, agent mode:** `hobo mcp`, `--json`, `hobo run`, snapshots.
 - **M3:** Linux guests, forwarded ports, private networks, multi-machine, rsync folders, full provisioners.
 - **Later:** see `TODO.md`.
