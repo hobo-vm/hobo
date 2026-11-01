@@ -71,23 +71,29 @@ public enum IPSWCatalog {
         return images.filter { seen.insert($0.major).inserted }
     }
 
-    /// The image with build number `build` (ignoring case), which a host on `hostMajor` must be
-    /// able to run.
-    public static func image(build: String, in images: [Image], hostMajor: Int) throws -> Image {
+    /// The image with build number `build`, ignoring case.
+    public static func image(build: String, in images: [Image]) throws -> Image {
         guard let image = images.first(where: { $0.build.caseInsensitiveCompare(build) == .orderedSame }) else {
             throw CatalogError.unknownBuild(build)
         }
+        return image
+    }
+
+    /// The image with build number `build` (ignoring case), which a host on `hostMajor` must be
+    /// able to run.
+    public static func image(build: String, in images: [Image], hostMajor: Int) throws -> Image {
+        let image = try image(build: build, in: images)
         if image.major > hostMajor {
             throw CatalogError.unsupportedBuild(image.build, version: image.version, hostMajor: hostMajor)
         }
         return image
     }
 
-    /// `images` as JSON, for `hobo images --json`.
-    public static func json(_ images: [Image]) throws -> Data {
+    /// `value` (an image or a list of them) as JSON, for `hobo images --json`.
+    public static func json(_ value: some Encodable) throws -> Data {
         let encoder = JSONEncoder.sorted
         encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(images)
+        return try encoder.encode(value)
     }
 
     public static var hostMajor: Int { ProcessInfo.processInfo.operatingSystemVersion.majorVersion }

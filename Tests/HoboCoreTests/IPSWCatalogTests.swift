@@ -48,6 +48,9 @@ import Testing
     @Test func findsBuildsIgnoringCase() throws {
         #expect(try IPSWCatalog.image(build: "26a434", in: images, hostMajor: 27).version == "27.0.1")
         #expect(throws: CatalogError.unknownBuild("26Z1")) { try IPSWCatalog.image(build: "26Z1", in: images, hostMajor: 27) }
+        // Details for any build, runnable or not; pinning one needs the host to run it.
+        #expect(try IPSWCatalog.image(build: "27A100", in: images).version == "28.0")
+        #expect(throws: CatalogError.unknownBuild("26Z1")) { try IPSWCatalog.image(build: "26Z1", in: images) }
         #expect(throws: CatalogError.unsupportedBuild("27A100", version: "28.0", hostMajor: 27)) {
             try IPSWCatalog.image(build: "27A100", in: images, hostMajor: 27)
         }

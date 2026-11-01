@@ -38,7 +38,7 @@ global VMs on 2026-11-01.
    `create` prints (decided 2026-11-01: Apple publishes no SHA-256, so pinning there would mean a
    20 GB download); `hobo init <build>` pins a build from `hobo images` (decision 8).
 4. **Commands.** VM-centric verbs, no Vagrant aliases:
-   `init [<build>] [--force]`, `images [--latest]`, `validate [file]`, `create <name> --from Hobo.toml [--ipsw path]`, `list`, `start [--ephemeral] [--gui] [--cold]
+   `init [<build>] [--force]`, `images [<build>] [--latest]`, `validate [file]`, `create <name> --from Hobo.toml [--ipsw path]`, `list`, `start [--ephemeral] [--gui] [--cold]
    [--share path] [--idle-timeout d]`, `stop [--force]`, `suspend`, `ssh <name> [-- cmd]`,
    `exec <name> [--gui] -- cmd`, `cp`, `ip`, `view`, `screenshot`, `clone <src> <dst> [--ephemeral]`,
    `delete`, `rename`, `set <name> --cpus/--memory/--disk/--share/--unshare`,
@@ -68,7 +68,8 @@ global VMs on 2026-11-01.
    unsupported. Local paths (`--ipsw`, or a path in `[source]`) are used in place, never copied.
    `ipsw = "latest"` uses `VZMacOSRestoreImage.latestSupported`, warns as unpinned and prints the pin.
    Choosing a version replaces Mist (decided 2026-11-01): `hobo images` lists the macOS IPSWs
-   (name, version, build, release date, size; `--latest` keeps the newest of each major) from
+   (name, version, build, release date, size; `--latest` keeps the newest of each major;
+   `images <build>` shows one build's details, URL and SHA-256 included) from
    ipsw.me's `v4/device/VirtualMac2,1?type=ipsw`, fetched live with no cache, hiding guests newer
    than the host's macOS. Apple publishes only the newest IPSW (what `latestSupported` reads), and
    `softwareupdate --list-full-installers` lists installer apps, not IPSWs, so ipsw.me is the only

@@ -47,14 +47,26 @@ struct Images: AsyncParsableCommand {
         discussion: "Pass a BUILD to `hobo init <build>` to start a recipe pinned to it. The list comes from ipsw.me."
     )
 
+    @Argument(help: ArgumentHelp("Show the details of this build (e.g. 26B123) instead of the list.", valueName: "build"))
+    var build: String?
+
     @Flag(help: "Show only the newest build of each major version.")
     var latest = false
 
     @Flag(help: "Print the full records (URL, SHA-256, size in bytes, signed) as JSON.")
     var json = false
 
+    func validate() throws {
+        if build != nil && latest { throw ValidationError("--latest lists builds; it can't be combined with a build") }
+    }
+
     func run() async throws {
-        var images = IPSWCatalog.runnable(try await IPSWCatalog.fetch(), hostMajor: IPSWCatalog.hostMajor)
+        let catalog = try await IPSWCatalog.fetch()
+        if let build {
+            try show(IPSWCatalog.image(build: build, in: catalog))
+            return
+        }
+        var images = IPSWCatalog.runnable(catalog, hostMajor: IPSWCatalog.hostMajor)
         if latest { images = IPSWCatalog.latestPerMajor(images) }
         if json {
             print(String(decoding: try IPSWCatalog.json(images), as: UTF8.self))
@@ -71,6 +83,26 @@ struct Images: AsyncParsableCommand {
         for row in rows {
             print(zip(row, widths).map { $0.padding(toLength: $1, withPad: " ", startingAt: 0) }
                 .joined(separator: "  ").trimmingCharacters(in: .whitespaces))
+        }
+    }
+
+    private func show(_ image: IPSWCatalog.Image) throws {
+        if json {
+            print(String(decoding: try IPSWCatalog.json(image), as: UTF8.self))
+            return
+        }
+        let size = ByteCountFormatter.string(fromByteCount: Int64(image.size), countStyle: .file)
+        let fields = [
+            ("Name", image.name), ("Version", image.version), ("Build", image.build),
+            ("Released", image.released.formatted(.iso8601.year().month().day())),
+            ("Size", "\(size) (\(image.size) bytes)"), ("URL", image.url.absoluteString),
+            ("SHA-256", image.sha256), ("Signed", image.signed ? "yes" : "no"),
+        ]
+        for (label, value) in fields {
+            print(label.padding(toLength: 10, withPad: " ", startingAt: 0) + value)
+        }
+        if image.major > IPSWCatalog.hostMajor {
+            print("\nThis Mac (macOS \(IPSWCatalog.hostMajor)) can't run it: the guest is newer than the host.")
         }
     }
 }
