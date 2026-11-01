@@ -200,14 +200,13 @@ struct List: ParsableCommand {
     func run() {
         let store = VMStore.standard()
         let vms = store.list()
-        if json {
-            Output(json: true).result(vms.map(VMSummary.init), text: "")
-            return
-        }
-        guard !vms.isEmpty else {
-            print("No VMs in \(store.directory.path).")
-            return
-        }
+        Output(json: json).result(
+            vms.map(VMSummary.init),
+            text: vms.isEmpty ? "No VMs in \(store.directory.path)." : table(vms)
+        )
+    }
+
+    private func table(_ vms: [VMStore.VM]) -> String {
         let rows = [["NAME", "STATE", "OS", "CPUS", "MEMORY", "DISK (USED/SIZE)"]] + vms.map { vm in
             let used = fileSize(vm.allocatedBytes)
             switch vm.status {
@@ -222,7 +221,7 @@ struct List: ParsableCommand {
             case .broken: return [vm.name, "broken", "—", "—", "—", "\(used) / —"]
             }
         }
-        print(formatTable(rows))
+        return formatTable(rows)
     }
 
     private func columns(_ config: VMConfig, used: String) -> [String] {
