@@ -113,6 +113,18 @@ import Testing
         #expect(recipe.missingFiles() == ["setup.sh"])
     }
 
+    @Test func shippedRecipesParseAndArePinned() throws {
+        let recipes = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../Recipes").standardizedFileURL
+        let files = try FileManager.default.contentsOfDirectory(at: recipes, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "toml" }
+        #expect(!files.isEmpty)
+        for file in files {
+            let recipe = try Recipe.load(from: file)
+            #expect(recipe.source.isPinned, "\(file.lastPathComponent) should pin its IPSW")
+            #expect(recipe.missingFiles().isEmpty, "\(file.lastPathComponent)")
+        }
+    }
+
     private func minimal(source: String, name: String = "greg/macos-27", version: String = "1.0.0") -> String {
         """
         name = "\(name)"
