@@ -30,7 +30,13 @@ public struct GuestSSH: Sendable {
 
     /// The command a person can paste to get into the guest (or run `command` there).
     public func commandLine(_ command: [String] = []) -> String {
-        (["ssh"] + sshArguments(command)).map { $0.contains(" ") ? shellQuote($0) : $0 }.joined(separator: " ")
+        (["ssh"] + sshArguments(command)).map { Self.needsQuoting($0) ? shellQuote($0) : $0 }.joined(separator: " ")
+    }
+
+    /// Whether the host's shell would change `argument` if pasted bare: a command can hold `;`,
+    /// `$`, quotes, globs or nothing at all, not just spaces.
+    static func needsQuoting(_ argument: String) -> Bool {
+        argument.isEmpty || !argument.unicodeScalars.allSatisfy { $0.isASCII && (CharacterSet.alphanumerics.contains($0) || "@%+=:,./-_".unicodeScalars.contains($0)) }
     }
 
     /// Runs `command` in the guest, streaming its output unless `quiet`. Returns the exit status
