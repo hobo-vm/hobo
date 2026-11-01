@@ -1,11 +1,9 @@
 import Foundation
 
-/// A `[[provision]]` step, shared by the Boxcar and recipes. What makes a step valid, which host
-/// file it reads and the guest command it runs all live here, so every consumer agrees on what a
-/// step means.
+/// A recipe's `[[provision]]` step. What makes a step valid, which host file it reads and the guest
+/// command it runs all live here, so every consumer agrees on what a step means.
 public struct Provisioner: Equatable, Sendable, Decodable {
     public enum Kind: String, Sendable, Decodable { case shell, file }
-    public enum Run: String, Sendable, Decodable { case once, always, never }
 
     public var type: Kind
     public var inline: String?
@@ -13,12 +11,11 @@ public struct Provisioner: Equatable, Sendable, Decodable {
     public var source: String?
     public var destination: String?
     public var privileged: Bool?
-    public var run: Run?
     public var env: [String: String]?
 
     public init(
         type: Kind, inline: String? = nil, path: String? = nil, source: String? = nil, destination: String? = nil,
-        privileged: Bool? = nil, run: Run? = nil, env: [String: String]? = nil
+        privileged: Bool? = nil, env: [String: String]? = nil
     ) {
         self.type = type
         self.inline = inline
@@ -26,7 +23,6 @@ public struct Provisioner: Equatable, Sendable, Decodable {
         self.source = source
         self.destination = destination
         self.privileged = privileged
-        self.run = run
         self.env = env
     }
 
@@ -61,7 +57,7 @@ public struct Provisioner: Equatable, Sendable, Decodable {
     }
 }
 
-/// Resolves a host path written in a Boxcar or recipe against the directory of that file.
+/// Resolves a host path written in a recipe against the directory of that file.
 public func resolveHostPath(_ path: String, relativeTo directory: URL) -> URL {
     URL(filePath: (path as NSString).expandingTildeInPath, relativeTo: directory).standardizedFileURL
 }

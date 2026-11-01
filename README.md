@@ -1,18 +1,43 @@
 # Hobo
 
-Vagrant-style development and test VMs for Apple Silicon Macs, built on Apple's
-Virtualization framework. Your machines ride in a `Boxcar`.
+A command-line tool for named macOS (and later Linux and Windows) VMs on Apple Silicon Macs,
+built on Apple's Virtualization framework. Vagrant-inspired, not a Vagrant clone.
 
 ```sh
-hobo init greg/macos-27   # write a Boxcar
-hobo up                   # boot (headless; never steals focus)
-hobo ssh
-hobo run -- ./run-tests.sh   # pristine throwaway VM, exit code passed through
-hobo mcp                  # let an agent drive VMs over MCP
+hobo init                          # write a starter Hobo.toml
+hobo validate                      # check it without building
+hobo create dev --from Hobo.toml   # build a VM (coming in M1)
+hobo start dev                     # headless; never steals focus
+hobo ssh dev
 ```
 
-> Status: **M1 in progress.** `hobo init`, `hobo validate` and `hobo box build` are implemented.
+> Status: **M1 in progress.** `hobo init` and `hobo validate` are implemented.
 > See [docs/design.md](docs/design.md) for the design and milestones.
+
+## Recipes
+
+A recipe is a TOML file, conventionally `Hobo.toml`, describing how to build a VM. Every VM gets
+the Vagrant conventions (`vagrant`/`vagrant`, passwordless sudo, SSH, no sleep or automatic
+updates); recipe steps add the rest.
+
+```toml
+cpus   = 4          # defaults: 4 cpus, 8GB memory, 80GB disk
+memory = "8GB"
+disk   = "80GB"
+
+[source]
+ipsw   = "https://updates.cdn-apple.com/…/UniversalMac_27.2_…_Restore.ipsw"  # or a path, or "latest"
+sha256 = "…"        # required unless ipsw = "latest"
+
+[[provision]]       # run once each, in order; paths are relative to the recipe
+type   = "shell"    # inline or path; privileged (default true), env
+inline = "softwareupdate --install-rosetta --agree-to-license"
+
+[[provision]]
+type        = "file"
+source      = "files/zshrc"
+destination = "/Users/vagrant/.zshrc"
+```
 
 ## Requirements
 
@@ -25,8 +50,7 @@ hobo mcp                  # let an agent drive VMs over MCP
 make install                 # release build, ad-hoc signed, installs to ~/.local/bin/hobo
 HOBO_SIGN_IDENTITY="Developer ID Application: …" make install
 make test                    # unit tests
-make integration-test        # boots real VMs; full box build with the depot's 27.2 IPSW or HOBO_TEST_IPSW=…
-make box RECIPE=Recipes/macos-27.toml
+make integration-test        # tests that drive the signed binary
 ```
 
 ## License

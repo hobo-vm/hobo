@@ -110,52 +110,18 @@ import Testing
     }
 }
 
-@Suite struct BoxMetadataTests {
-    @Test func encodesSnakeCaseKeys() throws {
-        let metadata = BoxMetadata(
-            name: "greg/macos-27", version: "1.0.0", description: nil, guestOSVersion: "27.1.0 (26A1)",
-            cpus: 4, memory: "8GB", disk: "80GB", contentSHA256: "c", recipeSHA256: "r"
-        )
-        let json = try JSONSerialization.jsonObject(with: metadata.encoded()) as? [String: Any]
-        #expect(json?["provider"] as? String == "hobo")
-        #expect(json?["guest_os"] as? String == "macos")
-        #expect(json?["guest_os_version"] as? String == "27.1.0 (26A1)")
-        #expect(json?["min_host"] as? String == "27.0")
-        #expect(json?["content_sha256"] as? String == "c")
-        #expect(try JSONDecoder().decode(BoxMetadata.self, from: metadata.encoded()) == metadata)
-    }
-
-    @Test func contentHashCoversEveryFileInOrder() throws {
-        let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-content-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let a = directory.appending(path: "a"), b = directory.appending(path: "b"), ab = directory.appending(path: "ab")
-        try Data("disk".utf8).write(to: a)
-        try Data("aux".utf8).write(to: b)
-        try Data("diskaux".utf8).write(to: ab)
-
-        // One stream over the files, so it equals the hash of their concatenation.
-        #expect(try BoxMetadata.contentHash(of: [a, b]) == Depot.sha256(of: ab))
-        #expect(try BoxMetadata.contentHash(of: [a, b]) != BoxMetadata.contentHash(of: [b, a]))
-        #expect(throws: (any Error).self) { try BoxMetadata.contentHash(of: [a, directory.appending(path: "missing")]) }
-    }
-
+@Suite struct ByteSizeTests {
     @Test(arguments: [(UInt64(8) << 30, "8GB"), (1536 << 20, "1536MB"), (1 << 40, "1TB"), (100, "100B")])
     func byteSizesRoundTrip(bytes: UInt64, text: String) throws {
         #expect(ByteSize(bytes: bytes).description == text)
         #expect(try ByteSize(parsing: text).bytes == bytes)
     }
 
-    @Test func checkpointKeyTracksEverythingThatShapesTheDisk() {
-        let base = Checkpoint.key(ipswSHA256: "a", diskBytes: 1, conventions: "x")
-        #expect(base.count == 16)
-        #expect(base == Checkpoint.key(ipswSHA256: "a", diskBytes: 1, conventions: "x"))
-        #expect(base != Checkpoint.key(ipswSHA256: "b", diskBytes: 1, conventions: "x"))
-        #expect(base != Checkpoint.key(ipswSHA256: "a", diskBytes: 2, conventions: "x"))
-        #expect(base != Checkpoint.key(ipswSHA256: "a", diskBytes: 1, conventions: "y"))
-        #expect(Checkpoint.key(ipswSHA256: "a", diskBytes: 1)
-            == Checkpoint.key(ipswSHA256: "a", diskBytes: 1, conventions: Conventions.fingerprint))
+    @Test(arguments: ["8", "eight GB", "GB", "-1GB", "99999999999TB"])
+    func invalidSizesAreRejected(text: String) {
+        #expect(throws: RecipeError.invalidSize(text)) { try ByteSize(parsing: text) }
     }
+
 }
 
 @Suite struct ConventionsTests {

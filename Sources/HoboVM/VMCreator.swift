@@ -3,49 +3,47 @@ import HoboCore
 import Synchronization
 import Virtualization
 
-/// `hobo box build`: IPSW → unattended install → Vagrant conventions → recipe steps → cleanup →
-/// `.box`. Work happens in the roundhouse; the post-conventions disk is checkpointed so rebuilds
-/// only rerun recipe steps.
+/// Builds a macOS VM from a recipe, in place in a directory: IPSW → unattended install → Vagrant
+/// conventions → recipe steps → cleanup → clean shutdown. Every create is a full install.
 @MainActor
-public struct BoxBuilder {
+public struct VMCreator {
     public struct Options: Sendable {
-        public var output: URL
-        /// Ignore any checkpoint and reinstall from the IPSW.
-        public var fresh: Bool
+        /// Where the VM is built and left. Created if missing.
+        public var directory: URL
         /// On failure, leave the VM running for SSH until interrupted.
         public var holdOnFailure: Bool
 
-        public init(output: URL, fresh: Bool = false, holdOnFailure: Bool = false) {
-            self.output = output
-            self.fresh = fresh
+        public init(directory: URL, holdOnFailure: Bool = false) {
+            self.directory = directory
             self.holdOnFailure = holdOnFailure
         }
     }
 
     public struct Result: Sendable {
-        public var box: URL
-        public var checksum: URL
-        public var metadata: BoxMetadata
+        public var bundle: MacVMBundle
+        /// The recipe's values raised to the IPSW's minimums.
+        public var cpus: Int
+        public var memoryBytes: UInt64
+        /// e.g. `27.2.0 (26B123)`.
+        public var guestOSVersion: String
     }
 
     let recipe: Recipe
-    let recipeFile: URL
     let home: HoboHome
     let options: Options
     let log: @Sendable (String) -> Void
 
-    public init(recipeFile: URL, home: HoboHome = .standard(), options: Options, log: @escaping @Sendable (String) -> Void) throws {
-        recipe = try Recipe.load(from: recipeFile)
-        self.recipeFile = recipeFile
+    public init(recipe: Recipe, home: HoboHome = .standard(), options: Options, log: @escaping @Sendable (String) -> Void) {
+        self.recipe = recipe
         self.home = home
         self.options = options
         self.log = log
     }
 
-    public func build() async throws -> Result {
+    public func create() async throws -> Result {
         try recipe.checkFilesExist()
 
-        let (ipsw, ipswSHA) = try await resolveSource()
+        let ipsw = try await resolveSource()
         let image = try await VZMacOSRestoreImage.image(from: ipsw)
         guard let requirements = image.mostFeaturefulSupportedConfiguration, requirements.hardwareModel.isSupported else {
             throw VMError.unsupportedRestoreImage
@@ -55,19 +53,8 @@ public struct BoxBuilder {
         let os = image.operatingSystemVersion
         let guestVersion = "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion) (\(image.buildVersion))"
 
-        let work = home.roundhouse.appending(path: recipe.slug)
-        try? FileManager.default.removeItem(at: work)
-        let checkpoint = home.checkpoints.appending(path: Checkpoint.key(ipswSHA256: ipswSHA, diskBytes: recipe.disk.bytes))
-
-        let bundle: MacVMBundle
-        if !options.fresh, FileManager.default.fileExists(atPath: MacVMBundle(directory: checkpoint).disk.path) {
-            log("Reusing install checkpoint \(checkpoint.lastPathComponent)")
-            bundle = try MacVMBundle(directory: checkpoint).clone(to: work)
-        } else {
-            bundle = try MacVMBundle.create(at: work, hardwareModel: requirements.hardwareModel, diskBytes: recipe.disk.bytes)
-            try await installAndApplyConventions(bundle, ipsw: ipsw, cpus: cpus, memory: memory)
-            try saveCheckpoint(bundle, at: checkpoint)
-        }
+        let bundle = try MacVMBundle.create(at: options.directory, hardwareModel: requirements.hardwareModel, diskBytes: recipe.disk.bytes)
+        try await installAndApplyConventions(bundle, ipsw: ipsw, cpus: cpus, memory: memory)
 
         try await withVM(bundle, cpus: cpus, memory: memory) { vm, ssh in
             for (index, step) in recipe.provisioners.enumerated() {
@@ -80,19 +67,10 @@ public struct BoxBuilder {
             try await shutDown(vm, ssh: ssh)
         }
         log("Disk uses \(ByteCountFormatter.string(fromByteCount: Int64(bundle.allocatedDiskBytes()), countStyle: .file))")
-
-        let metadata = BoxMetadata(
-            name: recipe.name, version: recipe.version, description: recipe.description, guestOSVersion: guestVersion,
-            cpus: cpus, memory: ByteSize(bytes: memory).description, disk: recipe.disk.description,
-            contentSHA256: try BoxMetadata.contentHash(of: bundle.files),
-            recipeSHA256: try Depot.sha256(of: recipeFile)
-        )
-        let result = try package(bundle, metadata: metadata)
-        try FileManager.default.removeItem(at: work)
-        return result
+        return Result(bundle: bundle, cpus: cpus, memoryBytes: memory, guestOSVersion: guestVersion)
     }
 
-    private func resolveSource() async throws -> (URL, String) {
+    private func resolveSource() async throws -> URL {
         let depot = Depot(directory: home.depot)
         let progress = ProgressLine(log: log)
         switch recipe.source {
@@ -101,13 +79,13 @@ public struct BoxBuilder {
             log("warning: source is unpinned (ipsw = \"latest\"); resolved to \(image.url.absoluteString)")
             let (file, sha) = try await depot.fetch(image.url, expectedSHA256: nil, progress: progress.report)
             log("Pin it with: ipsw = \"\(image.url.absoluteString)\", sha256 = \"\(sha)\"")
-            return (file, sha)
+            return file
         case .remote(let url, let sha):
-            return try await (depot.fetch(url, expectedSHA256: sha, progress: progress.report).file, sha)
+            return try await depot.fetch(url, expectedSHA256: sha, progress: progress.report).file
         case .local(let url, let sha):
             log("Verifying \(url.lastPathComponent)")
             try Depot.verify(url, sha256: sha)
-            return (url, sha)
+            return url
         }
     }
 
@@ -189,31 +167,10 @@ public struct BoxBuilder {
         }
     }
 
-    private func saveCheckpoint(_ bundle: MacVMBundle, at checkpoint: URL) throws {
-        // Unique per build, so two builds saving the same checkpoint don't clone into one directory.
-        let staging = checkpoint.appendingPathExtension("partial-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: staging) }
-        _ = try bundle.clone(to: staging)
-        try? FileManager.default.removeItem(at: checkpoint)
-        try FileManager.default.moveItem(at: staging, to: checkpoint)
-        log("Saved install checkpoint \(checkpoint.lastPathComponent)")
-    }
-
-    private func package(_ bundle: MacVMBundle, metadata: BoxMetadata) throws -> Result {
-        try metadata.encoded().write(to: bundle.directory.appending(path: BoxMetadata.fileName))
-        try FileManager.default.createDirectory(at: options.output, withIntermediateDirectories: true)
-        let box = options.output.appending(path: recipe.boxFileName)
-        log("Packaging \(box.path)")
-        try run("/usr/bin/tar", ["-cf", box.path, "-C", bundle.directory.path, BoxMetadata.fileName] + MacVMBundle.platformFiles)
-        let checksum = box.appendingPathExtension("sha256")
-        try "\(try Depot.sha256(of: box))  \(box.lastPathComponent)\n".write(to: checksum, atomically: true, encoding: .utf8)
-        return Result(box: box, checksum: checksum, metadata: metadata)
-    }
-
-    /// Prints how to get into a failed build, and with `holdOnFailure` keeps the VM up until ^C.
+    /// Prints how to get into a failed create, and with `holdOnFailure` keeps the VM up until ^C.
     private func holdForDebugging(_ vm: GuestVM, auth: GuestSSH.Auth, error: Error) async throws {
-        log("Build failed: \(error)")
-        log("Working directory kept at \(vm.bundle.directory.path)")
+        log("Create failed: \(error)")
+        log("VM kept at \(vm.bundle.directory.path)")
         guard !vm.isStopped else { return }
         if options.holdOnFailure, let ip = DHCPLeases.ipAddress(forMAC: vm.macAddress.string) {
             let ssh = GuestSSH(host: ip, auth: auth)

@@ -28,6 +28,6 @@ let package = Package(
             ]
         ),
         .testTarget(name: "HoboCoreTests", dependencies: ["HoboCore"]),
-        .testTarget(name: "HoboVMTests", dependencies: ["HoboCore", "HoboVM"]),
+        .testTarget(name: "HoboVMTests"),
     ]
 )

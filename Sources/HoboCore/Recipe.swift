@@ -1,16 +1,15 @@
 import Foundation
 import TOMLKit
 
-/// A box recipe for `hobo box build`. Hardware keys and `[[provision]]` steps use the Boxcar's
-/// names and types; a step's `run` is ignored, since every step runs exactly once.
+/// A VM recipe, conventionally `Hobo.toml`: the source, default hardware and `[[provision]]` steps
+/// to build a VM from. It holds no host-specific state, so it can be handed to someone else.
 public struct Recipe: Equatable, Sendable {
+    /// The file `hobo init` writes and `hobo validate` reads by default.
+    public static let fileName = "Hobo.toml"
     public static let defaultCPUs = 4
     public static let defaultMemory = ByteSize(bytes: 8 << 30)
     public static let defaultDisk = ByteSize(bytes: 80 << 30)
 
-    public var name: String
-    public var version: String
-    public var description: String?
     public var cpus: Int
     public var memory: ByteSize
     public var disk: ByteSize
@@ -30,14 +29,9 @@ public struct Recipe: Equatable, Sendable {
 
     public static func parse(_ toml: String, directory: URL) throws -> Recipe {
         let raw = try TOMLDecoder().decode(RawRecipe.self, from: toml)
-        try validateName(raw.name)
-        try validateVersion(raw.version)
         if raw.guiTesting?.enabled == true { throw RecipeError.guiTestingNotImplemented }
 
         let recipe = Recipe(
-            name: raw.name,
-            version: raw.version,
-            description: raw.description,
             cpus: raw.cpus ?? defaultCPUs,
             memory: raw.memory ?? defaultMemory,
             disk: raw.disk ?? defaultDisk,
@@ -59,13 +53,9 @@ public struct Recipe: Equatable, Sendable {
         try parse(String(contentsOf: url, encoding: .utf8), directory: url.deletingLastPathComponent())
     }
 
-    /// `greg/macos-27` version `1.0.0` → `greg-macos-27-1.0.0`.
-    public var slug: String { "\(name.replacingOccurrences(of: "/", with: "-"))-\(version)" }
-    public var boxFileName: String { "\(slug).box" }
-
     public func resolve(_ path: String) -> URL { resolveHostPath(path, relativeTo: directory) }
 
-    /// Host files the recipe refers to that do not exist. Checked by `validate-recipe` and
+    /// Host files the recipe refers to that do not exist. Checked by `hobo validate` and
     /// before a build, so a typo fails in seconds instead of after a 30-minute install.
     public func missingFiles() -> [String] {
         var paths = provisioners.compactMap(\.hostFile)
@@ -87,29 +77,10 @@ public struct Recipe: Equatable, Sendable {
         }
         return .local(resolveHostPath(raw.ipsw, relativeTo: directory), sha256: sha)
     }
-
-    private static let nameCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
-
-    private static func validateName(_ name: String) throws {
-        let parts = name.split(separator: "/", omittingEmptySubsequences: false)
-        guard (1...2).contains(parts.count),
-              parts.allSatisfy({ !$0.isEmpty && $0.unicodeScalars.allSatisfy(nameCharacters.contains) })
-        else { throw RecipeError.invalidName(name) }
-    }
-
-    /// The version names the build's working directory and the `.box`, so it must not carry a path.
-    private static func validateVersion(_ version: String) throws {
-        if version.isEmpty { throw RecipeError.missingVersion }
-        guard version.unicodeScalars.allSatisfy(nameCharacters.union(CharacterSet(charactersIn: "+")).contains) else {
-            throw RecipeError.invalidVersion(version)
-        }
-    }
 }
 
 public enum RecipeError: Error, Equatable, CustomStringConvertible {
-    case invalidName(String)
-    case missingVersion
-    case invalidVersion(String)
+    case invalidSize(String)
     case missingSHA256(String)
     case invalidSHA256(String)
     case invalidHardware(String)
@@ -119,9 +90,7 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .invalidName(let name): "invalid box name \"\(name)\" (expected e.g. \"greg/macos-27\")"
-        case .missingVersion: "recipe needs a version"
-        case .invalidVersion(let version): "invalid version \"\(version)\" (expected e.g. \"1.0.0\")"
+        case .invalidSize(let value): "invalid size \"\(value)\" (expected e.g. \"512MB\" or \"8GB\")"
         case .missingSHA256(let ipsw): "source \"\(ipsw)\" needs a sha256 (only ipsw = \"latest\" may omit it)"
         case .invalidSHA256(let sha): "invalid sha256 \"\(sha)\" (expected 64 hex digits)"
         case .invalidHardware(let reason): reason
@@ -142,9 +111,6 @@ private struct RawRecipe: Decodable {
         var enabled: Bool?
     }
 
-    var name: String
-    var version: String
-    var description: String?
     var cpus: Int?
     var memory: ByteSize?
     var disk: ByteSize?
@@ -153,7 +119,7 @@ private struct RawRecipe: Decodable {
     var provision: [Provisioner]?
 
     private enum CodingKeys: String, CodingKey {
-        case name, version, description, cpus, memory, disk, source, provision
+        case cpus, memory, disk, source, provision
         case guiTesting = "gui_testing"
     }
 }

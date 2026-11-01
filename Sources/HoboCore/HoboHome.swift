@@ -15,9 +15,6 @@ public struct HoboHome: Sendable {
 
     /// Downloaded IPSWs, named by content hash.
     public var depot: URL { root.appending(path: "depot") }
-    /// Box build working directories and post-install checkpoints.
-    public var roundhouse: URL { root.appending(path: "roundhouse") }
-    public var checkpoints: URL { roundhouse.appending(path: "checkpoints") }
     /// Vagrant's insecure private key, written out for `ssh -i`.
     public var insecurePrivateKey: URL { root.appending(path: "insecure_private_key") }
 

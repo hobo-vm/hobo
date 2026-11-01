@@ -1,9 +1,7 @@
-import CryptoKit
 import Foundation
 
-/// Vagrant box conventions applied to every macOS box: `vagrant`/`vagrant`, passwordless sudo,
-/// the insecure key, and no sleep or screensaver. Everything here that shapes the
-/// post-conventions disk feeds `fingerprint`, so build checkpoints never outlive a change to it.
+/// Vagrant conventions applied to every macOS VM: `vagrant`/`vagrant`, passwordless sudo, the
+/// insecure key, and no sleep or screensaver.
 public enum Conventions {
     public static let username = "vagrant"
     public static let password = "vagrant"
@@ -11,18 +9,6 @@ public enum Conventions {
     /// Unattended-setup options for the first boot (`VZMacGuestProvisioningOptions`).
     public static let logsInAutomatically = true
     public static let enablesRemoteLogin = true
-
-    /// A hash of every input that shapes the post-conventions disk: the unattended-setup options
-    /// and `script`. Part of the checkpoint key. Add any new such input here.
-    public static var fingerprint: String {
-        let inputs = [fullName, username, password, "\(logsInAutomatically)", "\(enablesRemoteLogin)", script]
-        var hasher = SHA256()
-        for input in inputs {
-            // Length-prefixed so ("ab", "c") and ("a", "bc") hash differently.
-            hasher.update(data: Data("\(input.utf8.count):\(input)".utf8))
-        }
-        return hasher.finalize().hexString
-    }
 
     /// https://github.com/hashicorp/vagrant/tree/main/keys
     public static let insecurePublicKeys = [
@@ -63,7 +49,7 @@ public enum Conventions {
         """
     }
 
-    /// Root script run after recipe steps: drop caches, logs, history and temp files so the box
+    /// Root script run after recipe steps: drop caches, logs, history and temp files so the new VM
     /// is small and carries nothing from the build. Freed blocks return to the ASIF via TRIM.
     public static let cleanupScript = """
     rm -rf /Library/Caches/* /Users/\(username)/Library/Caches/* /Library/Updates/* 2>/dev/null

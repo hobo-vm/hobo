@@ -8,9 +8,6 @@ import Testing
 
     @Test func parsesFullRecipe() throws {
         let recipe = try Recipe.parse("""
-        name = "greg/macos-27"
-        version = "1.0.0"
-        description = "macOS 27 base"
         cpus = 6
         memory = "16GB"
         disk = "100GB"
@@ -36,7 +33,6 @@ import Testing
         #expect(recipe.source == .remote(URL(string: "https://updates.cdn-apple.com/x/UniversalMac_27.1_Restore.ipsw")!, sha256: sha))
         #expect(recipe.provisioners.map(\.type) == [.shell, .file])
         #expect(recipe.provisioners[0].env == ["A": "1"])
-        #expect(recipe.boxFileName == "greg-macos-27-1.0.0.box")
         #expect(recipe.resolve("files/profile").path == "/recipes/files/profile")
     }
 
@@ -68,20 +64,6 @@ import Testing
         }
     }
 
-    @Test(arguments: ["", "a/b/c", "has space", "/leading"])
-    func invalidNamesAreRejected(name: String) {
-        #expect(throws: RecipeError.invalidName(name)) {
-            try Recipe.parse(minimal(source: #"ipsw = "latest""#, name: name), directory: directory)
-        }
-    }
-
-    @Test(arguments: ["1.0/../../x", "1 0", "../.."])
-    func versionsThatAreNotFileNameSafeAreRejected(version: String) {
-        #expect(throws: RecipeError.invalidVersion(version)) {
-            try Recipe.parse(minimal(source: #"ipsw = "latest""#, version: version), directory: directory)
-        }
-    }
-
     @Test(arguments: [
         ("cpus = 0", "cpus must be at least 1"),
         ("memory = \"0GB\"", "memory must be more than 0"),
@@ -100,12 +82,6 @@ import Testing
         }
         #expect(throws: RecipeError.invalidProvisioner(0, "file needs source and destination")) {
             try Recipe.parse(minimal(source: #"ipsw = "latest""#) + "\n[[provision]]\ntype = \"file\"\nsource = \"x\"", directory: directory)
-        }
-    }
-
-    @Test func emptyVersionIsRejected() {
-        #expect(throws: RecipeError.missingVersion) {
-            try Recipe.parse(minimal(source: #"ipsw = "latest""#, version: ""), directory: directory)
         }
     }
 
@@ -138,22 +114,28 @@ import Testing
         #expect(throws: RecipeError.missingFiles(recipe.missingFiles())) { try recipe.checkFilesExist() }
     }
 
-    @Test func shippedRecipesParseAndArePinned() throws {
-        let recipes = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../Recipes").standardizedFileURL
-        let files = try FileManager.default.contentsOfDirectory(at: recipes, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "toml" }
-        #expect(!files.isEmpty)
-        for file in files {
-            let recipe = try Recipe.load(from: file)
-            #expect(recipe.source.isPinned, "\(file.lastPathComponent) should pin its IPSW")
-            #expect(recipe.missingFiles().isEmpty, "\(file.lastPathComponent)")
-        }
+    @Test func initTemplateParsesAndIsPinned() throws {
+        let recipe = try Recipe.parse(Recipe.template, directory: directory)
+        #expect(recipe.source.isPinned)
+        #expect(recipe.missingFiles().isEmpty)
+        #expect(recipe.provisioners.isEmpty)
     }
 
-    private func minimal(source: String, name: String = "greg/macos-27", version: String = "1.0.0") -> String {
+    /// The template's commented-out steps are well formed once uncommented.
+    @Test func initTemplateExampleStepsParse() throws {
+        let uncommented = Recipe.template.replacingOccurrences(of: "# [[provision]]", with: "[[provision]]")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line in
+                line.hasPrefix("# ") && line.contains("=") && !line.contains("ipsw") ? line.dropFirst(2) : line
+            }
+            .joined(separator: "\n")
+        let recipe = try Recipe.parse(uncommented, directory: directory)
+        #expect(recipe.provisioners.map(\.type) == [.shell, .shell, .file])
+        #expect(recipe.provisioners[1].privileged == false)
+    }
+
+    private func minimal(source: String) -> String {
         """
-        name = "\(name)"
-        version = "\(version)"
         [source]
         \(source)
         """

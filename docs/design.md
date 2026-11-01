@@ -26,18 +26,22 @@ global VMs on 2026-11-01.
    build → `.box` tar → untarred box → machine pipeline tripled disk use for no benefit when nobody
    shares built artifacts: people share the recipe and build it themselves. A project-level file that
    attaches VMs to a directory can be added later without changing the core.
-3. **Recipe: the Boxcar.** `<anything>.boxcar`, TOML, `# vim: ft=toml` modeline (written by
-   `hobo init [name]`). It holds what is needed to build a VM: `[source]`, disk size, default `cpus`
+3. **Recipe.** A TOML file, conventionally `Hobo.toml` (written by `hobo init`), though `create`
+   takes any path. It holds what is needed to build a VM: `[source]`, disk size, default `cpus`
    and `memory`, ordered `[[provision]]` steps, and optional `[gui_testing]`. It contains no host
-   paths, so it can be handed to someone else to build. Boxcars should pin sources (IPSW URL + SHA,
-   image URL + SHA, Xcode version + SHA); unpinned sources warn.
+   state, so it can be handed to someone else to build. A recipe is an input to `create`, not the
+   VM's record (the bundle keeps a copy, decision 7): it can live in a project, or an agent or the
+   GUI can write one to a temp directory and discard it; the GUI edits a VM through `hobo set`,
+   not its recipe. Relative `path`/`source` values resolve against the recipe's directory. Recipes
+   should pin sources (IPSW URL + SHA, image URL + SHA, Xcode version + SHA); unpinned sources
+   warn. The `init` template pins the current macOS IPSW, updated in code when a newer one ships.
 4. **Commands.** VM-centric verbs, no Vagrant aliases:
-   `init`, `create <name> --from x.boxcar [--ipsw path]`, `list`, `start [--ephemeral] [--gui] [--cold]
+   `init [--force]`, `validate [file]`, `create <name> --from Hobo.toml [--ipsw path]`, `list`, `start [--ephemeral] [--gui] [--cold]
    [--share path] [--idle-timeout d]`, `stop [--force]`, `suspend`, `ssh <name> [-- cmd]`,
    `exec <name> [--gui] -- cmd`, `cp`, `ip`, `view`, `screenshot`, `clone <src> <dst> [--ephemeral]`,
    `delete`, `rename`, `set <name> --cpus/--memory/--disk/--share/--unshare`,
-   `snapshot save|restore|list|delete`, `provision <name> --from x.boxcar` (re-run steps on an existing
-   VM), `boxcar validate`, `df`. Every command supports `--json`.
+   `snapshot save|restore|list|delete`, `provision <name> --from Hobo.toml` (re-run steps on an
+   existing VM), `df`. Every command supports `--json`.
 5. **Language.** Swift: swift-argument-parser, TOMLKit, modelcontextprotocol/swift-sdk.
 6. **Platform.** Apple Silicon only, macOS 27+, for `VZMacGuestProvisioningOptions` (unattended macOS
    setup with SSH), vmnet, and ASIF disks. Apple's licence (enforced by the framework) caps hosts at
@@ -45,9 +49,9 @@ global VMs on 2026-11-01.
 
 ### Storage
 
-7. **VM bundles.** Each VM is a visible directory bundle, `~/Virtual Machines/<name>.hobovm`
-   (`HOBO_VMS` overrides the directory, e.g. for an external SSD), holding the disk, aux and
-   identifier files, `config.json`, a copy of the Boxcar it was built from (plus its hash and the
+7. **VM bundles.** Each VM is a visible directory bundle, `~/Hobo/<name>.hobovm`, like
+   `~/Parallels` and clear of Fusion's `~/Virtual Machines` (`HOBO_VMS` overrides the directory, e.g. for an external SSD), holding the disk, aux and
+   identifier files, `config.json`, a copy of the recipe it was built from (plus its hash and the
    source hash), `snapshots/`, and any saved state. Finder shows sizes and can move or delete bundles;
    a vanished bundle is a deleted VM, and Hobo refuses to start or delete a bundle whose VM process is
    still running. `~/.hobo/` holds only small state: the IPSW index, logs, sockets, launchd plists.
@@ -57,14 +61,14 @@ global VMs on 2026-11-01.
    25 GB file isn't rehashed on every use; a missing or moved file is downloaded again. Local paths
    (`--ipsw`, or a path in `[source]`) are used in place, never copied. `ipsw = "latest"` uses
    `VZMacOSRestoreImage.latestSupported`, warns as unpinned and prints the pin.
-9. **Runtime config.** The Boxcar supplies defaults; `create` copies them into the bundle's
+9. **Runtime config.** The recipe supplies defaults; `create` copies them into the bundle's
    `config.json`, which is the truth thereafter. `hobo set` changes CPUs, memory, disk (grow only) and
    persistent shares (virtio-fs; macOS default mount `/Volumes/My Shared Files/<tag>`, `readonly`
    supported). `start --share` adds a share for that run only. Clones inherit `config.json`.
 
 ### VM lifecycle
 
-10. **Create.** `hobo create dev --from r.boxcar` builds in place in the bundle, marked `building`
+10. **Create.** `hobo create dev --from Hobo.toml` builds in place in the bundle, marked `building`
     in `hobo list` until done. There are no checkpoints: every create is a full install (decided
     2026-11-01; clone covers "another one like this"). Steps for a macOS guest:
     1. source: resolve and verify the IPSW (decision 8);
@@ -74,7 +78,7 @@ global VMs on 2026-11-01.
        `authorized_keys`, no sleep/screensaver, no automatic updates; the insecure key is replaced by
        a per-VM key;
     4. `[gui_testing]` if enabled (decision 17);
-    5. Boxcar `[[provision]]` steps (shell inline/path with `privileged` and `env`, and file), run
+    5. recipe `[[provision]]` steps (shell inline/path with `privileged` and `env`, and file), run
        once each over key SSH;
     6. clean guest shutdown. The disk is ASIF, which returns blocks to the host when the guest's APFS
        TRIMs them, so there is no zero-fill or compaction pass (verified on the host: an attached ASIF
@@ -113,9 +117,9 @@ global VMs on 2026-11-01.
     `.accessory` activation policy, so it never takes focus. `hobo view` opens a window on demand;
     `start --gui` opens one at boot. No VNC. Agents drive the UI **inside the guest**:
     - SSH sessions run outside the GUI session and TCC blocks them from Accessibility and Screen
-      Recording, so Boxcar `[gui_testing]` boots to recovery to disable SIP and pre-grants those
+      Recording, so recipe `[gui_testing]` boots to recovery to disable SIP and pre-grants those
       services in TCC.db for `osascript`, `screencapture`, `sshd-keygen-wrapper`, the XCUITest runner
-      and a configurable list. VMs built with it have SIP off; it is opt-in per Boxcar.
+      and a configurable list. VMs built with it have SIP off; it is opt-in per recipe.
     - `exec --gui` runs the command in the `vagrant` user's Aqua session (`launchctl asuser`).
     - `screenshot` runs `screencapture` that way and returns the PNG.
     - A host-side framebuffer screenshot for wedged guests is deferred.
@@ -131,13 +135,13 @@ global VMs on 2026-11-01.
     on Arm needs QEMU (`qemu-system-aarch64 -accel hvf`, as UTM does), because VZ's only display
     device is virtio-gpu, which Windows on Arm can't drive. The QEMU engine keeps the same bundle,
     CLI, clone, snapshot (QEMU state save for running snapshots), suspend, leases and MCP; it runs
-    under the same launchd process model, and QEMU is a Homebrew dependency. Windows Boxcars use
+    under the same launchd process model, and QEMU is a Homebrew dependency. Windows recipes use
     `[source] iso` + `sha256` and an `autounattend.xml` that creates the `vagrant` user and enables
     OpenSSH. SSH runs in session 0, so `exec --gui` goes through a scheduled task in the interactive
     session; UI driving uses UI Automation or WinAppDriver. Gated by a spike (decision 24).
     **Licensing:** Microsoft's authorized way to virtualize Windows 11 on Arm on Apple Silicon is
     Parallels; check this before relying on the QEMU engine for work use.
-21. **Linux guests.** Boxcar `[source] image` + `sha256` (cloud image), set up by cloud-init on VZ;
+21. **Linux guests.** Recipe `[source] image` + `sha256` (cloud image), set up by cloud-init on VZ;
     all lifecycle commands work the same.
 
 ### Engineering
@@ -146,7 +150,7 @@ global VMs on 2026-11-01.
     (ad-hoc by default, `HOBO_SIGN_IDENTITY` for Developer ID), installs to `$(PREFIX)/bin`
     (default `~/.local/bin`). launchd plists reference this stable path.
 23. **Layout.** One Swift package, one `hobo` executable:
-    - `HoboCore`: Boxcar, VM bundles and `config.json`, image index, provisioners
+    - `HoboCore`: recipes, VM bundles and `config.json`, image index, provisioners
     - `HoboVM`: engines (Virtualization framework, later QEMU), VM creation, display
     - `HoboControl`: client ↔ VM-process socket protocol
     - `HoboMCP`: MCP tools
@@ -155,15 +159,15 @@ global VMs on 2026-11-01.
       virtualization entitlement, so they drive the signed `hobo` binary (`make integration-test`).
       There is no CI; GitHub is a backup.
 24. **Repo.** `ggal625/hobo`, private, Apache-2.0, `main`.
-25. **Naming.** "Hobo" plays on "Vagrant"; names follow the hobo-and-trains metaphor. The recipe is
-    the Boxcar (`.boxcar`).
+25. **Naming.** "Hobo" plays on "Vagrant". The hobo-and-trains metaphor (Boxcar, roundhouse,
+    depot) was dropped on 2026-11-01: the recipe is plain `Hobo.toml`.
 
 ## Milestones
 
-The 2026-11-01 pivot removes `hobo box build/validate-recipe`, packaging, `BoxMetadata`, roundhouse
+The 2026-11-01 pivot removed `hobo box build/validate-recipe`, packaging, `BoxMetadata`, roundhouse
 checkpoints and the project-scoped Boxcar (`[[machine]]`, `[defaults]`, `forwarded_port`, `run`).
-`Recipe` becomes the `.boxcar` parser (minus `name`/`version`), `Depot` becomes the `~/Downloads`
-image index, and `BoxBuilder` becomes the in-place VM creator; conventions, SSH and provisioning stay.
+`Recipe` is the `Hobo.toml` parser (no `name`/`version`) and `BoxBuilder` became `VMCreator`, which
+builds in a given directory; `Depot` becomes the `~/Downloads` image index next.
 
 - **M0, skeleton:** done.
 - **M1, a VM you live in:** `init`, `create --from`, `list`, `start` (headless under launchd via

@@ -3,7 +3,7 @@ import HoboCore
 import Virtualization
 
 /// The files that make up one macOS VM: an ASIF disk plus the platform identity VZ needs to boot
-/// it. A box is this directory plus `metadata.json`.
+/// it.
 public struct MacVMBundle: Sendable {
     public static let platformFiles = ["disk.asif", "aux.img", "hardware-model.bin", "machine-identifier.bin"]
 
@@ -15,7 +15,6 @@ public struct MacVMBundle: Sendable {
     public var auxiliaryStorage: URL { directory.appending(path: "aux.img") }
     public var hardwareModel: URL { directory.appending(path: "hardware-model.bin") }
     public var machineIdentifier: URL { directory.appending(path: "machine-identifier.bin") }
-    public var files: [URL] { Self.platformFiles.map { directory.appending(path: $0) } }
 
     /// Creates an empty bundle ready for `VZMacOSInstaller`.
     public static func create(at directory: URL, hardwareModel: VZMacHardwareModel, diskBytes: UInt64) throws -> MacVMBundle {

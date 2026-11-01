@@ -1,12 +1,9 @@
 PREFIX ?= $(HOME)/.local
 HOBO_SIGN_IDENTITY ?= -
 BIN := .build/release/hobo
-RECIPE ?= Recipes/macos-27.toml
-# macOS 27.2 (26B123) as downloaded into the depot by a `latest` build; empty if absent.
-HOBO_TEST_IPSW ?= $(wildcard $(HOME)/.hobo/depot/6613b34e8589db2202a01ec37a2648afb141ece13428175183f8f3e38438534f.ipsw)
 
 .DEFAULT_GOAL := help
-.PHONY: help build sign install test integration-test box clean
+.PHONY: help build sign install test integration-test clean
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -25,13 +22,8 @@ test: ## Unit tests
 	swift test
 
 # The test runner can't hold the entitlement, so VM tests drive the signed binary.
-# The box build test runs only when HOBO_TEST_IPSW names an existing IPSW.
-integration-test: sign ## VM-booting tests (box build uses HOBO_TEST_IPSW)
-	HOBO_INTEGRATION=1 HOBO_BIN=$(abspath $(BIN)) $(if $(HOBO_TEST_IPSW),HOBO_TEST_IPSW=$(HOBO_TEST_IPSW)) \
-		swift test --filter HoboVMTests
-
-box: sign ## Build a box: make box RECIPE=Recipes/macos-27.toml
-	$(BIN) box build $(RECIPE)
+integration-test: sign ## Tests that drive the signed binary
+	HOBO_INTEGRATION=1 HOBO_BIN=$(abspath $(BIN)) swift test --filter HoboVMTests
 
 clean: ## Remove build products
 	swift package clean
