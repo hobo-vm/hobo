@@ -80,11 +80,10 @@ public struct VMLifecycle: Sendable {
             case .status: throw ControlError.badMessage("expected an acknowledgement, got a status")
             }
         } catch {
-            // A refusal (e.g. a VM process from an older hobo) gets the same fallback as silence.
             guard force else {
-                if error is LifecycleError { throw error }
-                throw LifecycleError.unresponsive(vm.name, String(describing: error))
+                throw error as? LifecycleError ?? LifecycleError.unresponsive(vm.name, String(describing: error))
             }
+            // A refusal (e.g. a VM process from an older hobo) gets the same fallback as silence.
             log("The VM process isn't answering (\(error)); killing it")
             try store.launchd.kill(job.label, signal: "SIGKILL")
         }
