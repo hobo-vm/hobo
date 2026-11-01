@@ -42,7 +42,7 @@ public struct Boxcar: Equatable, Sendable {
 
     private static func validateProvisioners(_ steps: [Provisioner]?, scope: String) throws {
         for (index, step) in (steps ?? []).enumerated() {
-            if let problem = step.problem { throw BoxcarError.invalidProvisioner(scope, index, problem) }
+            if let problem = step.problem { throw BoxcarError.invalidProvisioner(scope: scope, index: index, reason: problem) }
         }
     }
 
@@ -55,7 +55,7 @@ public struct Boxcar: Equatable, Sendable {
 public enum BoxcarError: Error, Equatable, CustomStringConvertible {
     case duplicateMachine(String)
     case invalidSize(String)
-    case invalidProvisioner(String, Int, String)
+    case invalidProvisioner(scope: String, index: Int, reason: String)
 
     public var description: String {
         switch self {

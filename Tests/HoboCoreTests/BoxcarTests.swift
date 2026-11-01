@@ -74,7 +74,7 @@ import Testing
 
 @Suite struct ProvisionerTests {
     @Test func boxcarRejectsTheStepsARecipeRejects() {
-        #expect(throws: BoxcarError.invalidProvisioner("machine \"app\"", 0, "shell needs exactly one of inline or path")) {
+        #expect(throws: BoxcarError.invalidProvisioner(scope: "machine \"app\"", index: 0, reason: "shell needs exactly one of inline or path")) {
             try Boxcar.parse("""
             [[machine]]
             name = "app"
@@ -84,7 +84,7 @@ import Testing
               path = "setup.sh"
             """)
         }
-        #expect(throws: BoxcarError.invalidProvisioner("[defaults]", 0, "file needs source and destination")) {
+        #expect(throws: BoxcarError.invalidProvisioner(scope: "[defaults]", index: 0, reason: "file needs source and destination")) {
             try Boxcar.parse("""
             [defaults]
               [[defaults.provision]]
