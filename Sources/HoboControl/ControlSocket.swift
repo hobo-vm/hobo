@@ -199,6 +199,10 @@ public final class ControlServer: Sendable {
                 try? ControlSocket.writeAll(connection, ControlSocket.encode(ControlResponse.error(String(describing: error))))
                 return
             }
+            // A client slow to read a stream (piped into a pager, say) must hold the guest command
+            // back, not time out a write: that drops output or leaves half a line on the wire. A
+            // client that is gone still fails the write at once.
+            ControlSocket.setTimeout(connection, .zero, options: [SO_SNDTIMEO])
             let response = Mutex<ControlResponse?>(nil)
             let handled = DispatchSemaphore(value: 0)
             let handling = Task {
