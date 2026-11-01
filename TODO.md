@@ -2,7 +2,6 @@
 
 Only 2 macOS guests can run per host, so a `create` plus a boot test fill both slots.
 
-- M1: pivot code: delete `box build/validate-recipe`, packaging, `BoxMetadata`, roundhouse checkpoints and the project Boxcar parser/template; `Recipe` → `.boxcar` parser (drop `name`/`version`), `hobo boxcar validate`, `hobo init [name]` writes a starter `.boxcar`
 - M1: image index: IPSW downloads to `~/Downloads` via `.part`, `~/.hobo/images.json` (URL → SHA → path, size + mtime), re-download when missing; replaces `Depot`
 - M1: VM bundles in `~/Hobo/<name>.hobovm` (`HOBO_VMS`), `config.json`, `hobo create --from` wiring `VMCreator` (`building` state, `--hold-on-failure`; decide whether `--from` defaults to `./Hobo.toml`), `hobo list`, `delete`, `rename`; restore the VM integration test (`create` + in-guest convention checks, using a local IPSW via `HOBO_TEST_IPSW`)
 - M1: `hobo _vm-run` VM process + LaunchAgent registration + `HoboControl` socket protocol; headless `start`, `stop [--force]`
