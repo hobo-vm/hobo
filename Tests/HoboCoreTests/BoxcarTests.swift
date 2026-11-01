@@ -108,6 +108,13 @@ import Testing
         #expect(step.problem == "env key \"\(key)\" is not a variable name")
     }
 
+    @Test func emptyPathsAreRejected() {
+        let reason = "path, source and destination can't be empty"
+        #expect(Provisioner(type: .shell, path: "").problem == reason)
+        #expect(Provisioner(type: .file, source: "", destination: "/c").problem == reason)
+        #expect(Provisioner(type: .file, source: "b", destination: "").problem == reason)
+    }
+
     @Test func wellFormedEnvKeysPass() {
         #expect(Provisioner(type: .shell, inline: "true", env: ["_A1": "v", "b": "w"]).problem == nil)
     }

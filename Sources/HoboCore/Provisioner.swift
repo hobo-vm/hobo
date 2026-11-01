@@ -36,6 +36,8 @@ public struct Provisioner: Equatable, Sendable, Decodable {
         if let bad = env?.keys.sorted().first(where: { !Self.isVariableName($0) }) {
             return "env key \"\(bad)\" is not a variable name"
         }
+        // An empty path resolves to the recipe's directory, which `missingFiles` would accept.
+        if [path, source, destination].contains("") { return "path, source and destination can't be empty" }
         return switch type {
         case .shell where (inline == nil) == (path == nil): "shell needs exactly one of inline or path"
         case .file where source == nil || destination == nil: "file needs source and destination"
