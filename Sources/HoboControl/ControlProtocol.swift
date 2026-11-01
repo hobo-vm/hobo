@@ -55,26 +55,26 @@ public struct VMRunStatus: Codable, Equatable, Sendable {
     public var detail: String?
     public var ipAddress: String?
     /// Whether the VM's window is showing (`hobo view`, `start --gui`) rather than hidden or never opened.
-    public var window: Bool
+    public var windowShown: Bool
 
-    public init(state: State, pid: Int32, detail: String? = nil, ipAddress: String? = nil, window: Bool = false) {
+    public init(state: State, pid: Int32, detail: String? = nil, ipAddress: String? = nil, windowShown: Bool = false) {
         self.state = state
         self.pid = pid
         self.detail = detail
         self.ipAddress = ipAddress
-        self.window = window
+        self.windowShown = windowShown
     }
 
-    enum CodingKeys: String, CodingKey { case state, pid, detail, ipAddress, window }
+    enum CodingKeys: String, CodingKey { case state, pid, detail, ipAddress, windowShown }
 
-    /// `window` may be missing: VM processes from before it existed don't send it.
+    /// `windowShown` may be missing: VM processes from before it existed don't send it.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         state = try container.decode(State.self, forKey: .state)
         pid = try container.decode(Int32.self, forKey: .pid)
         detail = try container.decodeIfPresent(String.self, forKey: .detail)
         ipAddress = try container.decodeIfPresent(String.self, forKey: .ipAddress)
-        window = try container.decodeIfPresent(Bool.self, forKey: .window) ?? false
+        windowShown = try container.decodeIfPresent(Bool.self, forKey: .windowShown) ?? false
     }
 }
 

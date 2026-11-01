@@ -18,7 +18,7 @@ import HoboCore
     @Test func responsesRoundTrip() throws {
         let responses: [ControlResponse] = [
             .status(VMRunStatus(state: .stopping, pid: 7, detail: "line one\nline two", ipAddress: "192.168.64.5")),
-            .status(VMRunStatus(state: .running, pid: 7, window: true)),
+            .status(VMRunStatus(state: .running, pid: 7, windowShown: true)),
             .accepted, .error("nope"), .output(.stderr, Data([0, 10, 255])), .exited(-15),
         ]
         for response in responses {
@@ -45,7 +45,7 @@ import HoboCore
         #expect(try await ControlClient.send(.view, to: socket) == .accepted)
     }
 
-    /// VM processes from before `window` existed leave it out of their status.
+    /// VM processes from before `windowShown` existed leave it out of their status.
     @Test func statusWithoutWindowDecodes() throws {
         let line = Data(#"{"status":{"_0":{"state":"running","pid":7}}}"#.utf8)
         #expect(try ControlSocket.decode(ControlResponse.self, from: line) == .status(VMRunStatus(state: .running, pid: 7)))

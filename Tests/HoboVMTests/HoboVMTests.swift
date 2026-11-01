@@ -90,7 +90,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         let socket = VMStore(directory: vms).job(for: "itest").socket
         func windowShown() throws -> Bool? {
             guard case .status(let status) = try ControlClient.send(.status, to: socket) else { return nil }
-            return status.window
+            return status.windowShown
         }
         #expect(try windowShown() == false)
         #expect(try run(hobo, ["view", "itest"], in: work, environment: env) == 0)

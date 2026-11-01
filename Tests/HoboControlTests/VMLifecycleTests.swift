@@ -179,7 +179,7 @@ import Testing
     @Test func startResults() throws {
         let status = VMRunStatus(state: .running, pid: 42, ipAddress: "192.168.64.5")
         #expect(try json(VMLifecycle.StartResult.started(status))
-            == #"{"outcome":"started","status":{"ipAddress":"192.168.64.5","pid":42,"state":"running","window":false}}"#)
+            == #"{"outcome":"started","status":{"ipAddress":"192.168.64.5","pid":42,"state":"running","windowShown":false}}"#)
         #expect(try json(VMLifecycle.StartResult.alreadyRunning(nil)) == #"{"outcome":"alreadyRunning"}"#)
     }
 

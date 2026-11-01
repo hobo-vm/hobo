@@ -92,7 +92,7 @@ public final class VMRunner {
         switch request {
         case .status:
             var status = status
-            status.window = window?.isShown ?? false
+            status.windowShown = window?.isShown ?? false
             return .status(status)
         case .stop(let force):
             beginStop(force: force)
