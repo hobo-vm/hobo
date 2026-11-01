@@ -45,9 +45,9 @@ public struct Provisioner: Equatable, Sendable, Decodable {
     /// The guest command that runs a shell step's script once it is uploaded to `script`: a login
     /// bash under `sudo -n -H` unless `privileged = false`, with `env` set.
     public func shellCommand(running script: String) -> String {
-        let env = (env ?? [:]).sorted { $0.key < $1.key }.map { shellQuote("\($0.key)=\($0.value)") }
+        let assignments = (env ?? [:]).sorted { $0.key < $1.key }.map { shellQuote("\($0.key)=\($0.value)") }
         let sudo = (privileged ?? true) ? ["sudo", "-n", "-H"] : []
-        return (sudo + ["env"] + env + ["/bin/bash", "-l", shellQuote(script)]).joined(separator: " ")
+        return (sudo + ["env"] + assignments + ["/bin/bash", "-l", shellQuote(script)]).joined(separator: " ")
     }
 }
 
