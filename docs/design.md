@@ -227,9 +227,48 @@ builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` ind
   harden the model.
 - **Later:** see `TODO.md`.
 
+## Comparison with Tart and Lume
+
+Both are Swift CLIs on the Virtualization framework with named VMs, so the core overlaps. Compiled
+2026-11-01 from knowledge as of mid-2026; re-check before relying on a detail.
+
+| | Tart (Cirrus Labs) | Lume (trycua/cua) | Hobo |
+|---|---|---|---|
+| Focus | CI fleets (Orchard, Cirrus Runners) | computer-use agents (Cua) | personal VMs, cross-platform app testing, agents |
+| Getting a VM | clone a prebuilt OCI image (e.g. macOS + Xcode) | `lume pull` an OCI image | full install from a recipe |
+| Image building | Packer plugin; macOS setup types `boot_command` keys over VNC | unattended presets, also scripting Setup Assistant over VNC | `VZMacGuestProvisioningOptions`, no UI scripting |
+| Sharing | push/pull OCI | push/pull OCI | the recipe only (decision 2) |
+| Storage | `~/.tart/` (hidden) | `~/.lume/`, configurable | `~/Hobo/<name>.hobovm`, visible |
+| Process model | `tart run` in the foreground | `lume serve` HTTP daemon | one `_vm-run` per VM under launchd, no daemon |
+| Display | window or VNC | VNC | headless `.accessory`, `view` on demand, no VNC |
+| Guest channel | SSH; `tart exec` via a vsock guest agent | SSH; Cua computer server | SSH; vsock agent deferred |
+| Snapshots | none (clone instead) | none known | live and stopped |
+| Ephemeral VMs | left to Orchard/CI | Cua sandboxes | `--ephemeral` + idle-timeout leases |
+| Networking | NAT, bridged, Softnet isolation | NAT, bridged | shared NAT only |
+| MCP | no | yes | `hobo mcp` |
+| Windows | no | no | QEMU engine (M5) |
+| Host | macOS 13+ | macOS 13+ | macOS 27+ |
+| Licence | Fair Source | MIT | Apache-2.0 |
+
+**Where Hobo differs on purpose.** Unattended macOS setup through Apple's API instead of VNC
+keystroke scripts that break each macOS release (the reason for the macOS 27 floor); live
+snapshots; a launchd-owned lifecycle that never takes focus; agents driving the UI from inside the
+guest with real automation APIs (`[gui_testing]`, `exec --gui`, XCUITest) rather than Lume's
+host-side screenshots and clicks; Windows guests; visible storage.
+
+**What Hobo gives up.** Time to the first VM: a Tart user runs macOS + Xcode from a prebuilt image
+in minutes, while every Hobo user downloads, installs and provisions (accepted in decision 2; an
+optional bundle push/pull could be added later without reviving boxes). Older hosts. Network
+isolation (Softnet) and bridged mode. A guest agent. The maturity of tools proven at scale.
+
+**To borrow.** Tart routinely runs clones of one macOS VM side by side and, as remembered, has a
+`tart set --random-serial` that regenerates macOS identity; read its `clone`/`set` code before the
+M2 identity spike (decision 12).
+
 ## Prior art
 
 - [Tart](https://github.com/cirruslabs/tart): Swift VZ CLI with named VMs; reference for macOS installs.
+- [Lume](https://github.com/trycua/cua): Swift VZ CLI and daemon behind the Cua computer-use agents.
 - [VirtualBuddy](https://github.com/insidegui/VirtualBuddy), [Mist](https://github.com/ninxsoft/Mist):
   macOS guest GUI and IPSW/installer fetching.
 - [UTM](https://github.com/utmapp/UTM): QEMU + HVF for Windows on Arm.
