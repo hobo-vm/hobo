@@ -102,6 +102,16 @@ import Testing
         #expect(unprivileged.shellCommand(running: "/tmp/s.sh") == "env /bin/bash -l '/tmp/s.sh'")
     }
 
+    @Test(arguments: ["", "A=B", "-i", "1X", "MY VAR"])
+    func envKeysMustBeVariableNames(key: String) {
+        let step = Provisioner(type: .shell, inline: "true", env: [key: "v"])
+        #expect(step.problem == "env key \"\(key)\" is not a variable name")
+    }
+
+    @Test func wellFormedEnvKeysPass() {
+        #expect(Provisioner(type: .shell, inline: "true", env: ["_A1": "v", "b": "w"]).problem == nil)
+    }
+
     @Test func hostFileIsThePathOrSourceTheStepReads() {
         #expect(Provisioner(type: .shell, path: "a.sh").hostFile == "a.sh")
         #expect(Provisioner(type: .shell, inline: "true").hostFile == nil)

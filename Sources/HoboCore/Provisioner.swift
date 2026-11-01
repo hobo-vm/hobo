@@ -32,11 +32,19 @@ public struct Provisioner: Equatable, Sendable, Decodable {
 
     /// Why the step can't run, or nil when it is well formed.
     public var problem: String? {
-        switch type {
+        // `env` reads a key with `=` or a leading `-` as something other than the variable intended.
+        if let bad = env?.keys.sorted().first(where: { !Self.isVariableName($0) }) {
+            return "env key \"\(bad)\" is not a variable name"
+        }
+        return switch type {
         case .shell where (inline == nil) == (path == nil): "shell needs exactly one of inline or path"
         case .file where source == nil || destination == nil: "file needs source and destination"
         default: nil
         }
+    }
+
+    private static func isVariableName(_ key: String) -> Bool {
+        key.wholeMatch(of: /[A-Za-z_][A-Za-z0-9_]*/) != nil
     }
 
     /// The host file the step reads (a shell step's `path` or a file step's `source`), as written.
