@@ -2,7 +2,6 @@
 
 Parallel tracks A/B/C are independent. Only 2 macOS guests can run per host, so a recipe build plus a B boot test fill both slots.
 
-- M1 [parallel A]: `Recipes/macos-27.toml`: base box with Vagrant conventions, pinned to the depot's 27.2 IPSW; build it
 - M1 [parallel B]: minimal `hobo box add` (untar into `~/.hobo/boxes/`) + foreground `hobo up`: APFS clone (copy fallback across volumes) into `.hobo/machines/<name>/`, boot in-process with a window, Ctrl-C/close stops the guest
 - M1 [parallel C]: `hobo df` and `hobo prune [--depot|--boxes|--machines] [--all]` across the depot, installed boxes, machine dirs and roundhouse (build dirs + checkpoints), like `docker system df/prune`
 - M1: `hobo _vm-run` VM process + LaunchAgent registration + `HoboControl` socket protocol; `up` goes headless and detached
