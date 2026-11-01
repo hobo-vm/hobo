@@ -125,6 +125,21 @@ import Testing
         #expect(try JSONDecoder().decode(BoxMetadata.self, from: metadata.encoded()) == metadata)
     }
 
+    @Test func contentHashCoversEveryFileInOrder() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-content-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let a = directory.appending(path: "a"), b = directory.appending(path: "b"), ab = directory.appending(path: "ab")
+        try Data("disk".utf8).write(to: a)
+        try Data("aux".utf8).write(to: b)
+        try Data("diskaux".utf8).write(to: ab)
+
+        // One stream over the files, so it equals the hash of their concatenation.
+        #expect(try BoxMetadata.contentHash(of: [a, b]) == Depot.sha256(of: ab))
+        #expect(try BoxMetadata.contentHash(of: [a, b]) != BoxMetadata.contentHash(of: [b, a]))
+        #expect(throws: (any Error).self) { try BoxMetadata.contentHash(of: [a, directory.appending(path: "missing")]) }
+    }
+
     @Test(arguments: [(UInt64(8) << 30, "8GB"), (1536 << 20, "1536MB"), (1 << 40, "1TB"), (100, "100B")])
     func byteSizesRoundTrip(bytes: UInt64, text: String) throws {
         #expect(ByteSize(bytes: bytes).description == text)
