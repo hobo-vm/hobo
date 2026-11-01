@@ -133,7 +133,9 @@ public struct VMStore: Sendable {
         let marker = bundle.appending(path: Self.buildingMarker)
         if FileManager.default.fileExists(atPath: marker.path) {
             guard let text = try? String(contentsOf: marker, encoding: .utf8),
-                  let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), Self.isAlive(pid)
+                  let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  let written = try? marker.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                  Self.isBuilder(pid, markerWritten: written)
             else { return .failed }
             return .building(pid: pid)
         }
@@ -141,8 +143,17 @@ public struct VMStore: Sendable {
         return .stopped(config)
     }
 
-    private static func isAlive(_ pid: Int32) -> Bool {
-        pid > 0 && (kill(pid, 0) == 0 || errno == EPERM)
+    /// Whether `pid` is still the process that wrote the marker. A PID can be reused (after a reboot,
+    /// say) by a process that started after the marker was written, which must not keep the VM busy.
+    private static func isBuilder(_ pid: Int32, markerWritten: Date) -> Bool {
+        guard pid > 0 else { return false }
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.size
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, u_int(mib.count), &info, &size, nil, 0) == 0, size > 0 else { return false }
+        let start = info.kp_proc.p_starttime
+        let started = Date(timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
+        return started <= markerWritten
     }
 
     static func allocatedBytes(of bundle: URL) -> UInt64 {

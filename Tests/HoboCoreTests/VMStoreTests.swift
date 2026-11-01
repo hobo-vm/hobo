@@ -69,6 +69,17 @@ import Testing
         #expect(store.list().isEmpty)
     }
 
+    @Test func reusedPIDIsNotABuild() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let bundle = try store.beginCreate("dev")
+        // A marker written before this (live) process started names a builder that has since died.
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 0)], ofItemAtPath: bundle.appending(path: VMStore.buildingMarker).path
+        )
+        #expect(try store.find("dev").status == .failed)
+        try store.delete("dev")
+    }
+
     @Test func liveBuildCannotBeDeletedOrRenamed() throws {
         defer { try? FileManager.default.removeItem(at: store.directory) }
         _ = try store.beginCreate("dev")
