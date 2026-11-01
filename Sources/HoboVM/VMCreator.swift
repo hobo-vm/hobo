@@ -47,8 +47,12 @@ public struct VMCreator {
             try store.finishCreate(options.name, config: config, recipe: recipeData)
             return config
         } catch {
-            try? store.abandonCreate(options.name)
-            log("Deleted \(directory.path)")
+            do {
+                try store.abandonCreate(options.name)
+                log("Deleted \(directory.path)")
+            } catch let cleanupError {
+                log("warning: could not delete \(directory.path): \(cleanupError)")
+            }
             throw error
         }
     }
