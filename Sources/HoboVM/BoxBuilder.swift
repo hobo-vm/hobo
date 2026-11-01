@@ -59,7 +59,7 @@ public struct BoxBuilder {
         let checkpoint = home.checkpoints.appending(path: Checkpoint.key(ipswSHA256: ipswSHA, diskBytes: recipe.disk.bytes))
 
         let bundle: MacVMBundle
-        if !options.fresh, FileManager.default.fileExists(atPath: checkpoint.appending(path: "disk.asif").path) {
+        if !options.fresh, FileManager.default.fileExists(atPath: MacVMBundle(directory: checkpoint).disk.path) {
             log("Reusing install checkpoint \(checkpoint.lastPathComponent)")
             bundle = try MacVMBundle(directory: checkpoint).clone(to: work)
         } else {
@@ -132,13 +132,12 @@ public struct BoxBuilder {
             let ip = try await vm.waitForIPAddress(timeout: .seconds(20 * 60))
             let ssh = GuestSSH(host: ip, auth: .password(Conventions.password))
             try await ssh.waitUntilReachable(timeout: .seconds(20 * 60))
+            // Passwordless sudo doesn't exist until the conventions script has run.
+            let passwordSudo = "echo \(shellQuote(Conventions.password)) | sudo -S -p ''"
             log("Applying Vagrant conventions")
             try await ssh.upload(contents: Conventions.script, to: "/tmp/hobo-conventions.sh")
-            try await ssh.check(
-                "echo \(shellQuote(Conventions.password)) | sudo -S -p '' /bin/bash /tmp/hobo-conventions.sh && rm /tmp/hobo-conventions.sh",
-                what: "conventions"
-            )
-            try await shutDown(vm, ssh: ssh, sudo: "echo \(shellQuote(Conventions.password)) | sudo -S -p ''")
+            try await ssh.check("\(passwordSudo) /bin/bash /tmp/hobo-conventions.sh && rm /tmp/hobo-conventions.sh", what: "conventions")
+            try await shutDown(vm, ssh: ssh, sudo: passwordSudo)
         } catch {
             try await holdForDebugging(vm, error: error)
             throw error
