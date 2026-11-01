@@ -1,5 +1,6 @@
 import Foundation
 import HoboCore
+import Synchronization
 import Virtualization
 
 /// `hobo box build`: IPSW → unattended install → Vagrant conventions → recipe steps → cleanup →
@@ -228,19 +229,18 @@ public struct BoxBuilder {
 }
 
 /// Logs progress at 10% steps so a 30-minute download or install stays quiet but alive.
-private final class ProgressLine: @unchecked Sendable {
+private final class ProgressLine: Sendable {
     private let log: @Sendable (String) -> Void
-    private let lock = NSLock()
-    private var lastDecile = -1
+    private let lastDecile = Mutex(-1)
 
     init(log: @escaping @Sendable (String) -> Void) { self.log = log }
 
     func report(_ done: Int64, _ total: Int64) {
         guard total > 0 else { return }
         let decile = Int(done * 10 / total)
-        let shouldLog = lock.withLock {
-            guard decile > lastDecile else { return false }
-            lastDecile = decile
+        let shouldLog = lastDecile.withLock { last in
+            guard decile > last else { return false }
+            last = decile
             return true
         }
         if shouldLog { log("  \(decile * 10)%") }
