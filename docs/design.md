@@ -290,8 +290,9 @@ builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` ind
 
 - **M0, skeleton:** done.
 - **M1, a VM you live in:** `init`, `create`, `list`, `start` (headless under launchd via
-  `_vm-run`), `stop`, `ssh`, `exec`, `cp`, `ip`, `view`, `delete`, `rename`, `set`, `provision`, `df`.
-- **M2, experiments:** `clone`, `--ephemeral`, live and stopped snapshots, `suspend`/resume.
+  `_vm-run`), `stop`, `ssh`, `exec`, `cp`, `ip`, `view`, `delete`, `rename`, `set`, `provision`.
+- **M2, experiments:** `clone`, `--ephemeral`, `suspend`/resume, live and stopped snapshots,
+  `df` (it reports snapshot and saved-state sizes, so it follows them).
 - **M3, agents:** leases, `[gui_testing]`, `exec --gui`, `screenshot`, `hobo mcp`.
 - **M4:** Linux guests.
 - **M5:** Windows on the QEMU engine. The Windows spike (unattended install, headless boot, SSH,
