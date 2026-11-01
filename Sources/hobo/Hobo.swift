@@ -61,7 +61,8 @@ struct Create: AsyncParsableCommand {
     func run() async throws {
         let recipeFile = URL(filePath: path)
         if !FileManager.default.fileExists(atPath: recipeFile.path) {
-            throw CLIError("no recipe at \(path)\(path == Recipe.fileName ? " (run hobo init, or pass a recipe path)" : "")")
+            let hint = path == Recipe.fileName ? " (run hobo init, or pass a recipe path)" : ""
+            throw CLIError("no recipe at \(path)\(hint)")
         }
         let options = VMCreator.Options(name: name, recipeFile: recipeFile, holdOnFailure: holdOnFailure)
         let config = try await VMCreator(options: options) { print($0) }.create()

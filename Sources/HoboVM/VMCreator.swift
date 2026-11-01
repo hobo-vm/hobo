@@ -38,20 +38,20 @@ public struct VMCreator {
         let recipe = try Recipe.load(from: options.recipeFile)
         try recipe.checkFilesExist()
 
-        let directory = try store.beginCreate(options.name)
-        let interrupts = InterruptCleanup(bundle: directory, log: log)
+        let bundle = try store.beginCreate(options.name)
+        let interrupts = InterruptCleanup(bundle: bundle, log: log)
         defer { interrupts.cancel() }
         do {
-            log("Creating \(options.name) from \(options.recipeFile.path) in \(directory.path)")
-            let config = try await build(recipe, recipeSHA256: VMStore.sha256(recipeData), in: directory)
+            log("Creating \(options.name) from \(options.recipeFile.path) in \(bundle.path)")
+            let config = try await build(recipe, recipeSHA256: VMStore.sha256(recipeData), in: bundle)
             try store.finishCreate(options.name, config: config, recipe: recipeData)
             return config
         } catch {
             do {
                 try store.abandonCreate(options.name)
-                log("Deleted \(directory.path)")
+                log("Deleted \(bundle.path)")
             } catch let cleanupError {
-                log("warning: could not delete \(directory.path): \(cleanupError)")
+                log("warning: could not delete \(bundle.path): \(cleanupError)")
             }
             throw error
         }
