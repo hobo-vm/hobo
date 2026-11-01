@@ -19,6 +19,11 @@ import Testing
         #expect(copy.scpArguments(remote: "u@h") == ["-q", "--", "u@h:a", "u@h:/b c", "/work/dir"])
     }
 
+    @Test func keepsATrailingSlashOnAHostDestination() throws {
+        let (_, copy) = try GuestCopy.parse(["dev:a", "out/"], recursive: false, currentDirectory: cwd)
+        #expect(copy.destination == "/work/dir/out/")
+    }
+
     @Test func aColonAfterASlashIsAHostPath() throws {
         let (_, copy) = try GuestCopy.parse(["./a:b", "dev:"], recursive: false, currentDirectory: cwd)
         #expect(copy.sources == ["/work/dir/a:b"])

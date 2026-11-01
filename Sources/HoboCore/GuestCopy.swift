@@ -29,7 +29,9 @@ public struct GuestCopy: Codable, Equatable, Sendable {
         let sources = operands.dropLast().map(Operand.init)
         let destination = Operand(last)
         func absolute(_ path: String) -> String {
-            URL(filePath: path, relativeTo: currentDirectory).standardizedFileURL.path
+            let absolute = URL(filePath: path, relativeTo: currentDirectory).standardizedFileURL.path
+            // A trailing slash tells scp the destination must be a directory; keep it.
+            return path.hasSuffix("/") && !absolute.hasSuffix("/") ? absolute + "/" : absolute
         }
 
         if case .guest(let vm, let path) = destination {
