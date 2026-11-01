@@ -91,6 +91,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: store.directory) }
         let bundle = try store.beginCreate("dev")
         try Data(count: 1024).write(to: bundle.appending(path: "disk.asif"))
+        #expect(try store.find("dev").allocatedBytes >= 1024)
         try store.abandonCreate("dev")
         #expect(store.list().isEmpty)
         #expect(!FileManager.default.fileExists(atPath: bundle.path))
