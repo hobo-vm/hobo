@@ -204,6 +204,9 @@ public struct GuestSSH: Sendable {
         defer { if let askpass { try? FileManager.default.removeItem(at: askpass) } }
         // The exit status is reported once the output has been read to its end, so none is lost.
         let drained = DispatchGroup()
+        // Held until the exit status is in: a Process freed while its child runs never calls its
+        // termination handler, and nothing else here is guaranteed to keep it alive.
+        defer { withExtendedLifetime(process) {} }
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 process.terminationHandler = { process in
