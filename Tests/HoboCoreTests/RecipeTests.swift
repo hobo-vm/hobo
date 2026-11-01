@@ -43,6 +43,8 @@ import Testing
         let local = try Recipe.parse(minimal(source: "ipsw = \"macOS.ipsw\"\nsha256 = \"\(sha)\""), directory: directory)
         #expect(RecipeSummary(local, path: "x").source == "/recipes/macOS.ipsw")
         #expect(RecipeSummary(local, path: "x").pinned)
+        let remote = try Recipe.parse(minimal(source: "ipsw = \"https://example.com/mac.ipsw\"\nsha256 = \"\(sha)\""), directory: directory)
+        #expect(RecipeSummary(remote, path: "x").source == "https://example.com/mac.ipsw")
     }
 
     @Test func latestNeedsNoHashAndAppliesDefaults() throws {
