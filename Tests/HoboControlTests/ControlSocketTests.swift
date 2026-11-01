@@ -112,7 +112,8 @@ import HoboCore
         try #require(connected == 0)
         // A request this version doesn't know must still get the version error, not a decoding one.
         try ControlSocket.writeAll(fd, Data("{\"version\":\(ControlProtocol.version + 1),\"request\":{\"view\":{}}}\n".utf8))
-        let response = try ControlSocket.decode(ControlResponse.self, from: ControlSocket.readLine(fd))
+        var reader = LineReader(fd: fd)
+        let response = try ControlSocket.decode(ControlResponse.self, from: try #require(try reader.next()))
         guard case .error(let message) = response else { Issue.record("expected an error, got \(response)"); return }
         #expect(message.contains("hobo stop --force"))
     }

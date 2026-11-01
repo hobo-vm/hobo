@@ -59,12 +59,6 @@ public enum ControlSocket {
         }
     }
 
-    /// Reads up to the first newline (excluded) or end of file, for a single-message reply.
-    static func readLine(_ fd: Int32) throws -> Data {
-        var reader = LineReader(fd: fd)
-        return try reader.next() ?? Data()
-    }
-
     static func writeAll(_ fd: Int32, _ data: Data) throws {
         try data.withUnsafeBytes { buffer in
             var offset = 0
