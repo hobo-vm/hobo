@@ -76,7 +76,7 @@ extension SHA256 {
     mutating func update(contentsOf file: URL) throws {
         let handle = try FileHandle(forReadingFrom: file)
         defer { try? handle.close() }
-        // Each chunk is autoreleased; without a pool per chunk, hashing a 28 GB box keeps
+        // Each chunk is autoreleased; without a pool per chunk, hashing a multi-GB IPSW keeps
         // every chunk alive until the loop ends and the process is killed for memory.
         while try autoreleasepool(invoking: {
             guard let chunk = try handle.read(upToCount: 8 << 20), !chunk.isEmpty else { return false }
