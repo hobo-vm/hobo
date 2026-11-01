@@ -16,7 +16,7 @@ public enum IPSWCatalog {
         public var released: Date
         public var signed: Bool
 
-        public var major: Int { Int(version.prefix { $0 != "." }) ?? 0 }
+        public var major: Int { IPSWCatalog.major(of: version) }
 
         /// The `[source]` lines that pin this image in a recipe.
         public var sourceLines: String {
@@ -49,7 +49,7 @@ public enum IPSWCatalog {
         }
         return device.firmwares.map { raw in
             Image(
-                name: marketingName(major: Int(raw.version.prefix { $0 != "." }) ?? 0),
+                name: marketingName(major: major(of: raw.version)),
                 version: raw.version, build: raw.buildid, url: raw.url, sha256: raw.sha256sum.lowercased(),
                 size: raw.filesize, released: raw.releasedate, signed: raw.signed
             )
@@ -108,6 +108,11 @@ public enum IPSWCatalog {
         case 12: "macOS Monterey"
         default: "macOS \(major)"
         }
+    }
+
+    /// The major version of `version` ("26.1" is 26), or 0 if it doesn't start with a number.
+    static func major(of version: String) -> Int {
+        Int(version.prefix { $0 != "." }) ?? 0
     }
 
     private static func versionComponents(_ version: String) -> [Int] {
