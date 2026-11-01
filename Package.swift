@@ -29,6 +29,6 @@ let package = Package(
         ),
         .testTarget(name: "HoboCoreTests", dependencies: ["HoboCore"]),
         .testTarget(name: "HoboControlTests", dependencies: ["HoboControl", "HoboCore"]),
-        .testTarget(name: "HoboVMTests", dependencies: ["HoboCore"]),
+        .testTarget(name: "HoboVMTests", dependencies: ["HoboCore", "HoboControl", "HoboVM"]),
     ]
 )

@@ -114,7 +114,7 @@ public struct GuestSSH: Sendable {
     }
 
     /// Takes the guest shell's PID from the first line of stdout and passes the rest on.
-    private final class LeaderLine: Sendable {
+    final class LeaderLine: Sendable {
         private let onOutput: @Sendable (GuestStream, Data) -> Void
         /// The first line so far, until its newline arrives; then nil.
         private let state = Mutex<(firstLine: Data?, pid: Int32?)>((Data(), nil))
