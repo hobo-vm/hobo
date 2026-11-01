@@ -165,9 +165,10 @@ public struct ByteSize: Equatable, Sendable, Decodable {
         let units: [(String, UInt64)] = [("TB", 1 << 40), ("GB", 1 << 30), ("MB", 1 << 20), ("KB", 1 << 10), ("B", 1)]
         let trimmed = text.trimmingCharacters(in: .whitespaces).uppercased()
         guard let (suffix, multiplier) = units.first(where: { trimmed.hasSuffix($0.0) }),
-              let value = UInt64(trimmed.dropLast(suffix.count).trimmingCharacters(in: .whitespaces))
+              let value = UInt64(trimmed.dropLast(suffix.count).trimmingCharacters(in: .whitespaces)),
+              case (let product, false) = value.multipliedReportingOverflow(by: multiplier)
         else { throw BoxcarError.invalidSize(text) }
-        bytes = value * multiplier
+        bytes = product
     }
 
     public init(from decoder: Decoder) throws {

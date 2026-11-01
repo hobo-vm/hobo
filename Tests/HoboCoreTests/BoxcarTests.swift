@@ -66,7 +66,7 @@ import Testing
         #expect(boxcar.machines[0].settings.disk == ByteSize(bytes: 80 << 30))
     }
 
-    @Test(arguments: ["8", "eight GB", "GB", "-1GB"])
+    @Test(arguments: ["8", "eight GB", "GB", "-1GB", "99999999999TB"])
     func invalidSizesAreRejected(text: String) {
         #expect(throws: BoxcarError.invalidSize(text)) { try ByteSize(parsing: text) }
     }
