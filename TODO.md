@@ -29,3 +29,4 @@ Only 2 macOS guests can run per host, so a `create` plus a boot test fill both s
 - Later: external provisioner JSON contract, Ansible plugin
 - Later: Android emulator inside Linux guests via nested virtualization (M3+ hosts)
 - Later: port forwards and bridged networking (`public_network`) via privileged helper
+- M1: per-VM SSH key: generate one at the end of `create`, replace the insecure keys in `authorized_keys`, keep it in the bundle (deferred 2026-11-01)

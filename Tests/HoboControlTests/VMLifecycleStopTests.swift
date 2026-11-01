@@ -63,7 +63,7 @@ import Testing
 
     /// A VM process that answers `stop` with `response`, exiting if it is `.accepted`.
     func serve(_ response: ControlResponse) throws -> ControlServer {
-        try ControlServer(path: store.job(for: "dev").socket) { [launchctl] request in
+        try ControlServer(path: store.job(for: "dev").socket) { [launchctl] request, _ in
             if case .stop = request, response == .accepted { launchctl.pid.withLock { $0 = nil } }
             return response
         }

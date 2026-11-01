@@ -1,0 +1,58 @@
+import Foundation
+import HoboCore
+
+/// Reaches a running VM's guest on behalf of a client (the CLI, later MCP): its IP, and `exec` and
+/// `cp`, which the VM process runs over its SSH and streams back (decision 15).
+public struct GuestChannel: Sendable {
+    public var store: VMStore
+
+    public init(store: VMStore = .standard()) {
+        self.store = store
+    }
+
+    /// The guest's IP as its VM process knows it (its DHCP lease).
+    public func ipAddress(_ name: String) throws -> String {
+        let (vm, job) = try runningJob(name)
+        let status = try ControlClient.status(at: job.socket)
+        guard let ip = status.ipAddress else { throw GuestChannelError.noIPAddress(vm.name, status.detail) }
+        return ip
+    }
+
+    /// Runs `command` in the guest and returns its exit status.
+    public func exec(_ name: String, command: [String], onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
+        try stream(.exec(command: command), name: name, onOutput: onOutput)
+    }
+
+    /// Copies with scp and returns its exit status; scp's messages arrive as output.
+    public func copy(_ name: String, _ copy: GuestCopy, onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
+        try stream(.copy(copy), name: name, onOutput: onOutput)
+    }
+
+    private func stream(_ request: ControlRequest, name: String, onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
+        let (vm, job) = try runningJob(name)
+        let response = try ControlClient.stream(request, to: job.socket, onOutput: onOutput)
+        switch response {
+        case .exited(let status): return status
+        case .error(let message): throw LifecycleError.refused(vm.name, message)
+        default: throw ControlError.badMessage("expected an exit status, got \(response)")
+        }
+    }
+
+    private func runningJob(_ name: String) throws -> (VMStore.VM, VMJob) {
+        let vm = try store.find(name)
+        guard vm.job?.pid != nil else { throw GuestChannelError.notRunning(vm.name) }
+        return (vm, store.job(for: vm.name))
+    }
+}
+
+public enum GuestChannelError: Error, Equatable, CustomStringConvertible {
+    case notRunning(String)
+    case noIPAddress(String, String?)
+
+    public var description: String {
+        switch self {
+        case .notRunning(let name): "\(name) is not running (hobo start \(name))"
+        case .noIPAddress(let name, let detail): "\(name) has no IP yet\(detail.map { " (\($0))" } ?? "")"
+        }
+    }
+}

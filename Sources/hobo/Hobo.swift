@@ -29,7 +29,7 @@ struct HoboCommand: AsyncParsableCommand {
         version: Hobo.version,
         subcommands: [
             Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self,
-            Rename.self, Delete.self,
+            SSH.self, Exec.self, Copy.self, IP.self, Rename.self, Delete.self,
         ]
     )
 }
@@ -280,6 +280,100 @@ struct Stop: OutputCommand {
         case .wasNotRunning: "\(name) is not running"
         }
         return Reply(result, text: text)
+    }
+}
+
+struct IP: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "ip", abstract: "Print a running VM's IP address.")
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    func run() throws {
+        print(try GuestChannel().ipAddress(name))
+    }
+}
+
+struct SSH: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "ssh",
+        abstract: "SSH into a running VM, or run a command there with -- <command>.",
+        discussion: "Runs the system ssh as the vagrant user, so the session, exit status and any command behave as plain ssh's do."
+    )
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    @Flag(help: "Print the ssh command instead of running it.")
+    var print = false
+
+    @Argument(parsing: .postTerminator, help: ArgumentHelp("A command to run instead of a login shell.", valueName: "command"))
+    var command: [String] = []
+
+    func run() throws {
+        let store = VMStore.standard()
+        let ssh = GuestSSH(host: try GuestChannel(store: store).ipAddress(name), auth: .key(try store.home.ensureInsecurePrivateKey()))
+        if print {
+            Swift.print(ssh.commandLine(command))
+            return
+        }
+        let argv = ["ssh"] + ssh.sshArguments(command)
+        let cArgs = argv.map { strdup($0) } + [nil]
+        execv(GuestSSH.sshPath, cArgs)
+        throw CLIError("can't run \(GuestSSH.sshPath): \(String(cString: strerror(errno)))")
+    }
+}
+
+struct Exec: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Run a command in a running VM.",
+        discussion: """
+            The command runs as the vagrant user, without stdin or a TTY, and hobo exits with its status. \
+            Its arguments are quoted for the guest's shell, so use sh -c '<script>' for pipes and the like.
+            """
+    )
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    @Argument(parsing: .postTerminator, help: ArgumentHelp("The command, after --.", valueName: "command"))
+    var command: [String] = []
+
+    func validate() throws {
+        if command.isEmpty { throw ValidationError("give the command after --, e.g. hobo exec \(name) -- uname -a") }
+    }
+
+    func run() throws {
+        let status = try GuestChannel().exec(name, command: command, onOutput: writeOutput)
+        if status != 0 { throw ExitCode(status) }
+    }
+}
+
+struct Copy: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "cp",
+        abstract: "Copy files between the host and a running VM.",
+        discussion: "One side names the guest as <vm>:<path>, e.g. hobo cp ./app dev:/tmp/ or hobo cp dev:/var/log/system.log . (runs scp)."
+    )
+
+    @Flag(name: .shortAndLong, help: "Copy directories recursively.")
+    var recursive = false
+
+    @Argument(help: ArgumentHelp("Sources, then the destination.", valueName: "path"))
+    var paths: [String] = []
+
+    func run() throws {
+        let (vm, copy) = try GuestCopy.parse(paths, recursive: recursive, currentDirectory: .currentDirectory())
+        let status = try GuestChannel().copy(vm, copy, onOutput: writeOutput)
+        if status != 0 { throw ExitCode(status) }
+    }
+}
+
+/// Writes a guest command's output to the matching stream of this process.
+private func writeOutput(_ stream: GuestStream, _ data: Data) throws {
+    switch stream {
+    case .stdout: try FileHandle.standardOutput.write(contentsOf: data)
+    case .stderr: try FileHandle.standardError.write(contentsOf: data)
     }
 }
 

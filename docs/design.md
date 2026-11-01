@@ -41,7 +41,7 @@ global VMs on 2026-11-01.
    `init [<build>] [--force]`, `images [<build>] [--latest]`, `validate [recipe]`,
    `create <name> [recipe] [--hold-on-failure]`, `list`,
    `start [--ephemeral] [--gui] [--cold] [--share path] [--idle-timeout d]`, `stop [--force]`,
-   `suspend`, `ssh <name> [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp`, `ip`, `view`, `screenshot`,
+   `suspend`, `ssh <name> [--print] [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp [-r] <src>... <dst>`, `ip <name>`, `view`, `screenshot`,
    `clone <src> <dst> [--ephemeral]`, `delete <name> [--yes]`, `rename <old> <new>`,
    `set <name> --cpus/--memory/--disk/--share/--unshare`, `snapshot save|restore|list|delete`,
    `provision <name> [recipe]` (re-run steps on an existing VM), `df`. A recipe argument defaults
@@ -56,7 +56,7 @@ global VMs on 2026-11-01.
    result rather than printing it. `delete --json` needs `--yes`, since it can't prompt.
 5. **Language.** Swift: swift-argument-parser, TOMLKit, modelcontextprotocol/swift-sdk.
 6. **Platform.** Apple Silicon only, macOS 27+, for `VZMacGuestProvisioningOptions` (unattended macOS
-   setup with SSH), vmnet, and ASIF disks. Apple's licence (enforced by the framework) caps hosts at
+   setup with SSH) and ASIF disks. Apple's licence (enforced by the framework) caps hosts at
    2 concurrent macOS guests; Linux and Windows guests are uncapped.
 
 ### Storage
@@ -120,8 +120,8 @@ global VMs on 2026-11-01.
     2. base install: `VZMacOSInstaller`, then a first boot with `VZMacGuestProvisioningOptions`
        (`vagrant`/`vagrant`, auto-login, Remote Login);
     3. conventions, over password SSH: passwordless sudo, Vagrant's insecure keys (ed25519 + RSA) in
-       `authorized_keys`, no sleep/screensaver, no automatic updates; the insecure key is replaced by
-       a per-VM key;
+       `authorized_keys`, no sleep/screensaver, no automatic updates. The insecure key stays: a
+       per-VM key is deferred (decided 2026-11-01, see `TODO.md`);
     4. `[gui_testing]` if enabled (decision 17);
     5. recipe `[[provision]]` steps (shell inline/path with `privileged` and `env`, and file), run
        once each over key SSH;
@@ -183,12 +183,31 @@ global VMs on 2026-11-01.
     - `_vm-run` is an `NSApplication` (`.accessory`) from the start. It runs AppKit's event loop
       from a synchronous `main`: started inside Swift's async main, the loop never services the
       main actor.
-15. **Guest channel.** SSH (`vagrant` user, per-VM key). `hobo exec`/`cp`/`screenshot` go through the
+15. **Guest channel.** SSH (`vagrant` user, Vagrant's insecure key; host keys aren't checked, since
+    IPs are reused across VMs and rebuilds). `hobo exec`/`cp`/`screenshot` go through the
     control socket, which renews leases (decision 18); agents should use them rather than raw `ssh`.
-    A vsock `hobo-agent` may come later.
-16. **Networking.** One shared vmnet NAT network with Hobo-controlled DHCP, so `hobo ip` is exact and
-    VMs reach each other and the host. No port forwards or private networks (decided 2026-11-01);
+    A vsock `hobo-agent` may come later. Decided 2026-11-01:
+    - `hobo ip` asks the VM process, which knows the guest's lease; a stopped VM, or one without a
+      lease yet, is an error.
+    - `hobo ssh` gets the IP the same way and `execv`s the system `ssh`, so sessions, TTYs and exit
+      statuses are plain ssh's; `-- cmd` is passed to ssh as is, and `--print` prints the command.
+    - `hobo exec` runs in the VM process over its SSH, without stdin or a TTY; the argv is
+      shell-quoted for the guest's login shell. Output streams back as `output` messages (base64
+      stdout/stderr chunks), ending with `exited`; the client exits with that status. A client that
+      hangs up (^C) cancels the request. Closing a non-TTY ssh session doesn't signal the guest
+      command, so the guest shell first prints its PID (a process group leader, since sshd starts
+      a new session) and execs the command; on cancel the VM process kills that group over SSH.
+    - `hobo cp` is scp-style, `[-r] <src>... <dst>`, with exactly one side naming the guest as
+      `<vm>:<path>` (a colon after a slash is a host path). The VM process runs `scp` on the
+      client's absolute host paths (same user, same machine) and streams its messages like `exec`.
+16. **Networking.** The system's shared NAT (`VZNATNetworkDeviceAttachment`): every VM is on the same
+    bridge (192.168.64.0/24), so VMs reach each other and the host. Each VM's MAC is fixed at create,
+    so bootpd keeps giving it the same lease, and its IP is read from `/var/db/dhcpd_leases` by MAC,
+    which makes `hobo ip` exact. No port forwards or private networks (decided 2026-11-01);
     bridged (`public_network`) is deferred, since it needs a restricted entitlement or a root helper.
+    vmnet custom networks (`VZVmnetNetworkDeviceAttachment` with DHCP reservations) were rejected
+    (decided 2026-11-01): a VM can only use a network created in its own process, which rules out
+    one network shared by per-VM processes, and creating one needs an entitlement.
 17. **Display and UI testing.** VMs are headless by default; the VM process is an `NSApplication` with
     `.accessory` activation policy, so it never takes focus. `hobo view` opens a window on demand;
     `start --gui` opens one at boot. No VNC. Agents drive the UI **inside the guest**:

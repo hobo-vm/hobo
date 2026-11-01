@@ -69,6 +69,18 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         let started = try output(hobo, ["start", "itest"], environment: env)
         #expect(started.contains(/itest is running \(\d+\.\d+\.\d+\.\d+\)/), "\(started)")
         #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+running/))
+
+        // The guest channel: ip, exec (output and exit status), ssh, and cp both ways.
+        let ip = try output(hobo, ["ip", "itest"], environment: env).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(started.contains("(\(ip))"))
+        #expect(try output(hobo, ["exec", "itest", "--", "sw_vers", "-productVersion"], environment: env).hasPrefix("27."))
+        #expect(try run(hobo, ["exec", "itest", "--", "sh", "-c", "exit 7"], in: work, environment: env) == 7)
+        #expect(try output(hobo, ["ssh", "itest", "--", "whoami"], environment: env) == "vagrant\n")
+        let payload = work.appending(path: "payload.txt")
+        try "over and back\n".write(to: payload, atomically: true, encoding: .utf8)
+        #expect(try run(hobo, ["cp", payload.path, "itest:/tmp/payload.txt"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["cp", "itest:/tmp/payload.txt", "back.txt"], in: work, environment: env) == 0)
+        #expect(try String(contentsOf: work.appending(path: "back.txt"), encoding: .utf8) == "over and back\n")
         #expect(try run(hobo, ["rename", "itest", "itest2"], in: work, environment: env) != 0, "running")
         #expect(try run(hobo, ["delete", "itest", "--yes"], in: work, environment: env) != 0, "running")
         #expect(try output(hobo, ["start", "itest"], environment: env).contains("already running"))

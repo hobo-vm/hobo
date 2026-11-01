@@ -11,6 +11,7 @@ public final class VMRunner {
     static let gracefulTimeout: Duration = .seconds(30)
     static let sshShutdownTimeout: Duration = .seconds(2 * 60)
     static let bootTimeout: Duration = .seconds(10 * 60)
+    nonisolated static let outputChunkBytes = 64 << 10
 
     let store: VMStore
     let name: String
@@ -50,8 +51,8 @@ public final class VMRunner {
         guard config.engine == .vz, config.os == .macOS else { throw RunnerError.unsupported(config.engine, config.os) }
         guard let mac = VZMACAddress(string: config.macAddress) else { throw RunnerError.badMACAddress(config.macAddress) }
 
-        server = try ControlServer(path: job.socket) { [weak self] request in
-            await self?.handle(request) ?? .error("the VM process is shutting down")
+        server = try ControlServer(path: job.socket) { [weak self] request, reply in
+            await self?.handle(request, reply: reply) ?? .error("the VM process is shutting down")
         }
         let guest = try GuestVM(bundle: MacVMBundle(directory: vm.bundle), cpus: config.cpus, memoryBytes: config.memory, macAddress: mac)
         guest.onStop = { [weak self] error in
@@ -82,7 +83,7 @@ public final class VMRunner {
         }
     }
 
-    private func handle(_ request: ControlRequest) -> ControlResponse {
+    private func handle(_ request: ControlRequest, reply: ControlReply) async -> ControlResponse {
         switch request {
         case .status:
             return .status(status)
@@ -92,6 +93,38 @@ public final class VMRunner {
                 Task { await stop(force: force) }
             }
             return .accepted
+        case .exec(let command):
+            return await withGuest(reply: reply) { ssh, onOutput in
+                try await ssh.exec(command, onOutput: onOutput)
+            }
+        case .copy(let copy):
+            return await withGuest(reply: reply) { ssh, onOutput in
+                try await ssh.copy(copy, onOutput: onOutput)
+            }
+        }
+    }
+
+    /// Runs a streaming request against the guest once it answers SSH, sending its output to the
+    /// client and ending with its exit status. A client that hangs up cancels it.
+    private func withGuest(
+        reply: ControlReply,
+        _ body: (GuestSSH, @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32
+    ) async -> ControlResponse {
+        guard status.state == .running, let ip = status.ipAddress else {
+            return .error("\(name) is \(status.state.rawValue)\(status.detail.map { " (\($0))" } ?? "")")
+        }
+        do {
+            let code = try await body(try ssh(ip)) { stream, data in
+                // Split so no message nears the control protocol's size limit once base64-encoded.
+                for start in stride(from: data.startIndex, to: data.endIndex, by: Self.outputChunkBytes) {
+                    let chunk = data[start..<min(start + Self.outputChunkBytes, data.endIndex)]
+                    // A client that is gone also cancels the request; nothing more to do here.
+                    try? reply.send(.output(stream, Data(chunk)))
+                }
+            }
+            return .exited(code)
+        } catch {
+            return .error(String(describing: error))
         }
     }
 

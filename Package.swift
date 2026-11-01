@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "hobo",
-    // macOS 27 for vmnet topologies, DiskImageKit, and guest provisioning.
+    // macOS 27 for DiskImageKit and guest provisioning.
     platforms: [.macOS(.v27)],
     products: [
         .executable(name: "hobo", targets: ["hobo"]),
@@ -28,7 +28,7 @@ let package = Package(
             ]
         ),
         .testTarget(name: "HoboCoreTests", dependencies: ["HoboCore"]),
-        .testTarget(name: "HoboControlTests", dependencies: ["HoboControl"]),
+        .testTarget(name: "HoboControlTests", dependencies: ["HoboControl", "HoboCore"]),
         .testTarget(name: "HoboVMTests", dependencies: ["HoboCore"]),
     ]
 )

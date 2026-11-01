@@ -1,21 +1,39 @@
+import Foundation
+import HoboCore
+
 /// The control-socket protocol between hobo clients (CLI, MCP) and a VM's `hobo _vm-run` process.
-/// Each connection carries one request, as a line of JSON, and gets one line of JSON back.
+/// Each connection carries one request, as a line of JSON. Most get one line of JSON back;
+/// `exec` and `copy` stream `output` lines and end with `exited`.
 public enum ControlProtocol {
     /// Bumped on any incompatible change. A VM process refuses other versions, since a client and
     /// a VM process started by an older `hobo` can both be around after an upgrade.
-    public static let version = 1
+    public static let version = 2
 }
 
 public enum ControlRequest: Codable, Equatable, Sendable {
     case status
     /// Starts the stop sequence and replies at once; the VM process exits when the VM is off.
     case stop(force: Bool)
+    /// Runs a command in the guest over SSH, without stdin or a TTY: `output` lines, then `exited`.
+    /// The arguments are shell-quoted and run by the guest user's login shell.
+    case exec(command: [String])
+    /// Runs scp between host paths and the guest: scp's output as `output` lines, then `exited`.
+    case copy(GuestCopy)
 }
 
 public enum ControlResponse: Codable, Equatable, Sendable {
     case status(VMRunStatus)
     case accepted
     case error(String)
+    /// A chunk of a streaming request's output (base64 in the JSON).
+    case output(GuestStream, Data)
+    /// Ends a streaming request with the guest command's (or scp's) exit status.
+    case exited(Int32)
+}
+
+public enum GuestStream: String, Codable, Equatable, Sendable {
+    case stdout
+    case stderr
 }
 
 /// What a VM process reports about itself.

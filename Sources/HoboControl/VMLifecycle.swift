@@ -28,7 +28,7 @@ public struct VMLifecycle: Sendable {
         let job = store.job(for: vm.name)
         switch vm.status {
         case .running:
-            return .alreadyRunning(try? status(job))
+            return .alreadyRunning(try? await ControlClient.status(at: job.socket))
         case .stopped, .crashed:
             break
         case .building:
@@ -74,10 +74,11 @@ public struct VMLifecycle: Sendable {
             return .wasNotRunning
         }
         do {
-            switch try ControlClient.send(.stop(force: force), to: job.socket) {
+            let response = try await ControlClient.send(.stop(force: force), to: job.socket)
+            switch response {
             case .accepted: break
             case .error(let message): throw LifecycleError.refused(vm.name, message)
-            case .status: throw ControlError.badMessage("expected an acknowledgement, got a status")
+            default: throw ControlError.badMessage("expected an acknowledgement, got \(response)")
             }
         } catch {
             guard force else {
@@ -95,7 +96,7 @@ public struct VMLifecycle: Sendable {
                 store.launchd.bootout(job.label)
                 return .stopped
             }
-            if case .status(let status)? = try? ControlClient.send(.status, to: job.socket),
+            if case .status(let status)? = try? await ControlClient.send(.status, to: job.socket),
                let detail = status.detail, detail != lastDetail {
                 log("  \(detail)")
                 lastDetail = detail
@@ -103,14 +104,6 @@ public struct VMLifecycle: Sendable {
             try await Task.sleep(for: .seconds(1))
         }
         throw LifecycleError.stopTimedOut(vm.name)
-    }
-
-    private func status(_ job: VMJob) throws -> VMRunStatus {
-        switch try ControlClient.send(.status, to: job.socket) {
-        case .status(let status): return status
-        case .error(let message): throw ControlError.badMessage(message)
-        case .accepted: throw ControlError.badMessage("expected a status, got an acknowledgement")
-        }
     }
 
     /// How long a just-bootstrapped job may go without a process before `start` calls it exited:
@@ -128,7 +121,7 @@ public struct VMLifecycle: Sendable {
             } else if sawProcess || ContinuousClock.now - started > Self.launchGrace {
                 throw LifecycleError.exited(name, entry?.lastExitStatus, Self.tail(of: job.log))
             }
-            if case .status(let status)? = try? ControlClient.send(.status, to: job.socket) {
+            if case .status(let status)? = try? await ControlClient.send(.status, to: job.socket) {
                 switch status.state {
                 case .running: return status
                 case .stopping: throw LifecycleError.stoppedWhileStarting(name)
