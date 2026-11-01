@@ -44,12 +44,22 @@ struct Output: Sendable {
     enum Format: Sendable { case text, document, events }
 
     let format: Format
+    /// Where JSON goes: the original stdout. In JSON mode fd 1 is pointed at stderr, so output that
+    /// would otherwise land in the JSON (a provisioning step's, streamed by the `ssh` it runs; a host
+    /// tool's) goes to stderr instead.
+    private let jsonOutput: FileHandle
 
     init(json: Bool, style: JSONStyle) {
         switch (json, style) {
         case (false, _): format = .text
         case (true, .document): format = .document
         case (true, .events): format = .events
+        }
+        if json {
+            jsonOutput = FileHandle(fileDescriptor: dup(STDOUT_FILENO), closeOnDealloc: false)
+            dup2(STDERR_FILENO, STDOUT_FILENO)
+        } else {
+            jsonOutput = .standardOutput
         }
     }
 
@@ -59,7 +69,7 @@ struct Output: Sendable {
     func log(_ message: String) {
         switch format {
         case .text: print(message)
-        case .events: Self.writeLine(LogEvent(message: message.trimmingCharacters(in: .whitespacesAndNewlines)))
+        case .events: writeLine(LogEvent(message: message.trimmingCharacters(in: .whitespacesAndNewlines)))
         case .document: break
         }
     }
@@ -72,8 +82,8 @@ struct Output: Sendable {
     private func emit(_ value: some Encodable, text: String) {
         switch format {
         case .text: print(text)
-        case .document: Self.write(Self.encoded { try HoboJSON.document(value) })
-        case .events: Self.writeLine(ResultEvent(result: value))
+        case .document: write(Self.encoded { try HoboJSON.document(value) })
+        case .events: writeLine(ResultEvent(result: value))
         }
     }
 
@@ -89,8 +99,8 @@ struct Output: Sendable {
     private func fail(_ message: String) {
         switch format {
         case .text: break
-        case .document: Self.write(Self.encoded { try HoboJSON.document(["error": message]) })
-        case .events: Self.writeLine(ErrorEvent(error: message))
+        case .document: write(Self.encoded { try HoboJSON.document(["error": message]) })
+        case .events: writeLine(ErrorEvent(error: message))
         }
     }
 
@@ -123,12 +133,12 @@ struct Output: Sendable {
     /// so an agent reading a pipe sees progress as it happens).
     private static let lock = NSLock()
 
-    private static func writeLine(_ value: some Encodable) {
-        write(encoded { try HoboJSON.line(value) })
+    private func writeLine(_ value: some Encodable) {
+        write(Self.encoded { try HoboJSON.line(value) })
     }
 
-    private static func write(_ data: Data) {
-        lock.withLock { FileHandle.standardOutput.write(data + Data("\n".utf8)) }
+    private func write(_ data: Data) {
+        Self.lock.withLock { jsonOutput.write(data + Data("\n".utf8)) }
     }
 
     /// Hobo's output types always encode; a failure here is a bug, not a user error.
