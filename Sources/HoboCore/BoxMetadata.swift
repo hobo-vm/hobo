@@ -60,17 +60,6 @@ public struct BoxMetadata: Codable, Equatable, Sendable {
     }
 }
 
-extension ByteSize: CustomStringConvertible {
-    /// The largest binary unit that divides evenly, e.g. `"8GB"`.
-    public var description: String {
-        for (suffix, multiplier) in [("TB", UInt64(1) << 40), ("GB", 1 << 30), ("MB", 1 << 20), ("KB", 1 << 10)]
-        where bytes >= multiplier && bytes % multiplier == 0 {
-            return "\(bytes / multiplier)\(suffix)"
-        }
-        return "\(bytes)B"
-    }
-}
-
 /// The post-install disk saved in the roundhouse, keyed by everything that shapes it.
 public enum Checkpoint {
     public static func key(ipswSHA256: String, diskBytes: UInt64, conventionsVersion: Int = Conventions.version) -> String {
