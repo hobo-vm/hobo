@@ -82,6 +82,18 @@ import Testing
         }
     }
 
+    @Test(arguments: [
+        ("cpus = 0", "cpus must be at least 1"),
+        ("memory = \"0GB\"", "memory must be more than 0"),
+        ("disk = \"0B\"", "disk must be more than 0"),
+    ])
+    func emptyHardwareIsRejected(line: String, reason: String) {
+        let toml = minimal(source: #"ipsw = "latest""#).replacingOccurrences(of: "[source]", with: "\(line)\n[source]")
+        #expect(throws: RecipeError.invalidHardware(reason)) {
+            try Recipe.parse(toml, directory: directory)
+        }
+    }
+
     @Test func malformedStepsAreRejected() {
         #expect(throws: RecipeError.invalidProvisioner(0, "shell needs exactly one of inline or path")) {
             try Recipe.parse(minimal(source: #"ipsw = "latest""#) + "\n[[provision]]\ntype = \"shell\"", directory: directory)

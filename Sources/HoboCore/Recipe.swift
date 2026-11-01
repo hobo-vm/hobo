@@ -45,6 +45,10 @@ public struct Recipe: Equatable, Sendable {
             provisioners: raw.provision ?? [],
             directory: directory
         )
+        // Caught here rather than by diskutil or VZ after the IPSW download.
+        if recipe.cpus < 1 { throw RecipeError.invalidHardware("cpus must be at least 1") }
+        if recipe.memory.bytes == 0 { throw RecipeError.invalidHardware("memory must be more than 0") }
+        if recipe.disk.bytes == 0 { throw RecipeError.invalidHardware("disk must be more than 0") }
         for (index, step) in recipe.provisioners.enumerated() {
             try validate(step, index: index)
         }
@@ -122,6 +126,7 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
     case invalidVersion(String)
     case missingSHA256(String)
     case invalidSHA256(String)
+    case invalidHardware(String)
     case invalidProvisioner(Int, String)
     case guiTestingNotImplemented
     case missingFiles([String])
@@ -133,6 +138,7 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
         case .invalidVersion(let version): "invalid version \"\(version)\" (expected e.g. \"1.0.0\")"
         case .missingSHA256(let ipsw): "source \"\(ipsw)\" needs a sha256 (only ipsw = \"latest\" may omit it)"
         case .invalidSHA256(let sha): "invalid sha256 \"\(sha)\" (expected 64 hex digits)"
+        case .invalidHardware(let reason): reason
         case .invalidProvisioner(let index, let reason): "provision step \(index + 1): \(reason)"
         case .guiTestingNotImplemented: "[gui_testing] is not implemented yet"
         case .missingFiles(let paths): "recipe refers to missing files: \(paths.joined(separator: ", "))"
