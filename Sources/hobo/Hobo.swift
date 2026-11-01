@@ -172,10 +172,8 @@ struct Create: OutputCommand {
 
     func execute(_ output: Output) async throws -> Reply {
         let recipeFile = URL(filePath: path)
-        if !FileManager.default.fileExists(atPath: recipeFile.path) {
-            let hint = path == Recipe.fileName ? " (run hobo init, or pass a recipe path)" : ""
-            throw CLIError("no recipe at \(path)\(hint)")
-        }
+        // Checked here too, since VMCreator reads the file itself, after it has made the bundle.
+        if !FileManager.default.fileExists(atPath: recipeFile.path) { throw RecipeError.notFound(path) }
         let options = VMCreator.Options(name: name, recipeFile: recipeFile, holdOnFailure: holdOnFailure)
         let config = try await Self.create(options, output: output)
         return Reply(

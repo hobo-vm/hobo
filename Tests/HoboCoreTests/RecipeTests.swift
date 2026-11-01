@@ -36,6 +36,12 @@ import Testing
         #expect(recipe.resolve("files/profile").path == "/recipes/files/profile")
     }
 
+    @Test func missingFileIsNotFoundWithTheGivenPath() {
+        #expect(throws: RecipeError.notFound("no/such.toml")) { try Recipe.load(from: URL(filePath: "no/such.toml")) }
+        #expect(RecipeError.notFound("x.toml").description == "no recipe at x.toml")
+        #expect(RecipeError.notFound(Recipe.fileName).description.hasSuffix("(run hobo init, or pass a recipe path)"))
+    }
+
     @Test func summaryReportsSourceAndBytes() throws {
         let latest = RecipeSummary(try Recipe.parse(minimal(source: #"ipsw = "latest""#), directory: directory), path: "Hobo.toml")
         #expect(latest.source == "latest" && !latest.pinned)

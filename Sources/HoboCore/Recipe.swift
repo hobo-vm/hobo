@@ -50,7 +50,8 @@ public struct Recipe: Equatable, Sendable {
     }
 
     public static func load(from url: URL) throws -> Recipe {
-        try parse(String(contentsOf: url, encoding: .utf8), directory: url.deletingLastPathComponent())
+        if !FileManager.default.fileExists(atPath: url.path) { throw RecipeError.notFound(url.relativePath) }
+        return try parse(String(contentsOf: url, encoding: .utf8), directory: url.deletingLastPathComponent())
     }
 
     public func resolve(_ path: String) -> URL { resolveHostPath(path, relativeTo: directory) }
@@ -80,6 +81,8 @@ public struct Recipe: Equatable, Sendable {
 }
 
 public enum RecipeError: Error, Equatable, CustomStringConvertible {
+    /// The path as given, so the message echoes what the user typed.
+    case notFound(String)
     case invalidSize(String)
     case missingSHA256(String)
     case invalidSHA256(String)
@@ -90,6 +93,8 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
+        case .notFound(let path):
+            "no recipe at \(path)" + (path == Recipe.fileName ? " (run hobo init, or pass a recipe path)" : "")
         case .invalidSize(let value): "invalid size \"\(value)\" (expected e.g. \"512MB\" or \"8GB\")"
         case .missingSHA256(let ipsw): "source \"\(ipsw)\" needs a sha256 (only ipsw = \"latest\" may omit it)"
         case .invalidSHA256(let sha): "invalid sha256 \"\(sha)\" (expected 64 hex digits)"
