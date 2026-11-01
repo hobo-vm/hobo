@@ -1,9 +1,20 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import HoboCore
 
 @Suite struct VMStoreTests {
-    let store = VMStore(directory: FileManager.default.temporaryDirectory.appending(path: "hobo-vms-\(UUID().uuidString)"))
+    let launchctl = FakeLaunchctl()
+    let store: VMStore
+
+    init() {
+        let temp = FileManager.default.temporaryDirectory
+        store = VMStore(
+            directory: temp.appending(path: "hobo-vms-\(UUID().uuidString)"),
+            home: HoboHome(root: temp.appending(path: "hobo-home-\(UUID().uuidString)")),
+            launchd: launchctl.launchd
+        )
+    }
     let config = VMConfig(
         engine: .vz, os: .macOS, cpus: 4, memory: 8 << 30, disk: 80 << 30, macAddress: "5a:00:00:00:00:01",
         guestOSVersion: "27.2.0 (26B123)", created: Date(timeIntervalSince1970: 1_800_000_000),
@@ -133,5 +144,104 @@ import Testing
         defer { try? FileManager.default.removeItem(at: store.directory) }
         for name in ["b", "a10", "a2"] { try made(name) }
         #expect(store.list().map(\.name) == ["a2", "a10", "b"])
+    }
+
+    @Test func jobIsKeyedByStoreAndName() {
+        let job = store.job(for: "dev")
+        #expect(job.label.wholeMatch(of: /com\.hobo\.vm\.[0-9a-f]{8}\.dev/) != nil)
+        let key = String(job.label.dropFirst(Launchd.labelPrefix.count))
+        #expect(job.socket == store.home.root.appending(path: "\(key).sock"))
+        #expect(job.log == store.home.root.appending(path: "\(key).log"))
+        #expect(job.plist == store.home.root.appending(path: "launchd/\(key).plist"))
+
+        let other = VMStore(directory: store.directory.appending(path: "other"), home: store.home, launchd: launchctl.launchd)
+        #expect(other.job(for: "dev").label != job.label)
+        #expect(store.job(for: "Dev").label != job.label)
+    }
+
+    @Test func jobKeyFollowsSymlinks() throws {
+        // /tmp is a symlink to /private/tmp: one store, so one job.
+        let name = "hobo-vms-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: "/private/tmp/\(name)", withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: "/private/tmp/\(name)") }
+        let a = VMStore(directory: URL(filePath: "/tmp/\(name)"), home: store.home, launchd: launchctl.launchd)
+        let b = VMStore(directory: URL(filePath: "/private/tmp/\(name)/"), home: store.home, launchd: launchctl.launchd)
+        #expect(a.job(for: "dev") == b.job(for: "dev"))
+    }
+
+    @Test func runningAndCrashedComeFromTheJobTable() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        for name in ["up", "down", "crashed", "killed", "unloaded"] { try made(name) }
+        launchctl.list = """
+        PID\tStatus\tLabel
+        4242\t0\t\(store.job(for: "up").label)
+        -\t0\t\(store.job(for: "down").label)
+        -\t1\t\(store.job(for: "crashed").label)
+        -\t-9\t\(store.job(for: "killed").label)
+        """
+        let statuses = Dictionary(uniqueKeysWithValues: store.list().map { ($0.name, $0.status) })
+        #expect(statuses["up"] == .running(config, pid: 4242))
+        #expect(statuses["down"] == .stopped(config))
+        #expect(statuses["crashed"] == .crashed(config, exitStatus: 1))
+        #expect(statuses["killed"] == .crashed(config, exitStatus: -9))
+        #expect(statuses["unloaded"] == .stopped(config))
+    }
+
+    @Test func runningVMCannotBeDeletedOrRenamed() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try made("dev")
+        launchctl.list = "PID\tStatus\tLabel\n4242\t0\t\(store.job(for: "dev").label)\n"
+        let busy = VMStoreError.busy("dev", reason: "running (hobo stop dev)")
+        #expect(throws: busy) { try store.delete("dev") }
+        #expect(throws: busy) { try store.rename("dev", to: "other") }
+        #expect(!launchctl.calls.contains { $0.first == "bootout" })
+    }
+
+    @Test func runningJobBlocksDeleteEvenWithABrokenConfig() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try made("dev")
+        try Data("{".utf8).write(to: store.bundle(for: "dev").appending(path: VMStore.configFile))
+        launchctl.list = "PID\tStatus\tLabel\n4242\t0\t\(store.job(for: "dev").label)\n"
+        #expect(try store.find("dev").status == .broken)
+        #expect(throws: VMStoreError.busy("dev", reason: "running (hobo stop dev)")) { try store.delete("dev") }
+    }
+
+    @Test(arguments: [false, true])
+    func deleteAndRenameForgetTheOldJob(rename: Bool) throws {
+        defer {
+            try? FileManager.default.removeItem(at: store.directory)
+            try? FileManager.default.removeItem(at: store.home.root)
+        }
+        try made("dev")
+        let job = store.job(for: "dev")
+        try FileManager.default.createDirectory(at: job.plist.deletingLastPathComponent(), withIntermediateDirectories: true)
+        for file in [job.plist, job.log] { try Data("x".utf8).write(to: file) }
+
+        if rename { try store.rename("dev", to: "exp") } else { try store.delete("dev") }
+        #expect(launchctl.calls.contains(["bootout", "gui/\(getuid())/\(job.label)"]))
+        #expect(!FileManager.default.fileExists(atPath: job.plist.path))
+        #expect(!FileManager.default.fileExists(atPath: job.log.path))
+    }
+}
+
+/// Stands in for `launchctl`: `list` prints `list`, everything else succeeds silently, and every
+/// call is recorded.
+final class FakeLaunchctl: Sendable {
+    private let state = Mutex<(list: String, calls: [[String]])>(("PID\tStatus\tLabel\n", []))
+
+    var list: String {
+        get { state.withLock { $0.list } }
+        set { state.withLock { $0.list = newValue } }
+    }
+
+    var calls: [[String]] { state.withLock { $0.calls } }
+
+    var launchd: Launchd {
+        Launchd { arguments in
+            self.state.withLock { state in
+                state.calls.append(arguments)
+                return (0, arguments == ["list"] ? state.list : "")
+            }
+        }
     }
 }

@@ -129,9 +129,14 @@ global VMs on 2026-11-01.
     interrupted (^C, SIGTERM) create deletes the bundle; `--hold-on-failure` first keeps the failed VM
     up and prints the SSH command, and deletes it on ^C.
 11. **Start, stop, suspend.** `start` boots, or resumes saved state if suspended (`--cold` discards
-    it). `stop` is a clean shutdown (graceful request, then SSH `shutdown -h now`, then force after a
-    timeout or with `--force`). `suspend` saves memory and device state and exits the VM process;
-    `hobo list` shows suspended VMs and their state size.
+    it). It returns once the guest answers SSH (10 min timeout; a timeout or ^C leaves it booting),
+    and if the VM process exits first it prints the tail of its log. Starting a running VM is a
+    no-op; a `building`, `failed` or `broken` bundle is refused. `stop` is a clean shutdown, run by
+    the VM process so a ^C on the client can't strand it halfway: `requestStop` (30 s; a macOS
+    guest may only show a dialog), then SSH `sudo shutdown -h now` (2 min), then force. `--force`
+    powers off at once, and kills a VM process that doesn't answer its socket (`launchctl kill
+    SIGKILL`). A guest that shuts itself down ends its VM process too. `suspend` saves memory and
+    device state and exits the VM process; `hobo list` shows suspended VMs and their state size.
 12. **Clone.** `hobo clone dev exp` APFS-clones the bundle (full copy with a warning across volumes)
     and gives the clone a new machine identifier and MAC so both can run. The source must be stopped.
     **Open, spike before M2:** Howard Oakley reports that replacing an installed VM's machine
@@ -153,6 +158,23 @@ global VMs on 2026-11-01.
 14. **Process model.** One process per VM: `hobo start` registers a per-user LaunchAgent running
     `hobo _vm-run <name>`, which owns the VM and serves a Unix control socket. CLI and `hobo mcp` are
     thin clients over a shared library. On-disk state is the source of truth; there is no central daemon.
+    Every VM runs under launchd, and launchd's job table (one `launchctl list`) is how Hobo knows a
+    VM is running; `_vm-run` refuses to run unless that table lists its label with its own PID
+    (launchd sets `XPC_SERVICE_NAME` to `0` for plain agents, so it can't tell). Decided 2026-11-01:
+    - The label is `com.hobo.vm.<key>`, where the key is `<first 8 hex of SHA-256 of the store's
+      realpath>.<name>`, so two stores (`HOBO_VMS`) can each run a `dev`. The key also names
+      `~/.hobo/<key>.sock`, `~/.hobo/<key>.log` (the process's stdout/stderr) and
+      `~/.hobo/launchd/<key>.plist`.
+    - The job is transient: `RunAtLoad`, no `KeepAlive`, and not in `~/Library/LaunchAgents`, so
+      nothing starts at login. After the process exits the job stays loaded, and a nonzero last
+      exit status shows as `crashed` in `hobo list` until the next `start` or `stop`. `start`,
+      `stop`, `rename` and `delete` boot out a leftover job (bootstrapping a loaded label fails).
+    - The control socket (mode 0600) carries one request per connection: a line of JSON with the
+      protocol version, answered by a line of JSON (later streaming calls send several). A VM
+      process refuses other versions. Paths over `sun_path`'s 103 bytes fail rather than truncate.
+    - `_vm-run` is an `NSApplication` (`.accessory`) from the start. It runs AppKit's event loop
+      from a synchronous `main`: started inside Swift's async main, the loop never services the
+      main actor.
 15. **Guest channel.** SSH (`vagrant` user, per-VM key). `hobo exec`/`cp`/`screenshot` go through the
     control socket, which renews leases (decision 18); agents should use them rather than raw `ssh`.
     A vsock `hobo-agent` may come later.
@@ -194,12 +216,15 @@ global VMs on 2026-11-01.
 
 22. **Install.** Build from source: `make install` builds release, signs with `entitlements.plist`
     (ad-hoc by default, `HOBO_SIGN_IDENTITY` for Developer ID), installs to `$(PREFIX)/bin`
-    (default `~/.local/bin`). launchd plists reference this stable path.
+    (default `~/.local/bin`). A VM's launchd plist runs the `hobo` binary that started it (symlinks
+    resolved), so client and VM process are the same build; for an install that is this stable path.
+    `start` refuses a binary without the virtualization entitlement, since a VM process failing
+    that way would only say so in its log.
 23. **Layout.** One Swift package, one `hobo` executable:
     - `HoboCore`: recipes, the VM store (`VMStore`: bundle paths, names, list, rename, delete) and
       `config.json` (`VMConfig`), image index, provisioners
-    - `HoboVM`: engines (Virtualization framework, later QEMU), VM creation, display
-    - `HoboControl`: client ↔ VM-process socket protocol
+    - `HoboVM`: engines (Virtualization framework, later QEMU), VM creation, the VM process (`VMRunner`), display
+    - `HoboControl`: client ↔ VM-process socket protocol, and the client side of `start`/`stop` (`VMLifecycle`)
     - `HoboMCP`: MCP tools
     - `hobo`: CLI plus hidden `_vm-run` and `mcp` subcommands
     - `HoboVMTests` boot real VMs only with `HOBO_INTEGRATION=1`. The test runner can't hold the

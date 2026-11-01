@@ -8,11 +8,20 @@ public final class GuestVM {
     public let bundle: MacVMBundle
     public let macAddress: VZMACAddress
     let machine: VZVirtualMachine
+    private let observer = StopObserver()
 
     public init(bundle: MacVMBundle, cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress) throws {
         self.bundle = bundle
         self.macAddress = macAddress
         machine = VZVirtualMachine(configuration: try bundle.configuration(cpus: cpus, memoryBytes: memoryBytes, macAddress: macAddress))
+        machine.delegate = observer
+    }
+
+    /// Called when the guest powers itself off (nil) or the VM stops with an error. Not called
+    /// for `forceStop`, whose caller already knows.
+    public var onStop: ((Error?) -> Void)? {
+        get { observer.onStop }
+        set { observer.onStop = newValue }
     }
 
     /// Restores `ipsw` onto the bundle's empty disk.
@@ -39,6 +48,13 @@ public final class GuestVM {
     /// Returns false if it had to be forced.
     @discardableResult
     public func waitUntilStopped(timeout: Duration) async throws -> Bool {
+        if try await waitForStop(timeout: timeout) { return true }
+        try await forceStop()
+        return false
+    }
+
+    /// Waits up to `timeout` for the guest to power itself off. Returns false if it is still on.
+    public func waitForStop(timeout: Duration) async throws -> Bool {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             switch machine.state {
@@ -47,8 +63,14 @@ public final class GuestVM {
             default: try await Task.sleep(for: .seconds(1))
             }
         }
-        try await forceStop()
         return false
+    }
+
+    /// Asks the guest to shut down, like pressing the power button. A macOS guest may only show
+    /// a dialog, so callers follow up. Returns false if VZ can't send the request now.
+    public func requestStop() -> Bool {
+        guard machine.canRequestStop else { return false }
+        return (try? machine.requestStop()) != nil
     }
 
     /// No-op once stopped, or in states VZ can't stop from (e.g. `.error`), where `stop()` would
@@ -65,5 +87,19 @@ public final class GuestVM {
             try await Task.sleep(for: .seconds(2))
         }
         throw VMError.timedOut("waiting for a DHCP lease for \(macAddress.string)")
+    }
+}
+
+/// Forwards VZ's stop callbacks, which arrive on the VM's queue (the main queue).
+@MainActor
+private final class StopObserver: NSObject, @MainActor VZVirtualMachineDelegate {
+    var onStop: ((Error?) -> Void)?
+
+    func guestDidStop(_ virtualMachine: VZVirtualMachine) {
+        onStop?(nil)
+    }
+
+    func virtualMachine(_ virtualMachine: VZVirtualMachine, didStopWithError error: any Error) {
+        onStop?(error)
     }
 }
