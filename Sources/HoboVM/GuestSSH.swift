@@ -37,13 +37,13 @@ public struct GuestSSH: Sendable {
     /// (255 means ssh itself failed).
     @discardableResult
     public func run(_ command: String, quiet: Bool = false) async throws -> Int32 {
-        try await launch(Self.sshPath, options() + [remote, "--", command], output: quiet ? .discard : .inherit)
+        try await launch(Self.sshPath, sshArguments([command]), output: quiet ? .discard : .inherit)
     }
 
     /// Runs `command` in the guest, passing its output to `onOutput` as it arrives, and returns its
     /// exit status. Cancelling the task ends ssh, and with it the command.
     public func stream(_ command: String, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
-        try await launch(Self.sshPath, options() + [remote, "--", command], output: .capture(onOutput))
+        try await launch(Self.sshPath, sshArguments([command]), output: .capture(onOutput))
     }
 
     /// Runs `command` (an argv, quoted for the guest's shell) like `stream`, but cancelling also
@@ -63,8 +63,7 @@ public struct GuestSSH: Sendable {
     /// Runs `copy` with scp, passing scp's messages to `onOutput`, and returns its exit status.
     /// Cancelling the task ends scp.
     public func copy(_ copy: GuestCopy, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
-        let arguments = options() + copy.scpArguments(remote: remote)
-        return try await launch("/usr/bin/scp", arguments, output: .capture(onOutput))
+        try await launch("/usr/bin/scp", options() + copy.scpArguments(remote: remote), output: .capture(onOutput))
     }
 
     /// Runs `command` and throws if it fails.
