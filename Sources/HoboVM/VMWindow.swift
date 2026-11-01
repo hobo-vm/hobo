@@ -5,18 +5,18 @@ import Virtualization
 /// whether to keep the VM running headless or shut it down; the window is only ever hidden, so
 /// the next `show` brings back the same one.
 @MainActor
-public final class VMWindow: NSObject, NSWindowDelegate {
+final class VMWindow: NSObject, NSWindowDelegate {
     private let window: NSWindow
     private let view = VZVirtualMachineView()
     private let machine: VZVirtualMachine
     private let name: String
     private let log: (String) -> Void
     /// Called when the user picks Shut Down in the close dialog.
-    public var onShutDown: (() -> Void)?
+    var onShutDown: (() -> Void)?
     /// Whether the window is showing, as opposed to hidden by Keep Running or a shutdown.
-    public private(set) var isShown = false
+    private(set) var isShown = false
 
-    public init(guest: GuestVM, title: String, log: @escaping (String) -> Void) {
+    init(guest: GuestVM, title: String, log: @escaping (String) -> Void) {
         machine = guest.machine
         name = title
         self.log = log
@@ -39,7 +39,7 @@ public final class VMWindow: NSObject, NSWindowDelegate {
 
     /// Shows the window in front and tries to take focus. A process launchd started can't always
     /// take focus from the active app (cooperative activation), so the window may need a click.
-    public func show() {
+    func show() {
         // The guest display follows the window's size while it shows; turning this on resizes it.
         view.automaticallyReconfiguresDisplay = true
         if window.isMiniaturized { window.deminiaturize(nil) }
@@ -62,7 +62,7 @@ public final class VMWindow: NSObject, NSWindowDelegate {
         }
     }
 
-    public func windowShouldClose(_ sender: NSWindow) -> Bool {
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
         let alert = NSAlert()
         alert.messageText = "Keep \(name) running?"
         alert.informativeText = "Keep Running hides the window and leaves the VM running headless; hobo view \(name) shows it again."

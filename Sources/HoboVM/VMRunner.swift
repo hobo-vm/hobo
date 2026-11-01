@@ -139,7 +139,7 @@ public final class VMRunner {
 
     private func showWindow(_ guest: GuestVM) {
         if window == nil {
-            let window = VMWindow(guest: guest, title: name) { [log] in log($0) }
+            let window = VMWindow(guest: guest, title: name, log: log)
             window.onShutDown = { [weak self] in self?.beginStop(force: false) }
             self.window = window
         }
