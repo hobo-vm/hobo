@@ -2,7 +2,6 @@
 
 Only 2 macOS guests can run per host, so a `create` plus a boot test fill both slots.
 
-- M1: VM bundles in `~/Hobo/<name>.hobovm` (`HOBO_VMS`), `config.json`, `hobo create --from` wiring `VMCreator` (`building` state, `--hold-on-failure`; decide whether `--from` defaults to `./Hobo.toml`), `hobo list`, `delete`, `rename`; restore the VM integration test (`create` + in-guest convention checks, using a local IPSW via `HOBO_TEST_IPSW`)
 - M1: `hobo _vm-run` VM process + LaunchAgent registration + `HoboControl` socket protocol; headless `start`, `stop [--force]`
 - M1: `hobo view` on-demand window (`.accessory` NSApplication), `start --gui`
 - M1: `ssh` / `exec` / `cp` / `ip`, shared vmnet NAT with Hobo-controlled DHCP; replace the insecure key with a per-VM key at the end of `create` (design decision 10.3)
