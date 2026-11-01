@@ -57,6 +57,8 @@ global VMs on 2026-11-01.
    source hash), `snapshots/`, and any saved state. Finder shows sizes and can move or delete bundles;
    a vanished bundle is a deleted VM, and Hobo refuses to start or delete a bundle whose VM process is
    still running. `~/.hobo/` holds only small state: the IPSW index, logs, sockets, launchd plists.
+   A macOS guest's Apple ID identity derives from the host's Secure Enclave and host user, so a
+   bundle moved to another Mac or user (e.g. on an external SSD) makes the guest re-authenticate.
 8. **Install images.** Downloads land in `~/Downloads` under the vendor's filename (e.g.
    `UniversalMac_27.2_26B123_Restore.ipsw`) via `<name>.part`, renamed once the SHA-256 verifies, so
    users can see and delete them. `~/.hobo/images.json` maps each source (URL, or a local file's
@@ -71,13 +73,21 @@ global VMs on 2026-11-01.
    `config.json`, which is the truth thereafter. `hobo set` changes CPUs, memory, disk (grow only) and
    persistent shares (virtio-fs; macOS default mount `/Volumes/My Shared Files/<tag>`, `readonly`
    supported). `start --share` adds a share for that run only. Clones inherit `config.json`.
+   Shares must be folders: virtio-fs rejects volume roots, so Hobo refuses them up front. Guests
+   don't Spotlight-index shares, and some guests have shown shared files' creation dates as
+   2001-01-01. Growing the disk image doesn't grow the guest's APFS container, and in a macOS VM the
+   Recovery container after it may block `diskutil apfs resizeContainer`; how grow finishes inside
+   the guest is open (see `TODO.md`), and it must keep Recovery, which `[gui_testing]` needs.
 
 ### VM lifecycle
 
 10. **Create.** `hobo create dev --from Hobo.toml` builds in place in the bundle, marked `building`
     in `hobo list` until done. There are no checkpoints: every create is a full install (decided
     2026-11-01; clone covers "another one like this"). Steps for a macOS guest:
-    1. source: resolve and verify the IPSW (decision 8);
+    1. source: resolve and verify the IPSW (decision 8). A guest newer than the host needs Apple's
+       Device Support package (or the matching Xcode beta) on the host; without it the install fails
+       obscurely, so `create` names the missing package. Disks under ~50 GB can fail macOS updates;
+       the default is 80 GB;
     2. base install: `VZMacOSInstaller`, then a first boot with `VZMacGuestProvisioningOptions`
        (`vagrant`/`vagrant`, auto-login, Remote Login);
     3. conventions, over password SSH: passwordless sudo, Vagrant's insecure keys (ed25519 + RSA) in
@@ -89,6 +99,8 @@ global VMs on 2026-11-01.
     6. clean guest shutdown. The disk is ASIF, which returns blocks to the host when the guest's APFS
        TRIMs them, so there is no zero-fill or compaction pass (verified on the host: an attached ASIF
        shrinks from 1 GB to 14 MB after delete + unmount); the build logs the resulting disk size.
+       Not yet verified from inside a macOS guest: a report on eclecticlight.co says macOS 26 guests
+       didn't reclaim ASIF space while RAW did (see `TODO.md`).
 
     During create the guest IP comes from `/var/db/dhcpd_leases` by MAC; SSH is the system `ssh`/`scp`,
     with the password supplied through `SSH_ASKPASS` until the key is in place. A failed create deletes
@@ -99,6 +111,11 @@ global VMs on 2026-11-01.
     `hobo list` shows suspended VMs and their state size.
 12. **Clone.** `hobo clone dev exp` APFS-clones the bundle (full copy with a warning across volumes)
     and gives the clone a new machine identifier and MAC so both can run. The source must be stopped.
+    **Open, spike before M2:** Howard Oakley reports that replacing an installed VM's machine
+    identifier freezes boot (Apple: hardware model, identifier and aux storage must keep their
+    install-time values), while two running VMs sharing an identifier get network on only one and,
+    on macOS 15+, force Apple ID re-authentication. If a clone can't take a new identifier, a clone
+    and its source can't run concurrently.
     `--ephemeral` (on `clone`, or `start dev --ephemeral`, which clones to an auto-named VM and starts
     it) deletes the clone when it stops; a suspended ephemeral clone is kept until it is stopped.
 13. **Snapshots.** `hobo snapshot save|restore|list|delete <tag>`, stored in the bundle's
@@ -193,4 +210,6 @@ builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` ind
   macOS guest GUI and IPSW/installer fetching.
 - [UTM](https://github.com/utmapp/UTM): QEMU + HVF for Windows on Arm.
 - [Mech](https://mechboxes.github.io/mech/docs/welcome/) and Vagrant: recipe and guest conventions.
+- Howard Oakley's [Virtualisation on Apple silicon](https://eclecticlight.co/virtualisation-on-apple-silicon/)
+  articles: guest limits, machine identity, shares, ASIF, version gates (reviewed 2026-11-01).
 - WWDC26 session 224, "Expand the capabilities of your Virtualization app" (macOS 27 APIs).
