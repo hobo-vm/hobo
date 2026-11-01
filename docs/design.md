@@ -129,10 +129,11 @@ global VMs on 2026-11-01.
     5. recipe `[[provision]]` steps (shell inline/path with `privileged` and `env`, and file), run
        once each over key SSH;
     6. clean guest shutdown. The disk is ASIF, which returns blocks to the host when the guest's APFS
-       TRIMs them, so there is no zero-fill or compaction pass (verified on the host: an attached ASIF
-       shrinks from 1 GB to 14 MB after delete + unmount); the build logs the resulting disk size.
-       Not yet verified from inside a macOS guest: a report on eclecticlight.co says macOS 26 guests
-       didn't reclaim ASIF space while RAW did (see `TODO.md`).
+       TRIMs them, so there is no zero-fill or compaction pass; the build logs the resulting disk size.
+       Verified on the host (an attached ASIF shrinks from 1 GB to 14 MB after delete + unmount) and
+       from inside a macOS 27.2 guest (2026-11-01: a 5 GB random file grew `disk.asif` by 5.25 GB
+       allocated, and deleting it returned all of it within 5 s, with the VM still running). A report
+       on eclecticlight.co said macOS 26 guests didn't reclaim ASIF space; that no longer holds on 27.
 
     During create the guest IP comes from `/var/db/dhcpd_leases` by MAC; SSH is the system `ssh`/`scp`,
     with the password supplied through `SSH_ASKPASS` until the key is in place. A failed or

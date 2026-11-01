@@ -2,7 +2,6 @@
 
 Only 2 macOS guests can run per host, so a `create` plus a boot test fill both slots.
 
-- M1 [verify]: ASIF space reclaim from inside a macOS guest (create a file, delete it, check the bundle's disk size on the host); if it doesn't shrink, revisit the no-compaction decision
 - M1 [verify]: disk grow end to end: resize the ASIF, then grow the guest's APFS container without removing Recovery (needed by `[gui_testing]`)
 - M1: `hobo set` (cpus, memory, disk grow, persistent virtio-fs shares), `start --share`, `hobo provision <name> [recipe]`
 - M1 [parallel]: Windows spike: Windows 11 on Arm on `qemu-system-aarch64 -accel hvf`, unattended install via `autounattend.xml`, headless boot, OpenSSH, screenshot from the interactive session
