@@ -34,7 +34,7 @@ struct HoboCommand: AsyncParsableCommand {
     )
 }
 
-struct Init: AsyncParsableCommand {
+struct Init: OutputCommand {
     static let configuration = CommandConfiguration(abstract: "Write a starter \(Recipe.fileName) in the current directory.")
 
     @Argument(help: ArgumentHelp(
@@ -54,26 +54,25 @@ struct Init: AsyncParsableCommand {
         var image: IPSWCatalog.Image?
     }
 
-    func run() async throws {
-        let output = Output(json: json)
-        try await output.reporting {
-            let url = URL.currentDirectory().appending(path: Recipe.fileName)
-            if FileManager.default.fileExists(atPath: url.path) && !force {
-                throw ValidationError("\(Recipe.fileName) already exists (use --force to overwrite)")
-            }
-            var image: IPSWCatalog.Image?
-            if let build {
-                image = try IPSWCatalog.image(build: build, in: try await IPSWCatalog.fetch(), hostMajor: IPSWCatalog.hostMajor)
-            }
-            let template = image.map(Recipe.template(pinnedTo:)) ?? Recipe.template
-            try template.write(to: url, atomically: true, encoding: .utf8)
-            let pinned = image.map { " pinned to \($0.name) \($0.version) (\($0.build))" } ?? ""
-            output.result(Result(path: url.path, image: image), text: "Wrote \(Recipe.fileName)\(pinned)")
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        let url = URL.currentDirectory().appending(path: Recipe.fileName)
+        if FileManager.default.fileExists(atPath: url.path) && !force {
+            throw ValidationError("\(Recipe.fileName) already exists (use --force to overwrite)")
         }
+        var image: IPSWCatalog.Image?
+        if let build {
+            image = try IPSWCatalog.image(build: build, in: try await IPSWCatalog.fetch(), hostMajor: IPSWCatalog.hostMajor)
+        }
+        let template = image.map(Recipe.template(pinnedTo:)) ?? Recipe.template
+        try template.write(to: url, atomically: true, encoding: .utf8)
+        let pinned = image.map { " pinned to \($0.name) \($0.version) (\($0.build))" } ?? ""
+        return Reply(Result(path: url.path, image: image), text: "Wrote \(Recipe.fileName)\(pinned)")
     }
 }
 
-struct Images: AsyncParsableCommand {
+struct Images: OutputCommand {
     static let configuration = CommandConfiguration(
         abstract: "List the macOS IPSWs this Mac can build VMs from.",
         discussion: "Pass a BUILD to `hobo init <build>` to start a recipe pinned to it. The list comes from ipsw.me."
@@ -92,19 +91,17 @@ struct Images: AsyncParsableCommand {
         if build != nil && latest { throw ValidationError("--latest lists builds; it can't be combined with a build") }
     }
 
-    func run() async throws {
-        let output = Output(json: json)
-        try await output.reporting {
-            let catalog = try await IPSWCatalog.fetch()
-            if let build {
-                let image = try IPSWCatalog.image(build: build, in: catalog)
-                output.result(image, text: details(image))
-                return
-            }
-            var images = IPSWCatalog.runnable(catalog, hostMajor: IPSWCatalog.hostMajor)
-            if latest { images = IPSWCatalog.latestPerMajor(images) }
-            output.result(images, text: table(images))
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        let catalog = try await IPSWCatalog.fetch()
+        if let build {
+            let image = try IPSWCatalog.image(build: build, in: catalog)
+            return Reply(image, text: details(image))
         }
+        var images = IPSWCatalog.runnable(catalog, hostMajor: IPSWCatalog.hostMajor)
+        if latest { images = IPSWCatalog.latestPerMajor(images) }
+        return Reply(images, text: table(images))
     }
 
     private func table(_ images: [IPSWCatalog.Image]) -> String {
@@ -129,7 +126,7 @@ struct Images: AsyncParsableCommand {
     }
 }
 
-struct Validate: ParsableCommand {
+struct Validate: OutputCommand {
     static let configuration = CommandConfiguration(abstract: "Check a recipe without building it.")
 
     @Argument(help: ArgumentHelp("Recipe file.", valueName: "recipe"))
@@ -138,17 +135,16 @@ struct Validate: ParsableCommand {
     @Flag(help: "Print the recipe's settings as JSON.")
     var json = false
 
-    func run() throws {
-        let output = Output(json: json)
-        try output.reporting {
-            let recipe = try Recipe.load(from: URL(filePath: path))
-            try recipe.checkFilesExist()
-            let warning = recipe.source.isPinned ? "" : "warning: source is unpinned (ipsw = \"latest\")\n"
-            output.result(
-                RecipeSummary(recipe, path: path),
-                text: "\(warning)\(path): \(recipe.cpus) CPUs, \(recipe.memory) memory, \(recipe.disk) disk, \(recipe.provisioners.count) provision step(s)"
-            )
-        }
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        let recipe = try Recipe.load(from: URL(filePath: path))
+        try recipe.checkFilesExist()
+        let warning = recipe.source.isPinned ? "" : "warning: source is unpinned (ipsw = \"latest\")\n"
+        return Reply(
+            RecipeSummary(recipe, path: path),
+            text: "\(warning)\(path): \(recipe.cpus) CPUs, \(recipe.memory) memory, \(recipe.disk) disk, \(recipe.provisioners.count) provision step(s)"
+        )
     }
 }
 
@@ -157,7 +153,7 @@ private extension IPSWCatalog.Image {
     var formattedSize: String { ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file) }
 }
 
-struct Create: AsyncParsableCommand {
+struct Create: OutputCommand {
     static let configuration = CommandConfiguration(abstract: "Build a new VM from a recipe.")
 
     @Argument(help: "Name of the new VM.")
@@ -172,38 +168,41 @@ struct Create: AsyncParsableCommand {
     @Flag(help: "Print progress and the new VM as JSON Lines events.")
     var json = false
 
-    @MainActor
-    func run() async throws {
-        let output = Output(json: json, streaming: true)
-        try await output.reporting {
-            let recipeFile = URL(filePath: path)
-            if !FileManager.default.fileExists(atPath: recipeFile.path) {
-                let hint = path == Recipe.fileName ? " (run hobo init, or pass a recipe path)" : ""
-                throw CLIError("no recipe at \(path)\(hint)")
-            }
-            let options = VMCreator.Options(name: name, recipeFile: recipeFile, holdOnFailure: holdOnFailure)
-            let config = try await VMCreator(options: options, log: output.log).create()
-            output.result(
-                VMSummary(try VMStore.standard().find(name)),
-                text: "Created \(name): macOS \(config.guestOSVersion), \(config.cpus) CPUs, \(ByteSize(bytes: config.memory)) memory"
-            )
+    static let jsonStyle = Output.JSONStyle.events
+
+    func execute(_ output: Output) async throws -> Reply {
+        let recipeFile = URL(filePath: path)
+        if !FileManager.default.fileExists(atPath: recipeFile.path) {
+            let hint = path == Recipe.fileName ? " (run hobo init, or pass a recipe path)" : ""
+            throw CLIError("no recipe at \(path)\(hint)")
         }
+        let options = VMCreator.Options(name: name, recipeFile: recipeFile, holdOnFailure: holdOnFailure)
+        let config = try await Self.create(options, log: output.log)
+        return Reply(
+            VMSummary(try VMStore.standard().find(name)),
+            text: "Created \(name): macOS \(config.guestOSVersion), \(config.cpus) CPUs, \(ByteSize(bytes: config.memory)) memory"
+        )
+    }
+
+    /// `VMCreator` runs on the main actor.
+    @MainActor
+    private static func create(_ options: VMCreator.Options, log: @escaping @Sendable (String) -> Void) async throws -> VMConfig {
+        try await VMCreator(options: options, log: log).create()
     }
 }
 
-struct List: ParsableCommand {
+struct List: OutputCommand {
     static let configuration = CommandConfiguration(abstract: "List VMs.")
 
     @Flag(help: "Print each VM's state, size and configuration as JSON (sizes in bytes).")
     var json = false
 
-    func run() {
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
         let store = VMStore.standard()
         let vms = store.list()
-        Output(json: json).result(
-            vms.map(VMSummary.init),
-            text: vms.isEmpty ? "No VMs in \(store.directory.path)." : table(vms)
-        )
+        return Reply(vms.map(VMSummary.init), text: vms.isEmpty ? "No VMs in \(store.directory.path)." : table(vms))
     }
 
     private func table(_ vms: [VMStore.VM]) -> String {
@@ -229,7 +228,7 @@ struct List: ParsableCommand {
     }
 }
 
-struct Start: AsyncParsableCommand {
+struct Start: OutputCommand {
     static let configuration = CommandConfiguration(
         abstract: "Boot a VM headless, in the background under launchd.",
         discussion: "Waits until the guest answers SSH. Interrupting the wait leaves the VM booting."
@@ -241,31 +240,25 @@ struct Start: AsyncParsableCommand {
     @Flag(help: "Print progress and the VM's status (state, PID, IP address) as JSON Lines events.")
     var json = false
 
-    func run() async throws {
-        let output = Output(json: json, streaming: true)
+    static let jsonStyle = Output.JSONStyle.events
+
+    func execute(_ output: Output) async throws -> Reply {
         let name = name
         let interrupt = signalSource(SIGINT) {
-            let stopHint = "(hobo stop \(name) to stop it)"
-            if output.isJSON {
-                output.fail("interrupted; left \(name) booting \(stopHint)")
-            } else {
-                print("\nLeft \(name) booting \(stopHint)")
-            }
+            output.interrupted("left \(name) booting (hobo stop \(name) to stop it)")
             Darwin.exit(130)
         }
         defer { interrupt.cancel() }
-        try await output.reporting {
-            let result = try await VMLifecycle(log: output.log).start(name)
-            let text = switch result {
-            case .started(let status): "\(name) is running\(status.ipAddress.map { " (\($0))" } ?? "")"
-            case .alreadyRunning(let status): "\(name) is already running\(status?.ipAddress.map { " (\($0))" } ?? "")"
-            }
-            output.result(result, text: text)
+        let result = try await VMLifecycle(log: output.log).start(name)
+        let text = switch result {
+        case .started(let status): "\(name) is running\(status.ipAddress.map { " (\($0))" } ?? "")"
+        case .alreadyRunning(let status): "\(name) is already running\(status?.ipAddress.map { " (\($0))" } ?? "")"
         }
+        return Reply(result, text: text)
     }
 }
 
-struct Stop: AsyncParsableCommand {
+struct Stop: OutputCommand {
     static let configuration = CommandConfiguration(
         abstract: "Shut a VM down.",
         discussion: "Runs shutdown over SSH if the guest answers, otherwise asks the guest to shut down, then powers it off if it is still on."
@@ -280,16 +273,15 @@ struct Stop: AsyncParsableCommand {
     @Flag(help: "Print progress and the outcome as JSON Lines events.")
     var json = false
 
-    func run() async throws {
-        let output = Output(json: json, streaming: true)
-        try await output.reporting {
-            let result = try await VMLifecycle(log: output.log).stop(name, force: force)
-            let text = switch result {
-            case .stopped: "Stopped \(name)"
-            case .wasNotRunning: "\(name) is not running"
-            }
-            output.result(result, text: text)
+    static let jsonStyle = Output.JSONStyle.events
+
+    func execute(_ output: Output) async throws -> Reply {
+        let result = try await VMLifecycle(log: output.log).stop(name, force: force)
+        let text = switch result {
+        case .stopped: "Stopped \(name)"
+        case .wasNotRunning: "\(name) is not running"
         }
+        return Reply(result, text: text)
     }
 }
 
@@ -328,7 +320,7 @@ private func signalSource(_ signo: Int32, _ handler: @escaping @Sendable () -> V
     return source
 }
 
-struct Rename: ParsableCommand {
+struct Rename: OutputCommand {
     static let configuration = CommandConfiguration(abstract: "Rename a stopped VM.")
 
     @Argument(help: "Current name.")
@@ -340,17 +332,16 @@ struct Rename: ParsableCommand {
     @Flag(help: "Print the renamed VM as JSON.")
     var json = false
 
-    func run() throws {
-        let output = Output(json: json)
-        try output.reporting {
-            let store = VMStore.standard()
-            try store.rename(old, to: new)
-            output.result(VMSummary(try store.find(new)), text: "Renamed \(old) to \(new)")
-        }
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        let store = VMStore.standard()
+        try store.rename(old, to: new)
+        return Reply(VMSummary(try store.find(new)), text: "Renamed \(old) to \(new)")
     }
 }
 
-struct Delete: ParsableCommand {
+struct Delete: OutputCommand {
     static let configuration = CommandConfiguration(abstract: "Delete a VM and its bundle.")
 
     @Argument(help: "Name of the VM.")
@@ -366,25 +357,24 @@ struct Delete: ParsableCommand {
         if json && !yes { throw ValidationError("--json can't ask for confirmation; pass --yes too") }
     }
 
-    func run() throws {
-        let output = Output(json: json)
-        try output.reporting {
-            let store = VMStore.standard()
-            let vm = try store.find(name)
-            try store.checkNotRunning(vm)
-            if !yes {
-                guard isatty(STDIN_FILENO) != 0 else {
-                    throw CLIError("refusing to delete \(vm.name) without a terminal to confirm (pass --yes)")
-                }
-                print("Delete VM \"\(vm.name)\" (\(fileSize(vm.allocatedBytes)))? [y/N] ", terminator: "")
-                guard let answer = readLine(), ["y", "yes"].contains(answer.lowercased()) else {
-                    print("Not deleted.")
-                    return
-                }
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        let store = VMStore.standard()
+        let vm = try store.find(name)
+        try store.checkNotRunning(vm)
+        // The prompt is text only: validate() requires --yes with --json.
+        if !yes {
+            guard isatty(STDIN_FILENO) != 0 else {
+                throw CLIError("refusing to delete \(vm.name) without a terminal to confirm (pass --yes)")
             }
-            try store.delete(vm.name)
-            output.result(["deleted": vm.name], text: "Deleted \(vm.name)")
+            print("Delete VM \"\(vm.name)\" (\(fileSize(vm.allocatedBytes)))? [y/N] ", terminator: "")
+            guard let answer = readLine(), ["y", "yes"].contains(answer.lowercased()) else {
+                return Reply(["deleted": String?.none], text: "Not deleted.")
+            }
         }
+        try store.delete(vm.name)
+        return Reply(["deleted": vm.name], text: "Deleted \(vm.name)")
     }
 }
 

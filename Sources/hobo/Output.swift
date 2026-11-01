@@ -2,20 +2,54 @@ import ArgumentParser
 import Foundation
 import HoboCore
 
+/// A command that prints a result, and so supports `--json`. Conforming is the whole of its
+/// `--json` support: the shared `run()` builds the `Output`, hands `execute` its `log` for progress,
+/// prints the one `Reply` in the right format, and reports a thrown error as JSON. `execute` must
+/// not print; text-only interaction (`delete`'s prompt) belongs where `--json` can't reach.
+protocol OutputCommand: AsyncParsableCommand {
+    /// The command's `--json` flag, declared by each command for its own help text.
+    var json: Bool { get }
+    /// A JSON document, or JSON Lines events for a command with progress. No default: each
+    /// command decides, since the wrong one drops its progress or breaks its format.
+    static var jsonStyle: Output.JSONStyle { get }
+    func execute(_ output: Output) async throws -> Reply
+}
+
+extension OutputCommand {
+    func run() async throws {
+        let output = Output(json: json, style: Self.jsonStyle)
+        try await output.reporting {
+            output.result(try await execute(output))
+        }
+    }
+}
+
+/// A command's outcome, for people (`text`) and as JSON (`value`).
+struct Reply {
+    let value: any Encodable
+    let text: String
+
+    init(_ value: some Encodable, text: String) {
+        self.value = value
+        self.text = text
+    }
+}
+
 /// Where a command's output goes. Text is for people. With `--json`, a command that finishes
 /// quickly prints one JSON document, and one with progress (`create`, `start`, `stop`) prints
 /// JSON Lines: `{"event":"log","message":…}` as it goes, then `{"event":"result","result":…}`.
 /// A failure is JSON on stdout too, `{"error":…}` or `{"event":"error","error":…}`, with exit status 1.
 struct Output: Sendable {
+    enum JSONStyle: Sendable { case document, events }
     enum Format: Sendable { case text, document, events }
 
     let format: Format
 
-    init(json: Bool, streaming: Bool = false) {
-        if !json {
-            format = .text
-        } else {
-            format = streaming ? .events : .document
+    init(json: Bool, style: JSONStyle) {
+        switch (json, style) {
+        case (false, _): format = .text
+        case (true, .document): format = .document
+        case (true, .events): format = .events
         }
     }
 
@@ -30,17 +64,29 @@ struct Output: Sendable {
         }
     }
 
-    /// The command's outcome: `text` for people, `value` as JSON.
-    func result(_ value: some Encodable, text: @autoclosure () -> String) {
+    /// The command's outcome, printed once by `OutputCommand.run`.
+    fileprivate func result(_ reply: Reply) {
+        emit(reply.value, text: reply.text)
+    }
+
+    private func emit(_ value: some Encodable, text: String) {
         switch format {
-        case .text: print(text())
+        case .text: print(text)
         case .document: Self.write(Self.encoded { try HoboJSON.document(value) })
         case .events: Self.writeLine(ResultEvent(result: value))
         }
     }
 
+    /// For a ^C handler: says what was left behind, as text or as an `error` event.
+    func interrupted(_ consequence: String) {
+        switch format {
+        case .text: print("\nInterrupted; \(consequence)")
+        case .document, .events: fail("interrupted; \(consequence)")
+        }
+    }
+
     /// Reports a failure the way the format calls for. In text mode it is left to ArgumentParser.
-    func fail(_ message: String) {
+    private func fail(_ message: String) {
         switch format {
         case .text: break
         case .document: Self.write(Self.encoded { try HoboJSON.document(["error": message]) })
@@ -49,27 +95,13 @@ struct Output: Sendable {
     }
 
     /// Runs a command's body, reporting what it throws as JSON in JSON mode.
-    /// Runs on the caller's actor, so `create` keeps the main actor it needs.
-    func reporting(isolation: isolated (any Actor)? = #isolation, _ body: () async throws -> Void) async throws {
+    fileprivate func reporting(_ body: () async throws -> Void) async throws {
         do {
             try await body()
-        } catch {
-            throw reported(error)
+        } catch let error where isJSON && !(error is ExitCode) && !(error is CleanExit) {
+            fail(String(describing: error))
+            throw ExitCode.failure
         }
-    }
-
-    func reporting(_ body: () throws -> Void) throws {
-        do {
-            try body()
-        } catch {
-            throw reported(error)
-        }
-    }
-
-    private func reported(_ error: any Error) -> any Error {
-        guard isJSON, !(error is ExitCode), !(error is CleanExit) else { return error }
-        fail(String(describing: error))
-        return ExitCode.failure
     }
 
     private struct LogEvent: Encodable {

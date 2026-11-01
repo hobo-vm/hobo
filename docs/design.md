@@ -52,7 +52,8 @@ global VMs on 2026-11-01.
    so an agent sees progress. A failure is JSON on stdout too (`{"error":…}`, or an `error` event)
    with exit status 1; usage errors stay text on stderr. Sizes are bytes, dates ISO 8601, and the
    shapes (`VMSummary`, `RecipeSummary`, the lifecycle results) live in the core so `hobo mcp` returns
-   the same ones. `delete --json` needs `--yes`, since it can't prompt.
+   the same ones. A CLI command gets all of this by conforming to `OutputCommand`, returning its
+   result rather than printing it. `delete --json` needs `--yes`, since it can't prompt.
 5. **Language.** Swift: swift-argument-parser, TOMLKit, modelcontextprotocol/swift-sdk.
 6. **Platform.** Apple Silicon only, macOS 27+, for `VZMacGuestProvisioningOptions` (unattended macOS
    setup with SSH), vmnet, and ASIF disks. Apple's licence (enforced by the framework) caps hosts at
