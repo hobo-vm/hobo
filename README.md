@@ -16,8 +16,8 @@ hobo mcp                  # let an agent drive VMs over MCP
 
 ## Requirements
 
-- Apple Silicon Mac, macOS 27+ (currently builds against macOS 26 until the 27 SDK is installed)
-- Swift 6.2+
+- Apple Silicon Mac, macOS 27+
+- Xcode 27 (Swift 6.4+)
 
 ## Build
 
