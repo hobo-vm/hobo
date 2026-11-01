@@ -36,6 +36,23 @@ import Testing
         #expect(image.released == ISO8601DateFormatter().date(from: "2026-10-26T18:14:17Z"))
     }
 
+    @Test func ordersEqualVersionsByReleaseDate() throws {
+        // "27" and "27.0" are the same version; the later release (a re-spin) comes first.
+        let firmwares = [Self.firmware("27", "26A1", day: "2026-09-01"), Self.firmware("27.0", "26A2", day: "2026-09-08")]
+        let data = Data("{\"firmwares\": [\(firmwares.joined(separator: ","))]}".utf8)
+        #expect(try IPSWCatalog.decode(data).map(\.build) == ["26A2", "26A1"])
+    }
+
+    @Test func jsonRoundTripsWithISO8601Dates() throws {
+        let image = try images[1]
+        let data = try IPSWCatalog.json(image)
+        #expect(String(decoding: data, as: UTF8.self).contains(#""released" : "2026-10-26T18:14:17Z""#))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        #expect(try decoder.decode(IPSWCatalog.Image.self, from: data) == image)
+        #expect(try decoder.decode([IPSWCatalog.Image].self, from: IPSWCatalog.json(images)) == images)
+    }
+
     @Test func hidesGuestsNewerThanTheHost() throws {
         #expect(IPSWCatalog.runnable(try images, hostMajor: 27).map(\.major) == [27, 27, 27, 26, 26])
         #expect(IPSWCatalog.runnable(try images, hostMajor: 28).count == 6)
