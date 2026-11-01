@@ -312,7 +312,8 @@ struct SSH: ParsableCommand {
 
     func run() throws {
         let store = VMStore.standard()
-        let ssh = GuestSSH(host: try GuestChannel(store: store).ipAddress(name), auth: .key(try store.home.ensureInsecurePrivateKey()))
+        let vm = try store.find(name)
+        let ssh = GuestSSH(host: try GuestChannel(store: store).ipAddress(vm.name), auth: try .forVM(bundle: vm.bundle, home: store.home))
         if print {
             Swift.print(ssh.commandLine(command))
             return

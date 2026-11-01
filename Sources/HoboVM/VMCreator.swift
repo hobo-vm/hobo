@@ -166,9 +166,9 @@ public struct VMCreator {
         }
     }
 
-    /// Boots the bundle with the insecure key, runs `body`, and expects it to shut the VM down.
+    /// Boots the bundle, logs in with its key, runs `body`, and expects it to shut the VM down.
     private func withVM(_ bundle: MacVMBundle, machine: Machine, _ body: (GuestVM, GuestSSH) async throws -> Void) async throws {
-        let auth = GuestSSH.Auth.key(try home.ensureInsecurePrivateKey())
+        let auth = try GuestSSH.Auth.forVM(bundle: bundle.directory, home: home)
         let vm = try GuestVM(bundle: bundle, machine: machine)
         log("Booting")
         try await vm.start()

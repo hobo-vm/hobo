@@ -163,7 +163,7 @@ public final class VMRunner {
     }
 
     private func ssh(_ ip: String) throws -> GuestSSH {
-        GuestSSH(host: ip, auth: .key(try store.home.ensureInsecurePrivateKey()))
+        GuestSSH(host: ip, auth: try .forVM(bundle: store.bundle(for: name), home: store.home))
     }
 
     private func finish(_ code: Int32) -> Never {
