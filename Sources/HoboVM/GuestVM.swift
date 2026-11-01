@@ -47,14 +47,14 @@ public final class GuestVM {
     /// Waits for the guest to power itself off; forces it off after `timeout`.
     /// Returns false if it had to be forced.
     @discardableResult
-    public func waitUntilStopped(timeout: Duration) async throws -> Bool {
-        if try await waitForStop(timeout: timeout) { return true }
+    public func waitForPowerOffOrForce(timeout: Duration) async throws -> Bool {
+        if try await waitForPowerOff(timeout: timeout) { return true }
         try await forceStop()
         return false
     }
 
     /// Waits up to `timeout` for the guest to power itself off. Returns false if it is still on.
-    public func waitForStop(timeout: Duration) async throws -> Bool {
+    public func waitForPowerOff(timeout: Duration) async throws -> Bool {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             switch machine.state {

@@ -126,7 +126,7 @@ public final class VMRunner {
 
     /// Whether the guest is off within `timeout`; a VM that stopped with an error counts as off.
     private func stopped(_ guest: GuestVM, within timeout: Duration) async -> Bool {
-        (try? await guest.waitForStop(timeout: timeout)) ?? true
+        (try? await guest.waitForPowerOff(timeout: timeout)) ?? true
     }
 
     private func ssh(_ ip: String) throws -> GuestSSH {

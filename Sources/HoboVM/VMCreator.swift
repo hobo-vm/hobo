@@ -195,7 +195,7 @@ public struct VMCreator {
         log("Shutting down")
         // ssh usually drops mid-command here; the VM state is what matters.
         try await ssh.run("\(sudo) shutdown -h now", quiet: true)
-        if try await !vm.waitUntilStopped(timeout: .seconds(5 * 60)) {
+        if try await !vm.waitForPowerOffOrForce(timeout: .seconds(5 * 60)) {
             log("warning: guest did not power off within 5 minutes; forced it off")
         }
     }
