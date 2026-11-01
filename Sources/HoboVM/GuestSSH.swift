@@ -52,12 +52,12 @@ public struct GuestSSH: Sendable {
     /// leader) after a marker unique to this run. The marker line is kept out of the output and
     /// the PID used to kill the group on cancel; anything a startup file printed first passes through.
     public func exec(_ command: [String], onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
-        let marker = PIDMarker(onOutput)
+        let pidMarker = PIDMarker(onOutput)
         let status = try await stream(
-            "echo \(marker.marker)$$; exec " + command.map(shellQuote).joined(separator: " "), onOutput: marker.receive
+            "echo \(pidMarker.marker)$$; exec " + command.map(shellQuote).joined(separator: " "), onOutput: pidMarker.receive
         )
-        marker.finish()
-        if Task.isCancelled, let pid = marker.pid {
+        pidMarker.finish()
+        if Task.isCancelled, let pid = pidMarker.pid {
             // A task of its own, since this one's cancellation would end the kill's ssh at once.
             _ = try? await Task { try await run("kill -TERM -- -\(pid)", quiet: true) }.value
         }
@@ -116,7 +116,6 @@ public struct GuestSSH: Sendable {
         return options
     }
 
-    /// Takes the guest shell's PID from the first line of stdout and passes the rest on.
     /// Takes the guest shell's PID from the `<marker><pid>` line in stdout and passes everything
     /// else on, in order.
     final class PIDMarker: Sendable {
@@ -137,10 +136,10 @@ public struct GuestSSH: Sendable {
             let ready: Data = state.withLock { state in
                 guard var pending = state.pending else { return data }
                 pending.append(data)
-                let marker = Data(self.marker.utf8)
-                guard let found = pending.firstRange(of: marker) else {
+                let markerBytes = Data(marker.utf8)
+                guard let found = pending.firstRange(of: markerBytes) else {
                     // Hold back a tail that could be the start of a marker split across chunks.
-                    let keep = min(pending.count, marker.count - 1)
+                    let keep = min(pending.count, markerBytes.count - 1)
                     state.pending = Data(pending.suffix(keep))
                     return Data(pending.dropLast(keep))
                 }
