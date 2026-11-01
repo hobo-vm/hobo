@@ -103,14 +103,39 @@ import Testing
         }
     }
 
+    @Test func emptyVersionIsRejected() {
+        #expect(throws: RecipeError.missingVersion) {
+            try Recipe.parse(minimal(source: #"ipsw = "latest""#, version: ""), directory: directory)
+        }
+    }
+
     @Test func missingFilesAreReported() throws {
-        let recipe = try Recipe.parse(minimal(source: #"ipsw = "latest""#) + """
+        let dir = FileManager.default.temporaryDirectory.appending(path: "hobo-recipe-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try Data().write(to: dir.appending(path: "present.sh"))
+
+        let recipe = try Recipe.parse(minimal(source: "ipsw = \"mac.ipsw\"\nsha256 = \"\(sha)\"") + """
 
         [[provision]]
         type = "shell"
         path = "setup.sh"
-        """, directory: FileManager.default.temporaryDirectory)
-        #expect(recipe.missingFiles() == ["setup.sh"])
+
+        [[provision]]
+        type = "shell"
+        path = "present.sh"
+
+        [[provision]]
+        type = "shell"
+        inline = "true"
+
+        [[provision]]
+        type = "file"
+        source = "files/profile"
+        destination = "/Users/vagrant/.profile"
+        """, directory: dir)
+        #expect(recipe.missingFiles() == ["setup.sh", "files/profile", dir.appending(path: "mac.ipsw").standardizedFileURL.path])
+        #expect(throws: RecipeError.missingFiles(recipe.missingFiles())) { try recipe.checkFilesExist() }
     }
 
     @Test func shippedRecipesParseAndArePinned() throws {
