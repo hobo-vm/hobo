@@ -128,9 +128,11 @@ public struct BoxBuilder {
         provisioning.enablesRemoteLogin = true
         log("First boot with unattended setup")
         try await vm.start(provisioning: provisioning)
+        // Until the conventions script installs the insecure key, the guest only takes the password.
+        let auth = GuestSSH.Auth.password(Conventions.password)
         do {
             let ip = try await vm.waitForIPAddress(timeout: .seconds(20 * 60))
-            let ssh = GuestSSH(host: ip, auth: .password(Conventions.password))
+            let ssh = GuestSSH(host: ip, auth: auth)
             try await ssh.waitUntilReachable(timeout: .seconds(20 * 60))
             // Passwordless sudo doesn't exist until the conventions script has run.
             let passwordSudo = "echo \(shellQuote(Conventions.password)) | sudo -S -p ''"
@@ -139,23 +141,24 @@ public struct BoxBuilder {
             try await ssh.check("\(passwordSudo) /bin/bash /tmp/hobo-conventions.sh && rm /tmp/hobo-conventions.sh", what: "conventions")
             try await shutDown(vm, ssh: ssh, sudo: passwordSudo)
         } catch {
-            try await holdForDebugging(vm, error: error)
+            try await holdForDebugging(vm, auth: auth, error: error)
             throw error
         }
     }
 
     /// Boots the bundle with the insecure key, runs `body`, and expects it to shut the VM down.
     private func withVM(_ bundle: MacVMBundle, cpus: Int, memory: UInt64, _ body: (GuestVM, GuestSSH) async throws -> Void) async throws {
+        let auth = GuestSSH.Auth.key(try home.ensureInsecurePrivateKey())
         let vm = try GuestVM(bundle: bundle, cpus: cpus, memoryBytes: memory)
         log("Booting")
         try await vm.start()
         do {
             let ip = try await vm.waitForIPAddress(timeout: .seconds(10 * 60))
-            let ssh = GuestSSH(host: ip, auth: .key(try home.ensureInsecurePrivateKey()))
+            let ssh = GuestSSH(host: ip, auth: auth)
             try await ssh.waitUntilReachable(timeout: .seconds(10 * 60))
             try await body(vm, ssh)
         } catch {
-            try await holdForDebugging(vm, error: error)
+            try await holdForDebugging(vm, auth: auth, error: error)
             throw error
         }
     }
@@ -210,13 +213,14 @@ public struct BoxBuilder {
     }
 
     /// Prints how to get into a failed build, and with `holdOnFailure` keeps the VM up until ^C.
-    private func holdForDebugging(_ vm: GuestVM, error: Error) async throws {
+    private func holdForDebugging(_ vm: GuestVM, auth: GuestSSH.Auth, error: Error) async throws {
         log("Build failed: \(error)")
         log("Working directory kept at \(vm.bundle.directory.path)")
         guard !vm.isStopped else { return }
         if options.holdOnFailure, let ip = DHCPLeases.ipAddress(forMAC: vm.macAddress.string) {
-            let ssh = GuestSSH(host: ip, auth: .key(try home.ensureInsecurePrivateKey()))
-            log("VM left running for debugging; press ^C to stop it:\n  \(ssh.commandLine)")
+            let ssh = GuestSSH(host: ip, auth: auth)
+            let password = if case .password(let password) = auth { " (password: \(password))" } else { "" }
+            log("VM left running for debugging; press ^C to stop it:\n  \(ssh.commandLine)\(password)")
             while !vm.isStopped { try await Task.sleep(for: .seconds(1)) }
         }
         try await vm.forceStop()
