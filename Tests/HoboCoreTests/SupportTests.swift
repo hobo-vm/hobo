@@ -107,6 +107,33 @@ import Testing
         #expect(try downloaded() == ["mac 2.ipsw", "mac.ipsw"])
     }
 
+    @Test func indexedFileNotMatchingThePinIsKeptAndAFreshCopyDownloaded() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = try HTTPServer(directory: served)
+        defer { server.stop() }
+        let url = server.url(for: "mac.ipsw")
+        let old = try await index.fetch(url, expectedSHA256: nil) { _, _ in }
+
+        // The vendor replaces the file behind the URL and the recipe is re-pinned to it.
+        try Data("a newer build".utf8).write(to: served.appending(path: "mac.ipsw"))
+        let sha = try shasum(served.appending(path: "mac.ipsw"))
+        let fetched = try await index.fetch(url, expectedSHA256: sha) { _, _ in }
+        #expect(fetched.file == downloads.appending(path: "mac 2.ipsw"))
+        #expect(try Data(contentsOf: old.file) == payload)
+        #expect(try entries()[url.absoluteString]?.path == fetched.file.standardizedFileURL.path)
+    }
+
+    @Test func corruptIndexIsTreatedAsEmpty() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: index.indexFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("{not json".utf8).write(to: index.indexFile)
+        let server = try HTTPServer(directory: served)
+        defer { server.stop() }
+        let url = server.url(for: "mac.ipsw")
+        let fetched = try await index.fetch(url, expectedSHA256: nil) { _, _ in }
+        #expect(try entries()[url.absoluteString]?.sha256 == fetched.sha256)
+    }
+
     @Test func rejectsWrongHashAndHTTPErrors() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let server = try HTTPServer(directory: served)
