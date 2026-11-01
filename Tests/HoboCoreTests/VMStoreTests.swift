@@ -222,6 +222,36 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: job.plist.path))
         #expect(!FileManager.default.fileExists(atPath: job.log.path))
     }
+
+    @Test func summariesCarryEachStatesDetails() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        for name in ["up", "crashed", "down"] { try made(name) }
+        try orphaned("failed")
+        launchctl.list = """
+        PID\tStatus\tLabel
+        4242\t0\t\(store.job(for: "up").label)
+        -\t-9\t\(store.job(for: "crashed").label)
+        """
+        let summaries = Dictionary(uniqueKeysWithValues: store.list().map { ($0.name, VMSummary($0)) })
+        #expect(summaries["up"]?.state == .running && summaries["up"]?.pid == 4242 && summaries["up"]?.config == config)
+        #expect(summaries["crashed"]?.state == .crashed && summaries["crashed"]?.exitStatus == -9 && summaries["crashed"]?.pid == nil)
+        #expect(summaries["down"]?.state == .stopped && summaries["down"]?.bundle == store.bundle(for: "down").path)
+        #expect(summaries["failed"]?.state == .failed && summaries["failed"]?.config == nil)
+    }
+
+    @Test func summaryJSONUsesBytesAndISO8601() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try made("dev")
+        let line = String(decoding: try HoboJSON.line(store.list().map(VMSummary.init)), as: UTF8.self)
+        #expect(!line.contains("\n"))
+        #expect(line.contains(#""state":"stopped""#))
+        #expect(line.contains(#""memory":8589934592"#))
+        #expect(line.contains(#""created":"2027-01-15T08:00:00Z""#))
+        #expect(!line.contains("pid"))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        #expect(try decoder.decode([VMSummary].self, from: Data(line.utf8)) == store.list().map(VMSummary.init))
+    }
 }
 
 /// Stands in for `launchctl`: `list` prints `list`, everything else succeeds silently, and every

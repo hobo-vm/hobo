@@ -123,3 +123,19 @@ import Testing
         #expect(launchctl.called("kill"))
     }
 }
+
+@Suite struct LifecycleResultJSONTests {
+    private func json(_ value: some Encodable) throws -> String { String(decoding: try HoboJSON.line(value), as: UTF8.self) }
+
+    @Test func startResults() throws {
+        let status = VMRunStatus(state: .running, pid: 42, ipAddress: "192.168.64.5")
+        #expect(try json(VMLifecycle.StartResult.started(status))
+            == #"{"outcome":"started","status":{"ipAddress":"192.168.64.5","pid":42,"state":"running"}}"#)
+        #expect(try json(VMLifecycle.StartResult.alreadyRunning(nil)) == #"{"outcome":"alreadyRunning"}"#)
+    }
+
+    @Test func stopResults() throws {
+        #expect(try json(VMLifecycle.StopResult.stopped) == #"{"outcome":"stopped"}"#)
+        #expect(try json(VMLifecycle.StopResult.wasNotRunning) == #"{"outcome":"wasNotRunning"}"#)
+    }
+}

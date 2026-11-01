@@ -46,7 +46,13 @@ global VMs on 2026-11-01.
    `set <name> --cpus/--memory/--disk/--share/--unshare`, `snapshot save|restore|list|delete`,
    `provision <name> [recipe]` (re-run steps on an existing VM), `df`. A recipe argument defaults
    to `./Hobo.toml`; there is no `--from` and no `--ipsw` override (decided 2026-11-01: the recipe
-   names its source). Every command supports `--json`.
+   names its source). Every command supports `--json` (decided 2026-11-01): a command that finishes
+   quickly prints one JSON document; `create`, `start` and `stop`, which take minutes, print JSON
+   Lines instead, `{"event":"log","message":…}` as they go and a final `{"event":"result","result":…}`,
+   so an agent sees progress. A failure is JSON on stdout too (`{"error":…}`, or an `error` event)
+   with exit status 1; usage errors stay text on stderr. Sizes are bytes, dates ISO 8601, and the
+   shapes (`VMSummary`, `RecipeSummary`, the lifecycle results) live in the core so `hobo mcp` returns
+   the same ones. `delete --json` needs `--yes`, since it can't prompt.
 5. **Language.** Swift: swift-argument-parser, TOMLKit, modelcontextprotocol/swift-sdk.
 6. **Platform.** Apple Silicon only, macOS 27+, for `VZMacGuestProvisioningOptions` (unattended macOS
    setup with SSH), vmnet, and ASIF disks. Apple's licence (enforced by the framework) caps hosts at
@@ -246,7 +252,7 @@ builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` ind
 - **M1, a VM you live in:** `init`, `create`, `list`, `start` (headless under launchd via
   `_vm-run`), `stop`, `ssh`, `exec`, `cp`, `ip`, `view`, `delete`, `rename`, `set`, `provision`, `df`.
 - **M2, experiments:** `clone`, `--ephemeral`, live and stopped snapshots, `suspend`/resume.
-- **M3, agents:** leases, `[gui_testing]`, `exec --gui`, `screenshot`, `hobo mcp`, `--json`.
+- **M3, agents:** leases, `[gui_testing]`, `exec --gui`, `screenshot`, `hobo mcp`.
 - **M4:** Linux guests.
 - **M5:** Windows on the QEMU engine. The Windows spike (unattended install, headless boot, SSH,
   GUI-session screenshot) runs in parallel any time after M1, to prove the engine seam before M2/M3

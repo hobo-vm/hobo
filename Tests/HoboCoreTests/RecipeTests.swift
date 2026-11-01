@@ -36,6 +36,15 @@ import Testing
         #expect(recipe.resolve("files/profile").path == "/recipes/files/profile")
     }
 
+    @Test func summaryReportsSourceAndBytes() throws {
+        let latest = RecipeSummary(try Recipe.parse(minimal(source: #"ipsw = "latest""#), directory: directory), path: "Hobo.toml")
+        #expect(latest.source == "latest" && !latest.pinned)
+        #expect(latest.memory == Recipe.defaultMemory.bytes && latest.provisionSteps == 0)
+        let local = try Recipe.parse(minimal(source: "ipsw = \"macOS.ipsw\"\nsha256 = \"\(sha)\""), directory: directory)
+        #expect(RecipeSummary(local, path: "x").source == "/recipes/macOS.ipsw")
+        #expect(RecipeSummary(local, path: "x").pinned)
+    }
+
     @Test func latestNeedsNoHashAndAppliesDefaults() throws {
         let recipe = try Recipe.parse(minimal(source: #"ipsw = "latest""#), directory: directory)
         #expect(recipe.source == .latest)

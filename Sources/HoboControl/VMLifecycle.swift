@@ -178,3 +178,34 @@ public enum LifecycleError: Error, Equatable, CustomStringConvertible {
         }
     }
 }
+
+/// `{"outcome": "started" | "alreadyRunning", "status": {...}}`; the status is absent if an
+/// already-running VM process didn't answer.
+extension VMLifecycle.StartResult: Encodable {
+    private enum CodingKeys: String, CodingKey { case outcome, status }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .started(let status):
+            try container.encode("started", forKey: .outcome)
+            try container.encode(status, forKey: .status)
+        case .alreadyRunning(let status):
+            try container.encode("alreadyRunning", forKey: .outcome)
+            try container.encodeIfPresent(status, forKey: .status)
+        }
+    }
+}
+
+/// `{"outcome": "stopped" | "wasNotRunning"}`.
+extension VMLifecycle.StopResult: Encodable {
+    private enum CodingKeys: String, CodingKey { case outcome }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .stopped: try container.encode("stopped", forKey: .outcome)
+        case .wasNotRunning: try container.encode("wasNotRunning", forKey: .outcome)
+        }
+    }
+}

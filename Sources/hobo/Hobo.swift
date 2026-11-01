@@ -46,20 +46,31 @@ struct Init: AsyncParsableCommand {
     @Flag(help: "Overwrite an existing \(Recipe.fileName).")
     var force = false
 
+    @Flag(help: "Print the recipe's path and the image it is pinned to as JSON.")
+    var json = false
+
+    private struct Result: Encodable {
+        var path: String
+        var image: IPSWCatalog.Image?
+    }
+
     func run() async throws {
-        let url = URL.currentDirectory().appending(path: Recipe.fileName)
-        if FileManager.default.fileExists(atPath: url.path) && !force {
-            throw ValidationError("\(Recipe.fileName) already exists (use --force to overwrite)")
+        let output = Output(json: json)
+        try await output.reporting {
+            let url = URL.currentDirectory().appending(path: Recipe.fileName)
+            if FileManager.default.fileExists(atPath: url.path) && !force {
+                throw ValidationError("\(Recipe.fileName) already exists (use --force to overwrite)")
+            }
+            var template = Recipe.template
+            var image: IPSWCatalog.Image?
+            if let build {
+                image = try IPSWCatalog.image(build: build, in: try await IPSWCatalog.fetch(), hostMajor: IPSWCatalog.hostMajor)
+                template = Recipe.template(pinnedTo: image!)
+            }
+            try template.write(to: url, atomically: true, encoding: .utf8)
+            let pinned = image.map { " pinned to \($0.name) \($0.version) (\($0.build))" } ?? ""
+            output.result(Result(path: url.path, image: image), text: "Wrote \(Recipe.fileName)\(pinned)")
         }
-        var template = Recipe.template
-        var pinned = ""
-        if let build {
-            let image = try IPSWCatalog.image(build: build, in: try await IPSWCatalog.fetch(), hostMajor: IPSWCatalog.hostMajor)
-            template = Recipe.template(pinnedTo: image)
-            pinned = " pinned to \(image.name) \(image.version) (\(image.build))"
-        }
-        try template.write(to: url, atomically: true, encoding: .utf8)
-        print("Wrote \(Recipe.fileName)\(pinned)")
     }
 }
 
@@ -83,44 +94,39 @@ struct Images: AsyncParsableCommand {
     }
 
     func run() async throws {
-        let catalog = try await IPSWCatalog.fetch()
-        if let build {
-            try show(IPSWCatalog.image(build: build, in: catalog))
-            return
-        }
-        var images = IPSWCatalog.runnable(catalog, hostMajor: IPSWCatalog.hostMajor)
-        if latest { images = IPSWCatalog.latestPerMajor(images) }
-        if json {
-            print(String(decoding: try IPSWCatalog.json(images), as: UTF8.self))
-            return
-        }
-        let rows = [["NAME", "VERSION", "BUILD", "RELEASED", "SIZE"]] + images.map { image in
-            [image.name, image.version, image.build, image.releasedDay, image.formattedSize]
-        }
-        let widths = rows[0].indices.map { column in rows.map { $0[column].count }.max()! }
-        for row in rows {
-            print(zip(row, widths).map { $0.padding(toLength: $1, withPad: " ", startingAt: 0) }
-                .joined(separator: "  ").trimmingCharacters(in: .whitespaces))
+        let output = Output(json: json)
+        try await output.reporting {
+            let catalog = try await IPSWCatalog.fetch()
+            if let build {
+                let image = try IPSWCatalog.image(build: build, in: catalog)
+                output.result(image, text: details(image))
+                return
+            }
+            var images = IPSWCatalog.runnable(catalog, hostMajor: IPSWCatalog.hostMajor)
+            if latest { images = IPSWCatalog.latestPerMajor(images) }
+            output.result(images, text: table(images))
         }
     }
 
-    private func show(_ image: IPSWCatalog.Image) throws {
-        if json {
-            print(String(decoding: try IPSWCatalog.json(image), as: UTF8.self))
-            return
+    private func table(_ images: [IPSWCatalog.Image]) -> String {
+        let rows = [["NAME", "VERSION", "BUILD", "RELEASED", "SIZE"]] + images.map { image in
+            [image.name, image.version, image.build, image.releasedDay, image.formattedSize]
         }
+        return formatTable(rows)
+    }
+
+    private func details(_ image: IPSWCatalog.Image) -> String {
         let fields = [
             ("Name", image.name), ("Version", image.version), ("Build", image.build),
             ("Released", image.releasedDay),
             ("Size", "\(image.formattedSize) (\(image.size) bytes)"), ("URL", image.url.absoluteString),
             ("SHA-256", image.sha256), ("Signed", image.signed ? "yes" : "no"),
         ]
-        for (label, value) in fields {
-            print(label.padding(toLength: 10, withPad: " ", startingAt: 0) + value)
-        }
+        var lines = fields.map { label, value in label.padding(toLength: 10, withPad: " ", startingAt: 0) + value }
         if image.major > IPSWCatalog.hostMajor {
-            print("\nThis Mac (macOS \(IPSWCatalog.hostMajor)) can't run it: the guest is newer than the host.")
+            lines.append("\nThis Mac (macOS \(IPSWCatalog.hostMajor)) can't run it: the guest is newer than the host.")
         }
+        return lines.joined(separator: "\n")
     }
 }
 
@@ -130,13 +136,20 @@ struct Validate: ParsableCommand {
     @Argument(help: ArgumentHelp("Recipe file.", valueName: "recipe"))
     var path: String = Recipe.fileName
 
+    @Flag(help: "Print the recipe's settings as JSON.")
+    var json = false
+
     func run() throws {
-        let recipe = try Recipe.load(from: URL(filePath: path))
-        try recipe.checkFilesExist()
-        if !recipe.source.isPinned {
-            print("warning: source is unpinned (ipsw = \"latest\")")
+        let output = Output(json: json)
+        try output.reporting {
+            let recipe = try Recipe.load(from: URL(filePath: path))
+            try recipe.checkFilesExist()
+            let warning = recipe.source.isPinned ? "" : "warning: source is unpinned (ipsw = \"latest\")\n"
+            output.result(
+                RecipeSummary(recipe, path: path),
+                text: "\(warning)\(path): \(recipe.cpus) CPUs, \(recipe.memory) memory, \(recipe.disk) disk, \(recipe.provisioners.count) provision step(s)"
+            )
         }
-        print("\(path): \(recipe.cpus) CPUs, \(recipe.memory) memory, \(recipe.disk) disk, \(recipe.provisioners.count) provision step(s)")
     }
 }
 
@@ -157,25 +170,41 @@ struct Create: AsyncParsableCommand {
     @Flag(help: "If the build fails, keep the VM running for SSH until ^C, then delete it.")
     var holdOnFailure = false
 
+    @Flag(help: "Print progress and the new VM as JSON Lines events.")
+    var json = false
+
     @MainActor
     func run() async throws {
-        let recipeFile = URL(filePath: path)
-        if !FileManager.default.fileExists(atPath: recipeFile.path) {
-            let hint = path == Recipe.fileName ? " (run hobo init, or pass a recipe path)" : ""
-            throw CLIError("no recipe at \(path)\(hint)")
+        let output = Output(json: json, streaming: true)
+        try await output.reporting {
+            let recipeFile = URL(filePath: path)
+            if !FileManager.default.fileExists(atPath: recipeFile.path) {
+                let hint = path == Recipe.fileName ? " (run hobo init, or pass a recipe path)" : ""
+                throw CLIError("no recipe at \(path)\(hint)")
+            }
+            let options = VMCreator.Options(name: name, recipeFile: recipeFile, holdOnFailure: holdOnFailure)
+            let config = try await VMCreator(options: options, log: output.log).create()
+            output.result(
+                VMSummary(try VMStore.standard().find(name)),
+                text: "Created \(name): macOS \(config.guestOSVersion), \(config.cpus) CPUs, \(ByteSize(bytes: config.memory)) memory"
+            )
         }
-        let options = VMCreator.Options(name: name, recipeFile: recipeFile, holdOnFailure: holdOnFailure)
-        let config = try await VMCreator(options: options) { print($0) }.create()
-        print("Created \(name): macOS \(config.guestOSVersion), \(config.cpus) CPUs, \(ByteSize(bytes: config.memory)) memory")
     }
 }
 
 struct List: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "List VMs.")
 
+    @Flag(help: "Print each VM's state, size and configuration as JSON (sizes in bytes).")
+    var json = false
+
     func run() {
         let store = VMStore.standard()
         let vms = store.list()
+        if json {
+            Output(json: true).result(vms.map(VMSummary.init), text: "")
+            return
+        }
         guard !vms.isEmpty else {
             print("No VMs in \(store.directory.path).")
             return
@@ -194,11 +223,7 @@ struct List: ParsableCommand {
             case .broken: return [vm.name, "broken", "—", "—", "—", "\(used) / —"]
             }
         }
-        let widths = rows[0].indices.map { column in rows.map { $0[column].count }.max() ?? 0 }
-        for row in rows {
-            print(zip(row, widths).map { $0.padding(toLength: $1, withPad: " ", startingAt: 0) }.joined(separator: "  ")
-                .trimmingCharacters(in: .whitespaces))
-        }
+        print(formatTable(rows))
     }
 
     private func columns(_ config: VMConfig, used: String) -> [String] {
@@ -215,17 +240,25 @@ struct Start: AsyncParsableCommand {
     @Argument(help: "Name of the VM.")
     var name: String
 
+    @Flag(help: "Print progress and the VM's status (state, PID, IP address) as JSON Lines events.")
+    var json = false
+
     func run() async throws {
+        let output = Output(json: json, streaming: true)
+        let name = name
         let interrupt = signalSource(SIGINT) {
-            print("\nLeft \(name) booting (hobo stop \(name) to stop it)")
+            let message = "interrupted; left \(name) booting (hobo stop \(name) to stop it)"
+            if output.isJSON { output.fail(message) } else { print("\n" + message.prefix(1).uppercased() + message.dropFirst()) }
             Darwin.exit(130)
         }
         defer { interrupt.cancel() }
-        switch try await VMLifecycle(log: { print($0) }).start(name) {
-        case .started(let status):
-            print("\(name) is running\(status.ipAddress.map { " (\($0))" } ?? "")")
-        case .alreadyRunning(let status):
-            print("\(name) is already running\(status?.ipAddress.map { " (\($0))" } ?? "")")
+        try await output.reporting {
+            let result = try await VMLifecycle(log: output.log).start(name)
+            let text = switch result {
+            case .started(let status): "\(name) is running\(status.ipAddress.map { " (\($0))" } ?? "")"
+            case .alreadyRunning(let status): "\(name) is already running\(status?.ipAddress.map { " (\($0))" } ?? "")"
+            }
+            output.result(result, text: text)
         }
     }
 }
@@ -242,10 +275,18 @@ struct Stop: AsyncParsableCommand {
     @Flag(help: "Power the VM off at once, and kill its VM process if it isn't answering.")
     var force = false
 
+    @Flag(help: "Print progress and the outcome as JSON Lines events.")
+    var json = false
+
     func run() async throws {
-        switch try await VMLifecycle(log: { print($0) }).stop(name, force: force) {
-        case .stopped: print("Stopped \(name)")
-        case .wasNotRunning: print("\(name) is not running")
+        let output = Output(json: json, streaming: true)
+        try await output.reporting {
+            let result = try await VMLifecycle(log: output.log).stop(name, force: force)
+            let text = switch result {
+            case .stopped: "Stopped \(name)"
+            case .wasNotRunning: "\(name) is not running"
+            }
+            output.result(result, text: text)
         }
     }
 }
@@ -294,9 +335,16 @@ struct Rename: ParsableCommand {
     @Argument(help: "New name.")
     var new: String
 
+    @Flag(help: "Print the renamed VM as JSON.")
+    var json = false
+
     func run() throws {
-        try VMStore.standard().rename(old, to: new)
-        print("Renamed \(old) to \(new)")
+        let output = Output(json: json)
+        try output.reporting {
+            let store = VMStore.standard()
+            try store.rename(old, to: new)
+            output.result(VMSummary(try store.find(new)), text: "Renamed \(old) to \(new)")
+        }
     }
 }
 
@@ -309,23 +357,42 @@ struct Delete: ParsableCommand {
     @Flag(name: .shortAndLong, help: "Don't ask for confirmation.")
     var yes = false
 
-    func run() throws {
-        let store = VMStore.standard()
-        let vm = try store.find(name)
-        try store.checkNotRunning(vm)
-        if !yes {
-            guard isatty(STDIN_FILENO) != 0 else {
-                throw CLIError("refusing to delete \(vm.name) without a terminal to confirm (pass --yes)")
-            }
-            print("Delete VM \"\(vm.name)\" (\(fileSize(vm.allocatedBytes)))? [y/N] ", terminator: "")
-            guard let answer = readLine(), ["y", "yes"].contains(answer.lowercased()) else {
-                print("Not deleted.")
-                return
-            }
-        }
-        try store.delete(vm.name)
-        print("Deleted \(vm.name)")
+    @Flag(help: "Print the deleted VM's name as JSON. Needs --yes.")
+    var json = false
+
+    func validate() throws {
+        if json && !yes { throw ValidationError("--json can't ask for confirmation; pass --yes too") }
     }
+
+    func run() throws {
+        let output = Output(json: json)
+        try output.reporting {
+            let store = VMStore.standard()
+            let vm = try store.find(name)
+            try store.checkNotRunning(vm)
+            if !yes {
+                guard isatty(STDIN_FILENO) != 0 else {
+                    throw CLIError("refusing to delete \(vm.name) without a terminal to confirm (pass --yes)")
+                }
+                print("Delete VM \"\(vm.name)\" (\(fileSize(vm.allocatedBytes)))? [y/N] ", terminator: "")
+                guard let answer = readLine(), ["y", "yes"].contains(answer.lowercased()) else {
+                    print("Not deleted.")
+                    return
+                }
+            }
+            try store.delete(vm.name)
+            output.result(["deleted": vm.name], text: "Deleted \(vm.name)")
+        }
+    }
+}
+
+/// Left-aligned columns two spaces apart, the first row a header.
+private func formatTable(_ rows: [[String]]) -> String {
+    let widths = rows[0].indices.map { column in rows.map { $0[column].count }.max() ?? 0 }
+    return rows.map { row in
+        zip(row, widths).map { $0.padding(toLength: $1, withPad: " ", startingAt: 0) }.joined(separator: "  ")
+            .trimmingCharacters(in: .whitespaces)
+    }.joined(separator: "\n")
 }
 
 /// Binary units, matching recipe sizes: an 8GB recipe shows as 8 GB, not 8.59 GB.

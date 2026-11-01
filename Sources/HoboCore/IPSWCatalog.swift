@@ -95,13 +95,6 @@ public enum IPSWCatalog {
         return image
     }
 
-    /// `value` (an image or a list of them) as JSON, for `hobo images --json`.
-    public static func json(_ value: some Encodable) throws -> Data {
-        let encoder = JSONEncoder.sorted
-        encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(value)
-    }
-
     public static var hostMajor: Int { ProcessInfo.processInfo.operatingSystemVersion.majorVersion }
 
     static func marketingName(major: Int) -> String {

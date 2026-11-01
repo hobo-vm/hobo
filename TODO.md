@@ -3,7 +3,7 @@
 Only 2 macOS guests can run per host, so a `create` plus a boot test fill both slots.
 
 - M1: `hobo view` on-demand window (`.accessory` NSApplication), `start --gui`
-- M1: `ssh` / `exec` / `cp` / `ip`, shared vmnet NAT with Hobo-controlled DHCP; replace the insecure key with a per-VM key at the end of `create` (design decision 10.3)
+- M1: `ssh` / `exec` / `cp` / `ip` (`--json` where they print something: `ip`, `exec`'s exit status), shared vmnet NAT with Hobo-controlled DHCP; replace the insecure key with a per-VM key at the end of `create` (design decision 10.3)
 - M1 [verify]: ASIF space reclaim from inside a macOS guest (create a file, delete it, check the bundle's disk size on the host); if it doesn't shrink, revisit the no-compaction decision
 - M1 [verify]: disk grow end to end: resize the ASIF, then grow the guest's APFS container without removing Recovery (needed by `[gui_testing]`)
 - M1: `hobo set` (cpus, memory, disk grow, persistent virtio-fs shares), `start --share`, `hobo provision <name> [recipe]`
@@ -17,7 +17,6 @@ Only 2 macOS guests can run per host, so a `create` plus a boot test fill both s
 - M3: recipe `[gui_testing]`: SIP off via recovery boot + TCC pre-grants (Accessibility, Screen Recording)
 - M3: `exec --gui` (Aqua session via `launchctl asuser`), `hobo screenshot`
 - M3: `hobo mcp` stdio server (lifecycle, exec, copy_in/out, screenshot, clone, snapshot, set, provision, list)
-- M3: `--json` output on every command
 - M4: Linux guests (cloud image + cloud-init recipes); optional Rosetta (virtio-fs Rosetta share + binfmt)
 - M5: QEMU engine (`engine = "qemu"`) for Windows: same bundle, clone, snapshot, suspend, leases; `exec --gui` via scheduled task; UI Automation/WinAppDriver
 - Later: host-side framebuffer screenshot for wedged guests
