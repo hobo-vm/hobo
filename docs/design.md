@@ -38,12 +38,15 @@ global VMs on 2026-11-01.
    `create` prints (decided 2026-11-01: Apple publishes no SHA-256, so pinning there would mean a
    20 GB download); `hobo init <build>` pins a build from `hobo images` (decision 8).
 4. **Commands.** VM-centric verbs, no Vagrant aliases:
-   `init [<build>] [--force]`, `images [<build>] [--latest]`, `validate [file]`, `create <name> --from Hobo.toml [--ipsw path]`, `list`, `start [--ephemeral] [--gui] [--cold]
-   [--share path] [--idle-timeout d]`, `stop [--force]`, `suspend`, `ssh <name> [-- cmd]`,
-   `exec <name> [--gui] -- cmd`, `cp`, `ip`, `view`, `screenshot`, `clone <src> <dst> [--ephemeral]`,
-   `delete`, `rename`, `set <name> --cpus/--memory/--disk/--share/--unshare`,
-   `snapshot save|restore|list|delete`, `provision <name> --from Hobo.toml` (re-run steps on an
-   existing VM), `df`. Every command supports `--json`.
+   `init [<build>] [--force]`, `images [<build>] [--latest]`, `validate [recipe]`,
+   `create <name> [recipe] [--hold-on-failure]`, `list`,
+   `start [--ephemeral] [--gui] [--cold] [--share path] [--idle-timeout d]`, `stop [--force]`,
+   `suspend`, `ssh <name> [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp`, `ip`, `view`, `screenshot`,
+   `clone <src> <dst> [--ephemeral]`, `delete <name> [--yes]`, `rename <old> <new>`,
+   `set <name> --cpus/--memory/--disk/--share/--unshare`, `snapshot save|restore|list|delete`,
+   `provision <name> [recipe]` (re-run steps on an existing VM), `df`. A recipe argument defaults
+   to `./Hobo.toml`; there is no `--from` and no `--ipsw` override (decided 2026-11-01: the recipe
+   names its source). Every command supports `--json`.
 5. **Language.** Swift: swift-argument-parser, TOMLKit, modelcontextprotocol/swift-sdk.
 6. **Platform.** Apple Silicon only, macOS 27+, for `VZMacGuestProvisioningOptions` (unattended macOS
    setup with SSH), vmnet, and ASIF disks. Apple's licence (enforced by the framework) caps hosts at
@@ -52,11 +55,16 @@ global VMs on 2026-11-01.
 ### Storage
 
 7. **VM bundles.** Each VM is a visible directory bundle, `~/Hobo/<name>.hobovm`, like
-   `~/Parallels` and clear of Fusion's `~/Virtual Machines` (`HOBO_VMS` overrides the directory, e.g. for an external SSD), holding the disk, aux and
-   identifier files, `config.json`, a copy of the recipe it was built from (plus its hash and the
-   source hash), `snapshots/`, and any saved state. Finder shows sizes and can move or delete bundles;
-   a vanished bundle is a deleted VM, and Hobo refuses to start or delete a bundle whose VM process is
-   still running. `~/.hobo/` holds only small state: the IPSW index, logs, sockets, launchd plists.
+   `~/Parallels` and clear of Fusion's `~/Virtual Machines` (`HOBO_VMS` overrides the directory,
+   e.g. for an external SSD), holding the disk, aux and identifier files, `config.json`, the recipe
+   it was built from (`recipe.toml`, verbatim), `snapshots/`, and any saved state. Finder shows
+   sizes and can move or delete bundles; a vanished bundle is a deleted VM, and Hobo refuses to
+   start, rename or delete a bundle that is being built or whose VM process is still running.
+   Names match `[A-Za-z0-9][A-Za-z0-9._-]{0,62}` (a filename, launchd label and socket name) and
+   collide case-insensitively; `create` and `rename` refuse a taken name, with no `--force`.
+   `delete` asks for confirmation on a terminal, refuses without one unless `--yes`, and `rename`
+   is a directory move (nothing inside the bundle records the name). `~/.hobo/` holds only small
+   state: the IPSW index, logs, sockets, launchd plists.
    A macOS guest's Apple ID identity derives from the host's Secure Enclave and host user, so a
    bundle moved to another Mac or user (e.g. on an external SSD) makes the guest re-authenticate.
 8. **Install images.** Downloads land in `~/Downloads` under the vendor's filename (e.g.
@@ -67,7 +75,7 @@ global VMs on 2026-11-01.
    already in `~/Downloads` under the vendor's name is hashed and adopted if it matches; otherwise
    the download takes a Finder-style free name (`<name> 2.ipsw`) and never overwrites it. A stale
    `.part` restarts from scratch; there is no resume, and concurrent downloads of one URL are
-   unsupported. Local paths (`--ipsw`, or a path in `[source]`) are used in place, never copied.
+   unsupported. A local path in `[source]` is used in place, never copied.
    `ipsw = "latest"` uses `VZMacOSRestoreImage.latestSupported`, warns as unpinned and prints the pin.
    Choosing a version replaces Mist (decided 2026-11-01): `hobo images` lists the macOS IPSWs
    (name, version, build, release date, size; `--latest` keeps the newest of each major;
@@ -80,7 +88,9 @@ global VMs on 2026-11-01.
    catalog; recipes always hold a URL, so builds never depend on it. Later, `images --os` adds
    Linux, Windows and simulator images.
 9. **Runtime config.** The recipe supplies defaults; `create` copies them into the bundle's
-   `config.json`, which is the truth thereafter. `hobo set` changes CPUs, memory, disk (grow only) and
+   `config.json`, which is the truth thereafter: `engine`, `os`, `cpus`, `memory` and `disk` (bytes),
+   `macAddress` (fixed at create, so the DHCP lease and `hobo ip` are stable), `guestOSVersion`,
+   `created`, `recipeSHA256` and `sourceSHA256`. `hobo set` changes CPUs, memory, disk (grow only) and
    persistent shares (virtio-fs; macOS default mount `/Volumes/My Shared Files/<tag>`, `readonly`
    supported). `start --share` adds a share for that run only. Clones inherit `config.json`.
    Shares must be folders: virtio-fs rejects volume roots, so Hobo refuses them up front. Guests
@@ -91,8 +101,10 @@ global VMs on 2026-11-01.
 
 ### VM lifecycle
 
-10. **Create.** `hobo create dev --from Hobo.toml` builds in place in the bundle, marked `building`
-    in `hobo list` until done. There are no checkpoints: every create is a full install (decided
+10. **Create.** `hobo create dev` builds in place in the bundle, which holds a `building` marker
+    with the creating process's PID until done; `config.json` is written only on success. `hobo list`
+    shows `building` while that process lives and `failed` once it is gone (`delete` removes it), and
+    `broken` for a bundle with neither a valid `config.json` nor a marker. There are no checkpoints: every create is a full install (decided
     2026-11-01; clone covers "another one like this"). Steps for a macOS guest:
     1. source: resolve and verify the IPSW (decision 8). A guest newer than the host needs Apple's
        Device Support package (or the matching Xcode beta) on the host; without it the install fails
@@ -113,8 +125,9 @@ global VMs on 2026-11-01.
        didn't reclaim ASIF space while RAW did (see `TODO.md`).
 
     During create the guest IP comes from `/var/db/dhcpd_leases` by MAC; SSH is the system `ssh`/`scp`,
-    with the password supplied through `SSH_ASKPASS` until the key is in place. A failed create deletes
-    the bundle unless `--hold-on-failure`, which keeps the VM up and prints the SSH command.
+    with the password supplied through `SSH_ASKPASS` until the key is in place. A failed or
+    interrupted (^C, SIGTERM) create deletes the bundle; `--hold-on-failure` first keeps the failed VM
+    up and prints the SSH command, and deletes it on ^C.
 11. **Start, stop, suspend.** `start` boots, or resumes saved state if suspended (`--cold` discards
     it). `stop` is a clean shutdown (graceful request, then SSH `shutdown -h now`, then force after a
     timeout or with `--force`). `suspend` saves memory and device state and exits the VM process;
@@ -183,7 +196,8 @@ global VMs on 2026-11-01.
     (ad-hoc by default, `HOBO_SIGN_IDENTITY` for Developer ID), installs to `$(PREFIX)/bin`
     (default `~/.local/bin`). launchd plists reference this stable path.
 23. **Layout.** One Swift package, one `hobo` executable:
-    - `HoboCore`: recipes, VM bundles and `config.json`, image index, provisioners
+    - `HoboCore`: recipes, the VM store (`VMStore`: bundle paths, names, list, rename, delete) and
+      `config.json` (`VMConfig`), image index, provisioners
     - `HoboVM`: engines (Virtualization framework, later QEMU), VM creation, display
     - `HoboControl`: client ↔ VM-process socket protocol
     - `HoboMCP`: MCP tools
@@ -203,7 +217,7 @@ checkpoints and the project-scoped Boxcar (`[[machine]]`, `[defaults]`, `forward
 builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` index) replaced `Depot`.
 
 - **M0, skeleton:** done.
-- **M1, a VM you live in:** `init`, `create --from`, `list`, `start` (headless under launchd via
+- **M1, a VM you live in:** `init`, `create`, `list`, `start` (headless under launchd via
   `_vm-run`), `stop`, `ssh`, `exec`, `cp`, `ip`, `view`, `delete`, `rename`, `set`, `provision`, `df`.
 - **M2, experiments:** `clone`, `--ephemeral`, live and stopped snapshots, `suspend`/resume.
 - **M3, agents:** leases, `[gui_testing]`, `exec --gui`, `screenshot`, `hobo mcp`, `--json`.

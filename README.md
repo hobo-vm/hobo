@@ -6,12 +6,14 @@ built on Apple's Virtualization framework. Vagrant-inspired, not a Vagrant clone
 ```sh
 hobo init                          # write a starter Hobo.toml
 hobo validate                      # check it without building
-hobo create dev --from Hobo.toml   # build a VM (coming in M1)
+hobo create dev                    # build a VM from ./Hobo.toml
+hobo list
 hobo start dev                     # headless; never steals focus
 hobo ssh dev
 ```
 
-> Status: **M1 in progress.** `hobo init` and `hobo validate` are implemented.
+> Status: **M1 in progress.** `init`, `validate`, `create`, `list`, `rename` and `delete` are
+> implemented. VMs live in `~/Hobo/<name>.hobovm` (`HOBO_VMS` overrides the directory).
 > See [docs/design.md](docs/design.md) for the design and milestones.
 
 ## Recipes

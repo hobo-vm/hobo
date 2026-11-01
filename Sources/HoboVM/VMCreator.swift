@@ -3,63 +3,84 @@ import HoboCore
 import Synchronization
 import Virtualization
 
-/// Builds a macOS VM from a recipe, in place in a directory: IPSW → unattended install → Vagrant
-/// conventions → recipe steps → cleanup → clean shutdown. Every create is a full install.
+/// Creates a named macOS VM from a recipe, built in place in its bundle: IPSW → unattended install
+/// → Vagrant conventions → recipe steps → cleanup → clean shutdown. Every create is a full install.
+/// A failed or interrupted (^C) create deletes the bundle.
 @MainActor
 public struct VMCreator {
     public struct Options: Sendable {
-        /// Where the VM is built and left. Created if missing.
-        public var directory: URL
-        /// On failure, leave the VM running for SSH until interrupted.
+        public var name: String
+        public var recipeFile: URL
+        /// On failure, leave the VM running for SSH until interrupted; the bundle is deleted after.
         public var holdOnFailure: Bool
 
-        public init(directory: URL, holdOnFailure: Bool = false) {
-            self.directory = directory
+        public init(name: String, recipeFile: URL, holdOnFailure: Bool = false) {
+            self.name = name
+            self.recipeFile = recipeFile
             self.holdOnFailure = holdOnFailure
         }
     }
 
-    public struct Result: Sendable {
-        public var bundle: MacVMBundle
-        /// The recipe's values raised to the IPSW's minimums.
-        public var cpus: Int
-        public var memoryBytes: UInt64
-        /// e.g. `27.2.0 (26B123)`.
-        public var guestOSVersion: String
-    }
-
-    let recipe: Recipe
+    let store: VMStore
     let home: HoboHome
     let options: Options
     let log: @Sendable (String) -> Void
 
-    public init(recipe: Recipe, home: HoboHome = .standard(), options: Options, log: @escaping @Sendable (String) -> Void) {
-        self.recipe = recipe
+    public init(store: VMStore = .standard(), home: HoboHome = .standard(), options: Options, log: @escaping @Sendable (String) -> Void) {
+        self.store = store
         self.home = home
         self.options = options
         self.log = log
     }
 
-    public func create() async throws -> Result {
+    public func create() async throws -> VMConfig {
+        // Parsed from the bytes that are hashed and copied into the bundle, so all three agree.
+        let recipeData = try Data(contentsOf: options.recipeFile)
+        guard let toml = String(data: recipeData, encoding: .utf8) else {
+            throw CocoaError(.fileReadInapplicableStringEncoding, userInfo: [NSURLErrorKey: options.recipeFile])
+        }
+        let recipe = try Recipe.parse(toml, directory: options.recipeFile.deletingLastPathComponent())
         try recipe.checkFilesExist()
 
-        let ipsw = try await resolveSource()
+        let bundle = try store.beginCreate(options.name)
+        let interrupts = InterruptCleanup(bundle: bundle, log: log)
+        defer { interrupts.cancel() }
+        do {
+            log("Creating \(options.name) from \(options.recipeFile.path) in \(bundle.path)")
+            let config = try await build(recipe, recipeSHA256: VMStore.sha256(recipeData), in: bundle)
+            try store.finishCreate(options.name, config: config, recipe: recipeData)
+            return config
+        } catch {
+            do {
+                try store.abandonCreate(options.name)
+                log("Deleted \(bundle.path)")
+            } catch let cleanupError {
+                log("warning: could not delete \(bundle.path): \(cleanupError)")
+            }
+            throw error
+        }
+    }
+
+    private func build(_ recipe: Recipe, recipeSHA256: String, in directory: URL) async throws -> VMConfig {
+        let (ipsw, sourceSHA256) = try await resolveSource(recipe.source)
         let image = try await VZMacOSRestoreImage.image(from: ipsw)
         guard let requirements = image.mostFeaturefulSupportedConfiguration, requirements.hardwareModel.isSupported else {
             throw VMError.unsupportedRestoreImage
         }
-        let cpus = max(recipe.cpus, requirements.minimumSupportedCPUCount)
-        let memory = max(recipe.memory.bytes, requirements.minimumSupportedMemorySize)
+        let machine = Machine(
+            cpus: max(recipe.cpus, requirements.minimumSupportedCPUCount),
+            memory: max(recipe.memory.bytes, requirements.minimumSupportedMemorySize),
+            macAddress: .randomLocallyAdministered()
+        )
         let os = image.operatingSystemVersion
-        let guestVersion = "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion) (\(image.buildVersion))"
 
-        let bundle = try MacVMBundle.create(at: options.directory, hardwareModel: requirements.hardwareModel, diskBytes: recipe.disk.bytes)
-        try await installAndApplyConventions(bundle, ipsw: ipsw, cpus: cpus, memory: memory)
+        let bundle = try MacVMBundle.create(at: directory, hardwareModel: requirements.hardwareModel, diskBytes: recipe.disk.bytes)
+        try await installAndApplyConventions(bundle, ipsw: ipsw, machine: machine)
 
-        try await withVM(bundle, cpus: cpus, memory: memory) { vm, ssh in
+        try await withVM(bundle, machine: machine) { vm, ssh in
             for (index, step) in recipe.provisioners.enumerated() {
                 log("Provision step \(index + 1)/\(recipe.provisioners.count) (\(step.type.rawValue))")
-                try await provision(step, index: index, ssh: ssh)
+                try await provision(step, index: index, recipe: recipe, ssh: ssh)
             }
             log("Cleaning up")
             try await ssh.upload(contents: Conventions.cleanupScript, to: "/tmp/hobo-cleanup.sh")
@@ -67,36 +88,49 @@ public struct VMCreator {
             try await shutDown(vm, ssh: ssh)
         }
         log("Disk uses \(ByteCountFormatter.string(fromByteCount: Int64(bundle.allocatedDiskBytes()), countStyle: .file))")
-        return Result(bundle: bundle, cpus: cpus, memoryBytes: memory, guestOSVersion: guestVersion)
+        return VMConfig(
+            engine: .vz, os: .macOS, cpus: machine.cpus, memory: machine.memory, disk: recipe.disk.bytes,
+            macAddress: machine.macAddress.string,
+            guestOSVersion: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion) (\(image.buildVersion))",
+            created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256
+        )
     }
 
-    private func resolveSource() async throws -> URL {
+    /// The hardware every boot of the VM uses: the recipe's values raised to the IPSW's minimums,
+    /// and one MAC for the VM's life.
+    fileprivate struct Machine {
+        var cpus: Int
+        var memory: UInt64
+        var macAddress: VZMACAddress
+    }
+
+    private func resolveSource(_ source: Recipe.Source) async throws -> (file: URL, sha256: String) {
         let images = ImageIndex.standard(home: home)
         let progress = ProgressLine(log: log)
-        switch recipe.source {
+        switch source {
         case .latest:
             let image = try await VZMacOSRestoreImage.latestSupported
             log("warning: source is unpinned (ipsw = \"latest\"); resolved to \(image.url.absoluteString)")
-            let (file, sha) = try await images.fetch(image.url, expectedSHA256: nil, log: log, progress: progress.report)
-            log("Pin it by replacing ipsw = \"latest\" in [source] with:\nipsw = \"\(image.url.absoluteString)\"\nsha256 = \"\(sha)\"")
-            return file
+            let fetched = try await images.fetch(image.url, expectedSHA256: nil, log: log, progress: progress.report)
+            log("Pin it by replacing ipsw = \"latest\" in [source] with:\nipsw = \"\(image.url.absoluteString)\"\nsha256 = \"\(fetched.sha256)\"")
+            return fetched
         case .remote(let url, let sha):
-            return try await images.fetch(url, expectedSHA256: sha, log: log, progress: progress.report).file
+            return try await images.fetch(url, expectedSHA256: sha, log: log, progress: progress.report)
         case .local(let url, let sha):
             try images.verify(url, sha256: sha, log: log)
-            return url
+            return (url, sha)
         }
     }
 
-    private func installAndApplyConventions(_ bundle: MacVMBundle, ipsw: URL, cpus: Int, memory: UInt64) async throws {
-        let installer = try GuestVM(bundle: bundle, cpus: cpus, memoryBytes: memory)
+    private func installAndApplyConventions(_ bundle: MacVMBundle, ipsw: URL, machine: Machine) async throws {
+        let installer = try GuestVM(bundle: bundle, machine: machine)
         log("Installing macOS (this takes a while)")
         let progress = ProgressLine(log: log)
         try await installer.install(ipsw: ipsw) { progress.report(Int64($0 * 100), 100) }
         // The installer leaves its VM running; boot a fresh one for unattended setup.
         try await installer.forceStop()
 
-        let vm = try GuestVM(bundle: bundle, cpus: cpus, memoryBytes: memory)
+        let vm = try GuestVM(bundle: bundle, machine: machine)
 
         let provisioning = VZMacGuestProvisioningOptions()
         provisioning.fullName = Conventions.fullName
@@ -125,9 +159,9 @@ public struct VMCreator {
     }
 
     /// Boots the bundle with the insecure key, runs `body`, and expects it to shut the VM down.
-    private func withVM(_ bundle: MacVMBundle, cpus: Int, memory: UInt64, _ body: (GuestVM, GuestSSH) async throws -> Void) async throws {
+    private func withVM(_ bundle: MacVMBundle, machine: Machine, _ body: (GuestVM, GuestSSH) async throws -> Void) async throws {
         let auth = GuestSSH.Auth.key(try home.ensureInsecurePrivateKey())
-        let vm = try GuestVM(bundle: bundle, cpus: cpus, memoryBytes: memory)
+        let vm = try GuestVM(bundle: bundle, machine: machine)
         log("Booting")
         try await vm.start()
         do {
@@ -141,7 +175,7 @@ public struct VMCreator {
         }
     }
 
-    private func provision(_ step: Provisioner, index: Int, ssh: GuestSSH) async throws {
+    private func provision(_ step: Provisioner, index: Int, recipe: Recipe, ssh: GuestSSH) async throws {
         switch step.type {
         case .shell:
             let remote = "/tmp/hobo-provision-\(index + 1).sh"
@@ -166,18 +200,50 @@ public struct VMCreator {
         }
     }
 
-    /// Prints how to get into a failed create, and with `holdOnFailure` keeps the VM up until ^C.
+    /// With `holdOnFailure`, keeps a failed create's VM up for SSH until ^C (which deletes it).
     private func holdForDebugging(_ vm: GuestVM, auth: GuestSSH.Auth, error: Error) async throws {
         log("Create failed: \(error)")
-        log("VM kept at \(vm.bundle.directory.path)")
         guard !vm.isStopped else { return }
         if options.holdOnFailure, let ip = DHCPLeases.ipAddress(forMAC: vm.macAddress.string) {
             let ssh = GuestSSH(host: ip, auth: auth)
             let password = if case .password(let password) = auth { " (password: \(password))" } else { "" }
-            log("VM left running for debugging; press ^C to stop it:\n  \(ssh.commandLine)\(password)")
+            log("VM left running for debugging; press ^C to stop and delete it:\n  \(ssh.commandLine)\(password)")
             while !vm.isStopped { try await Task.sleep(for: .seconds(1)) }
         }
         try await vm.forceStop()
+    }
+}
+
+extension GuestVM {
+    fileprivate convenience init(bundle: MacVMBundle, machine: VMCreator.Machine) throws {
+        try self.init(bundle: bundle, cpus: machine.cpus, memoryBytes: machine.memory, macAddress: machine.macAddress)
+    }
+}
+
+/// While a create runs, ^C or SIGTERM deletes the half-built bundle and exits. The VM runs in this
+/// process, so it goes with it. Handled off the main queue, which a long hash can block.
+private final class InterruptCleanup: Sendable {
+    private let sources: [any DispatchSourceSignal]
+
+    init(bundle: URL, log: @escaping @Sendable (String) -> Void) {
+        sources = [SIGINT, SIGTERM].map { signo in
+            signal(signo, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: signo, queue: .global())
+            source.setEventHandler {
+                log("\nInterrupted; deleting \(bundle.path)")
+                try? FileManager.default.removeItem(at: bundle)
+                exit(128 + signo)
+            }
+            source.resume()
+            return source
+        }
+    }
+
+    func cancel() {
+        for source in sources {
+            source.cancel()
+            signal(Int32(source.handle), SIG_DFL)
+        }
     }
 }
 

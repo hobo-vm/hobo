@@ -30,7 +30,7 @@ public enum DHCPLeases {
         return leases
     }
 
-    /// The IP leased to `mac`. Hobo picks a random MAC per boot, so at most one lease matches.
+    /// The IP leased to `mac`. Each VM keeps its own MAC, so at most one lease matches.
     public static func ipAddress(forMAC mac: String, in text: String) -> String? {
         guard let wanted = normalize(mac) else { return nil }
         return parse(text).first { $0.hardwareAddress == wanted }?.ipAddress
