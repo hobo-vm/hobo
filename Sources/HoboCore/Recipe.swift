@@ -50,7 +50,7 @@ public struct Recipe: Equatable, Sendable {
         if recipe.memory.bytes == 0 { throw RecipeError.invalidHardware("memory must be more than 0") }
         if recipe.disk.bytes == 0 { throw RecipeError.invalidHardware("disk must be more than 0") }
         for (index, step) in recipe.provisioners.enumerated() {
-            try validate(step, index: index)
+            if let problem = step.problem { throw RecipeError.invalidProvisioner(index, problem) }
         }
         return recipe
     }
@@ -63,16 +63,12 @@ public struct Recipe: Equatable, Sendable {
     public var slug: String { "\(name.replacingOccurrences(of: "/", with: "-"))-\(version)" }
     public var boxFileName: String { "\(slug).box" }
 
-    public func resolve(_ path: String) -> URL { Self.resolve(path, in: directory) }
-
-    private static func resolve(_ path: String, in directory: URL) -> URL {
-        URL(filePath: (path as NSString).expandingTildeInPath, relativeTo: directory).standardizedFileURL
-    }
+    public func resolve(_ path: String) -> URL { resolveHostPath(path, relativeTo: directory) }
 
     /// Host files the recipe refers to that do not exist. Checked by `validate-recipe` and
     /// before a build, so a typo fails in seconds instead of after a 30-minute install.
     public func missingFiles() -> [String] {
-        var paths = provisioners.compactMap { $0.type == .shell ? $0.path : $0.source }
+        var paths = provisioners.compactMap(\.hostFile)
         if case .local(let url, _) = source { paths.append(url.path) }
         return paths.filter { !FileManager.default.fileExists(atPath: resolve($0).path) }
     }
@@ -89,7 +85,7 @@ public struct Recipe: Equatable, Sendable {
         if let url = URL(string: raw.ipsw), url.scheme == "https" || url.scheme == "http" {
             return .remote(url, sha256: sha)
         }
-        return .local(resolve(raw.ipsw, in: directory), sha256: sha)
+        return .local(resolveHostPath(raw.ipsw, relativeTo: directory), sha256: sha)
     }
 
     private static let nameCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
@@ -106,17 +102,6 @@ public struct Recipe: Equatable, Sendable {
         if version.isEmpty { throw RecipeError.missingVersion }
         guard version.unicodeScalars.allSatisfy(nameCharacters.union(CharacterSet(charactersIn: "+")).contains) else {
             throw RecipeError.invalidVersion(version)
-        }
-    }
-
-    private static func validate(_ step: Provisioner, index: Int) throws {
-        switch step.type {
-        case .shell where (step.inline == nil) == (step.path == nil):
-            throw RecipeError.invalidProvisioner(index, "shell needs exactly one of inline or path")
-        case .file where step.source == nil || step.destination == nil:
-            throw RecipeError.invalidProvisioner(index, "file needs source and destination")
-        default:
-            break
         }
     }
 }

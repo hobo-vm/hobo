@@ -170,15 +170,12 @@ public struct BoxBuilder {
             let remote = "/tmp/hobo-provision-\(index + 1).sh"
             if let inline = step.inline {
                 try await ssh.upload(contents: inline + "\n", to: remote)
-            } else if let path = step.path {
+            } else if let path = step.hostFile {
                 try await ssh.upload(recipe.resolve(path), to: remote)
             }
-            let env = (step.env ?? [:]).sorted { $0.key < $1.key }.map { shellQuote("\($0.key)=\($0.value)") }
-            let prefix = (step.privileged ?? true) ? ["sudo", "-n", "-H"] : []
-            let command = (prefix + ["env"] + env + ["/bin/bash", "-l", remote]).joined(separator: " ")
-            try await ssh.check(command, what: "provision step \(index + 1)")
+            try await ssh.check(step.shellCommand(running: remote), what: "provision step \(index + 1)")
         case .file:
-            guard let source = step.source, let destination = step.destination else { return }
+            guard let source = step.hostFile, let destination = step.destination else { return }
             try await ssh.upload(recipe.resolve(source), to: destination)
         }
     }

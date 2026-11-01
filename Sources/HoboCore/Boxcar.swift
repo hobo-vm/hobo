@@ -28,12 +28,22 @@ public struct Boxcar: Equatable, Sendable {
         for machine in machines where !seen.insert(machine.name).inserted {
             throw BoxcarError.duplicateMachine(machine.name)
         }
+        try validateProvisioners(defaults.provisioners, scope: "[defaults]")
+        for machine in machines {
+            try validateProvisioners(machine.settings.provisioners, scope: "machine \"\(machine.name)\"")
+        }
         return Boxcar(defaults: defaults, machines: machines)
     }
 
     public static func load(from directory: URL) throws -> Boxcar {
         let url = directory.appending(path: fileName)
         return try parse(String(contentsOf: url, encoding: .utf8))
+    }
+
+    private static func validateProvisioners(_ steps: [Provisioner]?, scope: String) throws {
+        for (index, step) in (steps ?? []).enumerated() {
+            if let problem = step.problem { throw BoxcarError.invalidProvisioner(scope, index, problem) }
+        }
     }
 
     /// The machine's settings with `[defaults]` filled in underneath.
@@ -45,10 +55,12 @@ public struct Boxcar: Equatable, Sendable {
 public enum BoxcarError: Error, Equatable, CustomStringConvertible {
     case duplicateMachine(String)
     case invalidSize(String)
+    case invalidProvisioner(String, Int, String)
 
     public var description: String {
         switch self {
         case .duplicateMachine(let name): "Boxcar declares machine \"\(name)\" more than once"
+        case .invalidProvisioner(let scope, let index, let reason): "\(scope) provision step \(index + 1): \(reason)"
         case .invalidSize(let value): "invalid size \"\(value)\" (expected e.g. \"512MB\" or \"8GB\")"
         }
     }
@@ -135,20 +147,6 @@ public struct SyncedFolder: Equatable, Sendable, Decodable {
     public var guest: String
     public var type: Kind?
     public var readonly: Bool?
-}
-
-public struct Provisioner: Equatable, Sendable, Decodable {
-    public enum Kind: String, Sendable, Decodable { case shell, file }
-    public enum Run: String, Sendable, Decodable { case once, always, never }
-
-    public var type: Kind
-    public var inline: String?
-    public var path: String?
-    public var source: String?
-    public var destination: String?
-    public var privileged: Bool?
-    public var run: Run?
-    public var env: [String: String]?
 }
 
 public struct PrivateNetwork: Equatable, Sendable, Decodable {

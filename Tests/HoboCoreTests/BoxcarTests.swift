@@ -71,3 +71,40 @@ import Testing
         #expect(throws: BoxcarError.invalidSize(text)) { try ByteSize(parsing: text) }
     }
 }
+
+@Suite struct ProvisionerTests {
+    @Test func boxcarRejectsTheStepsARecipeRejects() {
+        #expect(throws: BoxcarError.invalidProvisioner("machine \"app\"", 0, "shell needs exactly one of inline or path")) {
+            try Boxcar.parse("""
+            [[machine]]
+            name = "app"
+              [[machine.provision]]
+              type = "shell"
+              inline = "true"
+              path = "setup.sh"
+            """)
+        }
+        #expect(throws: BoxcarError.invalidProvisioner("[defaults]", 0, "file needs source and destination")) {
+            try Boxcar.parse("""
+            [defaults]
+              [[defaults.provision]]
+              type = "file"
+              source = "x"
+            """)
+        }
+    }
+
+    @Test func shellCommandIsPrivilegedByDefaultWithQuotedSortedEnv() {
+        let step = Provisioner(type: .shell, inline: "true", env: ["B": "two words", "A": "it's"])
+        #expect(step.shellCommand(running: "/tmp/s.sh")
+            == #"sudo -n -H env 'A=it'\''s' 'B=two words' /bin/bash -l '/tmp/s.sh'"#)
+        let unprivileged = Provisioner(type: .shell, inline: "true", privileged: false)
+        #expect(unprivileged.shellCommand(running: "/tmp/s.sh") == "env /bin/bash -l '/tmp/s.sh'")
+    }
+
+    @Test func hostFileIsThePathOrSourceTheStepReads() {
+        #expect(Provisioner(type: .shell, path: "a.sh").hostFile == "a.sh")
+        #expect(Provisioner(type: .shell, inline: "true").hostFile == nil)
+        #expect(Provisioner(type: .file, source: "b", destination: "/c").hostFile == "b")
+    }
+}
