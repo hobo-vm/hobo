@@ -167,6 +167,21 @@ import Testing
     }
 
     @Test(arguments: [false, true])
+    func startingARunningVMShowsItsWindowOnlyWithGUI(gui: Bool) async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let status = VMRunStatus(state: .running, pid: 4242)
+        let requests: Mutex<[ControlRequest]> = Mutex([])
+        let server = try ControlServer(path: store.job(for: "dev").socket) { request, _ in
+            requests.withLock { $0.append(request) }
+            return request == .status ? .status(status) : .accepted
+        }
+        defer { server.close() }
+        #expect(try await lifecycle.start("dev", gui: gui) == .alreadyRunning(status))
+        #expect(requests.withLock { $0 } == (gui ? [.view, .status] : [.status]))
+    }
+
+    @Test(arguments: [false, true])
     func onlyGUIStartsAskTheVMProcessForAWindow(gui: Bool) {
         let arguments = VMLifecycle.runArguments(executable: URL(filePath: "/bin/hobo"), name: "dev", gui: gui)
         #expect(arguments == ["/bin/hobo", "_vm-run", "dev"] + (gui ? ["--gui"] : []))
