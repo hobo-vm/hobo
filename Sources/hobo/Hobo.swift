@@ -233,7 +233,7 @@ struct Start: AsyncParsableCommand {
 struct Stop: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Shut a VM down.",
-        discussion: "Asks the guest to shut down, then runs shutdown over SSH, then powers it off if it is still on."
+        discussion: "Runs shutdown over SSH if the guest answers, otherwise asks the guest to shut down, then powers it off if it is still on."
     )
 
     @Argument(help: "Name of the VM.")
