@@ -23,11 +23,13 @@ public struct VMLifecycle: Sendable {
     }
 
     /// Boots `name` under launchd and waits until the guest answers SSH. A timeout leaves it booting.
-    public func start(_ name: String, timeout: Duration = .seconds(10 * 60)) async throws -> StartResult {
+    /// With `gui`, the VM's window opens at boot, or at once if it is already running.
+    public func start(_ name: String, gui: Bool = false, timeout: Duration = .seconds(10 * 60)) async throws -> StartResult {
         let vm = try store.find(name)
         let job = store.job(for: vm.name)
         switch vm.status {
         case .running:
+            if gui { try await view(vm.name) }
             return .alreadyRunning(try? await ControlClient.status(at: job.socket))
         case .stopped, .crashed:
             break
@@ -48,7 +50,7 @@ public struct VMLifecycle: Sendable {
         try? FileManager.default.removeItem(at: job.log)
         let plist = try Launchd.plist(
             label: job.label,
-            arguments: [executable.path, "_vm-run", vm.name],
+            arguments: Self.runArguments(executable: executable, name: vm.name, gui: gui),
             environment: ["HOBO_VMS": store.directory.path, "HOBO_HOME": store.home.root.path],
             log: job.log
         )
@@ -56,6 +58,28 @@ public struct VMLifecycle: Sendable {
         try store.launchd.bootstrap(job.plist)
         log("Starting \(vm.name)")
         return .started(try await waitUntilRunning(vm.name, job: job, timeout: timeout))
+    }
+
+    /// The VM process's command line, as launchd runs it.
+    static func runArguments(executable: URL, name: String, gui: Bool) -> [String] {
+        [executable.path, "_vm-run", name] + (gui ? ["--gui"] : [])
+    }
+
+    /// Shows the window of a running (or booting) VM and brings it to the front.
+    public func view(_ name: String) async throws {
+        let vm = try store.find(name)
+        guard vm.job?.pid != nil else { throw LifecycleError.notRunning(vm.name) }
+        let response: ControlResponse
+        do {
+            response = try await ControlClient.send(.view, to: store.job(for: vm.name).socket)
+        } catch {
+            throw LifecycleError.unresponsive(vm.name, String(describing: error))
+        }
+        switch response {
+        case .accepted: return
+        case .error(let message): throw LifecycleError.refused(vm.name, message)
+        default: throw ControlError.badMessage("expected an acknowledgement, got \(response)")
+        }
     }
 
     public enum StopResult: Equatable, Sendable {
@@ -154,6 +178,7 @@ public enum LifecycleError: Error, Equatable, CustomStringConvertible {
     case refused(String, String)
     case unresponsive(String, String)
     case stopTimedOut(String)
+    case notRunning(String)
 
     public var description: String {
         switch self {
@@ -168,6 +193,7 @@ public enum LifecycleError: Error, Equatable, CustomStringConvertible {
         case .refused(let name, let message): "the VM process for \(name) refused: \(message)"
         case .unresponsive(let name, let reason): "the VM process for \(name) isn't answering (\(reason)); hobo stop --force \(name) kills it"
         case .stopTimedOut(let name): "\(name) is still stopping (hobo stop --force \(name) powers it off)"
+        case .notRunning(let name): "\(name) is not running (hobo start --gui \(name))"
         }
     }
 }

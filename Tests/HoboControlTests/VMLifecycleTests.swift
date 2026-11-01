@@ -4,9 +4,9 @@ import Synchronization
 import Testing
 @testable import HoboControl
 
-/// `stop` against a fake launchd and a real control socket: which path it takes when the VM
-/// process answers, refuses, or is silent.
-@Suite struct VMLifecycleStopTests {
+/// `stop` and `view` against a fake launchd and a real control socket: which path each takes
+/// when the VM process answers, refuses, or is silent.
+@Suite struct VMLifecycleTests {
     /// Stands in for `launchctl`: one job, `dev`'s, whose process runs while `pid` is set.
     /// `kill` ends the process, and every call is recorded.
     final class FakeLaunchctl: Sendable {
@@ -122,6 +122,55 @@ import Testing
         #expect(try await lifecycle.stop("dev", force: true) == .stopped)
         #expect(launchctl.called("kill"))
     }
+
+    @Test func tailKeepsTheLastLines() throws {
+        defer { cleanUp() }
+        let log = store.directory.appending(path: "dev.log")
+        try (1...30).map { "line \($0)" }.joined(separator: "\n").appending("\n").write(to: log, atomically: true, encoding: .utf8)
+        #expect(VMLifecycle.tail(of: log, lines: 3) == "line 28\nline 29\nline 30")
+        #expect(VMLifecycle.tail(of: log.appending(path: "missing")).isEmpty)
+    }
+
+    @Test func viewRefusesAStoppedVM() async throws {
+        defer { cleanUp() }
+        await #expect(throws: LifecycleError.notRunning("dev")) { try await lifecycle.view("dev") }
+    }
+
+    @Test func viewAsksTheVMProcessForTheWindow() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let requests: Mutex<[ControlRequest]> = Mutex([])
+        let server = try ControlServer(path: store.job(for: "dev").socket) { request, _ in
+            requests.withLock { $0.append(request) }
+            return .accepted
+        }
+        defer { server.close() }
+        try await lifecycle.view("dev")
+        #expect(requests.withLock { $0 } == [.view])
+    }
+
+    @Test func viewReportsARefusal() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let server = try serve(.error("dev is shutting down"))
+        defer { server.close() }
+        await #expect(throws: LifecycleError.refused("dev", "dev is shutting down")) { try await lifecycle.view("dev") }
+    }
+
+    @Test func viewReportsASilentProcess() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        await #expect { try await lifecycle.view("dev") } throws: { error in
+            guard case LifecycleError.unresponsive("dev", _) = error else { return false }
+            return true
+        }
+    }
+
+    @Test(arguments: [false, true])
+    func onlyGUIStartsAskTheVMProcessForAWindow(gui: Bool) {
+        let arguments = VMLifecycle.runArguments(executable: URL(filePath: "/bin/hobo"), name: "dev", gui: gui)
+        #expect(arguments == ["/bin/hobo", "_vm-run", "dev"] + (gui ? ["--gui"] : []))
+    }
 }
 
 @Suite struct LifecycleResultJSONTests {
@@ -130,7 +179,7 @@ import Testing
     @Test func startResults() throws {
         let status = VMRunStatus(state: .running, pid: 42, ipAddress: "192.168.64.5")
         #expect(try json(VMLifecycle.StartResult.started(status))
-            == #"{"outcome":"started","status":{"ipAddress":"192.168.64.5","pid":42,"state":"running"}}"#)
+            == #"{"outcome":"started","status":{"ipAddress":"192.168.64.5","pid":42,"state":"running","window":false}}"#)
         #expect(try json(VMLifecycle.StartResult.alreadyRunning(nil)) == #"{"outcome":"alreadyRunning"}"#)
     }
 

@@ -5,7 +5,7 @@ import Testing
 
 /// `GuestChannel` against a fake launchd and a real control socket standing in for the VM process.
 @Suite struct GuestChannelTests {
-    let launchctl = VMLifecycleStopTests.FakeLaunchctl()
+    let launchctl = VMLifecycleTests.FakeLaunchctl()
     let store: VMStore
     let channel: GuestChannel
 

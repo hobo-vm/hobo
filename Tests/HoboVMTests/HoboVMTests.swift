@@ -1,4 +1,5 @@
 import Foundation
+import HoboControl
 import HoboCore
 import Testing
 
@@ -85,9 +86,20 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["delete", "itest", "--yes"], in: work, environment: env) != 0, "running")
         #expect(try output(hobo, ["start", "itest"], environment: env).contains("already running"))
 
+        // The window opens on demand, while the VM keeps running. It briefly appears on screen.
+        let socket = VMStore(directory: vms).job(for: "itest").socket
+        func windowShown() throws -> Bool? {
+            guard case .status(let status) = try ControlClient.send(.status, to: socket) else { return nil }
+            return status.window
+        }
+        #expect(try windowShown() == false)
+        #expect(try run(hobo, ["view", "itest"], in: work, environment: env) == 0)
+        #expect(try windowShown() == true)
+
         #expect(try output(hobo, ["stop", "itest"], environment: env).contains("Stopped itest"))
         #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+stopped/))
         #expect(try output(hobo, ["stop", "itest"], environment: env).contains("not running"))
+        #expect(try run(hobo, ["view", "itest"], in: work, environment: env) != 0, "not running")
 
         #expect(try run(hobo, ["start", "itest"], in: work, environment: env) == 0)
         #expect(try output(hobo, ["stop", "--force", "itest"], environment: env).contains("Stopped itest"))

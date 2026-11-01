@@ -28,7 +28,7 @@ struct HoboCommand: AsyncParsableCommand {
         abstract: "Named VMs on Apple's Virtualization framework.",
         version: Hobo.version,
         subcommands: [
-            Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self,
+            Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self, View.self,
             SSH.self, Exec.self, Copy.self, IP.self, Rename.self, Delete.self,
         ]
     )
@@ -228,12 +228,15 @@ struct List: OutputCommand {
 
 struct Start: OutputCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Boot a VM headless, in the background under launchd.",
+        abstract: "Boot a VM in the background under launchd, headless unless --gui.",
         discussion: "Waits until the guest answers SSH. Interrupting the wait leaves the VM booting."
     )
 
     @Argument(help: "Name of the VM.")
     var name: String
+
+    @Flag(help: "Open the VM's window at boot (or now, if it is already running).")
+    var gui = false
 
     @Flag(help: "Print progress and the VM's status (state, PID, IP address) as JSON Lines events.")
     var json = false
@@ -247,7 +250,7 @@ struct Start: OutputCommand {
             Darwin.exit(130)
         }
         defer { interrupt.cancel() }
-        let result = try await VMLifecycle(log: output.log).start(name)
+        let result = try await VMLifecycle(log: output.log).start(name, gui: gui)
         let text = switch result {
         case .started(let status): "\(name) is running\(status.ipAddress.map { " (\($0))" } ?? "")"
         case .alreadyRunning(let status): "\(name) is already running\(status?.ipAddress.map { " (\($0))" } ?? "")"
@@ -398,22 +401,44 @@ private func writeOutput(_ stream: GuestStream, _ data: Data) throws {
     }
 }
 
+struct View: OutputCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Open a running VM's window.",
+        discussion: "Closing the window asks whether to keep the VM running headless or shut it down."
+    )
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    @Flag(help: "Print the VM's name as JSON once its window is showing.")
+    var json = false
+
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        try await VMLifecycle(log: output.log).view(name)
+        return Reply(["name": name], text: nil)
+    }
+}
+
 /// The VM process launchd runs for `hobo start`. Hidden, and dispatched by `Entry` before the
 /// async commands, since it runs AppKit's event loop.
 struct VMRun: ParsableCommand {
     static let configuration = CommandConfiguration(commandName: "_vm-run", shouldDisplay: false)
 
     @Argument var name: String
+    @Flag var gui = false
 
     func run() throws {
         let name = name
+        let gui = gui
         // `Entry` calls this on the main thread, before anything else is running.
         MainActor.assumeIsolated {
             let app = NSApplication.shared
-            // Never in the Dock and never takes focus; `hobo view` will add a window.
+            // Never in the Dock, and takes focus only when `hobo view` or `--gui` shows the window.
             app.setActivationPolicy(.accessory)
             Task {
-                await VMRunner(name: name) { line in
+                await VMRunner(name: name, gui: gui) { line in
                     print("\(Date.now.formatted(.iso8601)) \(line)")
                     fflush(stdout)
                 }.start()

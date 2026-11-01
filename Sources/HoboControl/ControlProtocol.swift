@@ -7,6 +7,8 @@ import HoboCore
 public enum ControlProtocol {
     /// Bumped on any incompatible change. A VM process refuses other versions, since a client and
     /// a VM process started by an older `hobo` can both be around after an upgrade.
+    /// Adding a request or an optional field isn't incompatible: an older VM process answers a
+    /// request it doesn't know with an error.
     public static let version = 2
 }
 
@@ -19,6 +21,8 @@ public enum ControlRequest: Codable, Equatable, Sendable {
     case exec(command: [String])
     /// Runs scp between host paths and the guest: scp's output as `output` lines, then `exited`.
     case copy(GuestCopy)
+    /// Shows the VM's window, creating it the first time, and brings it to the front.
+    case view
 }
 
 public enum ControlResponse: Codable, Equatable, Sendable {
@@ -50,12 +54,27 @@ public struct VMRunStatus: Codable, Equatable, Sendable {
     /// What the VM process is doing now, e.g. which stop step it is on.
     public var detail: String?
     public var ipAddress: String?
+    /// Whether the VM's window is showing (`hobo view`, `start --gui`) rather than hidden or never opened.
+    public var window: Bool
 
-    public init(state: State, pid: Int32, detail: String? = nil, ipAddress: String? = nil) {
+    public init(state: State, pid: Int32, detail: String? = nil, ipAddress: String? = nil, window: Bool = false) {
         self.state = state
         self.pid = pid
         self.detail = detail
         self.ipAddress = ipAddress
+        self.window = window
+    }
+
+    enum CodingKeys: String, CodingKey { case state, pid, detail, ipAddress, window }
+
+    /// `window` may be missing: VM processes from before it existed don't send it.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decode(State.self, forKey: .state)
+        pid = try container.decode(Int32.self, forKey: .pid)
+        detail = try container.decodeIfPresent(String.self, forKey: .detail)
+        ipAddress = try container.decodeIfPresent(String.self, forKey: .ipAddress)
+        window = try container.decodeIfPresent(Bool.self, forKey: .window) ?? false
     }
 }
 

@@ -212,8 +212,21 @@ global VMs on 2026-11-01.
     (decided 2026-11-01): a VM can only use a network created in its own process, which rules out
     one network shared by per-VM processes, and creating one needs an entitlement.
 17. **Display and UI testing.** VMs are headless by default; the VM process is an `NSApplication` with
-    `.accessory` activation policy, so it never takes focus. `hobo view` opens a window on demand;
-    `start --gui` opens one at boot. No VNC. Agents drive the UI **inside the guest**:
+    `.accessory` activation policy, so it never takes focus on its own. `hobo view` opens a window on
+    demand; `start --gui` opens one at boot. No VNC. Decided 2026-11-01:
+    - `view` is a control-socket request (no protocol bump: an older VM process just refuses it). It
+      errors on a stopped VM rather than booting it, and works while the VM is booting. `start --gui`
+      passes `--gui` to `_vm-run`, which opens the window once the VM starts; on a running VM it
+      sends `view`. `status` reports whether the window is showing.
+    - Showing the window brings it to the front and asks for focus, since a human asked for it;
+      cooperative activation may still leave focus with the terminal. It captures system keys
+      (⌘Tab, ⌘Space go to the guest).
+    - Closing it asks: Keep Running (hides it; the next `view` re-shows the same window), Shut Down
+      (the `stop` sequence), or Cancel. The dialog is a sheet, so the socket keeps being served.
+    - The guest display follows the window's size while it shows, and is set back to the configured
+      1920×1200 when it is hidden, so headless runs and screenshots always see that size unless
+      someone is watching. `[gui_testing]` may turn resizing off if that matters.
+    Agents drive the UI **inside the guest**:
     - SSH sessions run outside the GUI session and TCC blocks them from Accessibility and Screen
       Recording, so recipe `[gui_testing]` boots to recovery to disable SIP and pre-grants those
       services in TCC.db for `osascript`, `screencapture`, `sshd-keygen-wrapper`, the XCUITest runner
@@ -227,7 +240,7 @@ global VMs on 2026-11-01.
     call; on expiry the VM process stops itself, deleting the clone. `hobo list` shows time
     remaining. `hobo mcp` also stops the ephemeral VMs it started when its session ends.
 19. **MCP.** `hobo mcp` is a stdio server with typed tools mirroring the CLI: lifecycle, `exec`
-    (with `gui`), `copy_in`/`copy_out`, `screenshot` (image content), `clone`, `snapshot`, `set`,
+    (with `gui`), `copy_in`/`copy_out`, `screenshot` (image content), `view`, `clone`, `snapshot`, `set`,
     `provision`, `list`. Destructive tools go through the client's normal permission prompts.
 20. **Engines.** `config.json` records `engine = "vz" | "qemu"`. macOS and Linux use VZ. Windows 11
     on Arm needs QEMU (`qemu-system-aarch64 -accel hvf`, as UTM does), because VZ's only display

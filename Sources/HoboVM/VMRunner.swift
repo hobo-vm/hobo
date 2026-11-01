@@ -15,6 +15,8 @@ public final class VMRunner {
 
     let store: VMStore
     let name: String
+    /// Whether to show the window as soon as the VM boots (`start --gui`).
+    let gui: Bool
     let log: @Sendable (String) -> Void
 
     /// The process's one runner, held here because nothing else keeps it alive between control
@@ -22,12 +24,14 @@ public final class VMRunner {
     private static var current: VMRunner?
 
     private var guest: GuestVM?
+    private var window: VMWindow?
     private var server: ControlServer?
     private var status = VMRunStatus(state: .starting, pid: getpid(), detail: "booting")
 
-    public init(store: VMStore = .standard(), name: String, log: @escaping @Sendable (String) -> Void) {
+    public init(store: VMStore = .standard(), name: String, gui: Bool = false, log: @escaping @Sendable (String) -> Void) {
         self.store = store
         self.name = name
+        self.gui = gui
         self.log = log
     }
 
@@ -62,6 +66,7 @@ public final class VMRunner {
         self.guest = guest
         log("Booting \(vm.name)")
         try await guest.start()
+        if gui { showWindow(guest) }
         Task { await waitUntilReachable(guest) }
     }
 
@@ -86,12 +91,16 @@ public final class VMRunner {
     private func handle(_ request: ControlRequest, reply: ControlReply) async -> ControlResponse {
         switch request {
         case .status:
+            var status = status
+            status.window = window?.isShown ?? false
             return .status(status)
         case .stop(let force):
-            if status.state != .stopping || force {
-                status.state = .stopping
-                Task { await stop(force: force) }
-            }
+            beginStop(force: force)
+            return .accepted
+        case .view:
+            guard status.state != .stopping else { return .error("\(name) is shutting down") }
+            guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
+            showWindow(guest)
             return .accepted
         case .exec(let command):
             return await withGuest(reply: reply) { ssh, onOutput in
@@ -126,6 +135,22 @@ public final class VMRunner {
         } catch {
             return .error(String(describing: error))
         }
+    }
+
+    private func showWindow(_ guest: GuestVM) {
+        if window == nil {
+            let window = VMWindow(guest: guest, title: name) { [log] in log($0) }
+            window.onShutDown = { [weak self] in self?.beginStop(force: false) }
+            self.window = window
+        }
+        window?.show()
+    }
+
+    /// A repeated stop is ignored unless it escalates to a forced one.
+    private func beginStop(force: Bool) {
+        guard status.state != .stopping || force else { return }
+        status.state = .stopping
+        Task { await stop(force: force) }
     }
 
     /// Decision 11: `shutdown -h now` over SSH if the guest answers, otherwise ask it (a virtual

@@ -18,6 +18,7 @@ import HoboCore
     @Test func responsesRoundTrip() throws {
         let responses: [ControlResponse] = [
             .status(VMRunStatus(state: .stopping, pid: 7, detail: "line one\nline two", ipAddress: "192.168.64.5")),
+            .status(VMRunStatus(state: .running, pid: 7, window: true)),
             .accepted, .error("nope"), .output(.stderr, Data([0, 10, 255])), .exited(-15),
         ]
         for response in responses {
@@ -30,6 +31,7 @@ import HoboCore
             switch request {
             case .status: .status(VMRunStatus(state: .running, pid: 7, ipAddress: "192.168.64.5"))
             case .stop(let force): force ? .accepted : .error("not forced")
+            case .view: .accepted
             default: .error("unexpected")
             }
         }
@@ -40,6 +42,13 @@ import HoboCore
         #expect(try await ControlClient.send(.status, to: socket) == .status(VMRunStatus(state: .running, pid: 7, ipAddress: "192.168.64.5")))
         #expect(try await ControlClient.send(.stop(force: true), to: socket) == .accepted)
         #expect(try await ControlClient.send(.stop(force: false), to: socket) == .error("not forced"))
+        #expect(try await ControlClient.send(.view, to: socket) == .accepted)
+    }
+
+    /// VM processes from before `window` existed leave it out of their status.
+    @Test func statusWithoutWindowDecodes() throws {
+        let line = Data(#"{"status":{"_0":{"state":"running","pid":7}}}"#.utf8)
+        #expect(try ControlSocket.decode(ControlResponse.self, from: line) == .status(VMRunStatus(state: .running, pid: 7)))
     }
 
     @Test func streamingRequestsRoundTrip() throws {
@@ -137,16 +146,5 @@ import HoboCore
         #expect(throws: ControlError.pathTooLong(path)) { try ControlClient.send(.status, to: URL(filePath: path)) }
         #expect(throws: ControlError.pathTooLong(path)) { try ControlServer(path: URL(filePath: path)) { _, _ in .accepted } }
         #expect(throws: Never.self) { try ControlSocket.checkPath("/tmp/" + String(repeating: "a", count: ControlSocket.maxPathBytes - 5)) }
-    }
-}
-
-@Suite struct VMLifecycleTests {
-    @Test func tailKeepsTheLastLines() throws {
-        let log = FileManager.default.temporaryDirectory.appending(path: "hobo-log-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: log) }
-        try (1...30).map { "line \($0)" }.joined(separator: "\n").appending("\n").write(to: log, atomically: true, encoding: .utf8)
-        let tail = VMLifecycle.tail(of: log, lines: 3)
-        #expect(tail == "line 28\nline 29\nline 30")
-        #expect(VMLifecycle.tail(of: log.appending(path: "missing")).isEmpty)
     }
 }

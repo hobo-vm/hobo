@@ -7,6 +7,10 @@ import Virtualization
 public struct MacVMBundle: Sendable {
     public static let platformFiles = ["disk.asif", "aux.img", "hardware-model.bin", "machine-identifier.bin"]
 
+    /// The guest display's configured size. A window resizes it while showing (`VMWindow`),
+    /// and hiding the window puts it back, so headless runs always see this.
+    static let displayPixels = CGSize(width: 1920, height: 1200)
+
     public var directory: URL
 
     public init(directory: URL) { self.directory = directory }
@@ -62,7 +66,9 @@ public struct MacVMBundle: Sendable {
         platform.auxiliaryStorage = VZMacAuxiliaryStorage(url: auxiliaryStorage)
 
         let graphics = VZMacGraphicsDeviceConfiguration()
-        graphics.displays = [VZMacGraphicsDisplayConfiguration(widthInPixels: 1920, heightInPixels: 1200, pixelsPerInch: 80)]
+        graphics.displays = [VZMacGraphicsDisplayConfiguration(
+            widthInPixels: Int(Self.displayPixels.width), heightInPixels: Int(Self.displayPixels.height), pixelsPerInch: 80
+        )]
 
         let network = VZVirtioNetworkDeviceConfiguration()
         network.attachment = VZNATNetworkDeviceAttachment()
