@@ -37,7 +37,10 @@ public struct ImageIndex: Sendable {
         var entries = load()
         let indexed = try entries[key].flatMap { try refreshed($0, log: log) }
         if let indexed, accepts(indexed.sha256) {
-            if indexed != entries[key] { entries[key] = indexed; try save(entries) }
+            if indexed != entries[key] {
+                entries[key] = indexed
+                try save(entries)
+            }
             return (URL(filePath: indexed.path), indexed.sha256)
         }
 

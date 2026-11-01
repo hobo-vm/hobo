@@ -65,8 +65,8 @@ global VMs on 2026-11-01.
    already in `~/Downloads` under the vendor's name is hashed and adopted if it matches; otherwise
    the download takes a Finder-style free name (`<name> 2.ipsw`) and never overwrites it. A stale
    `.part` restarts from scratch; there is no resume, and concurrent downloads of one URL are
-   unsupported. Local paths (`--ipsw`, or a path in `[source]`) are used in place, never copied. `ipsw = "latest"` uses
-   `VZMacOSRestoreImage.latestSupported`, warns as unpinned and prints the pin.
+   unsupported. Local paths (`--ipsw`, or a path in `[source]`) are used in place, never copied.
+   `ipsw = "latest"` uses `VZMacOSRestoreImage.latestSupported`, warns as unpinned and prints the pin.
 9. **Runtime config.** The recipe supplies defaults; `create` copies them into the bundle's
    `config.json`, which is the truth thereafter. `hobo set` changes CPUs, memory, disk (grow only) and
    persistent shares (virtio-fs; macOS default mount `/Volumes/My Shared Files/<tag>`, `readonly`
