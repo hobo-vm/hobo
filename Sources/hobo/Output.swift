@@ -79,6 +79,7 @@ struct Output: Sendable {
         emit(reply.value, text: reply.text)
     }
 
+    /// Opens `Reply`'s `any Encodable` into a concrete type, which the generic `ResultEvent` needs.
     private func emit(_ value: some Encodable, text: String) {
         switch format {
         case .text: print(text)

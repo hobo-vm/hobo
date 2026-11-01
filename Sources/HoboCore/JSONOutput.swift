@@ -22,7 +22,7 @@ public enum HoboJSON {
     }
 }
 
-/// What `hobo list --json` reports about a VM.
+/// A VM as `--json` reports it: by `list`, and as the result of `create` and `rename`.
 public struct VMSummary: Codable, Equatable, Sendable {
     public enum State: String, Codable, Sendable { case stopped, running, crashed, building, failed, broken }
 
