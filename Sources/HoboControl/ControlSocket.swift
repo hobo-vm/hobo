@@ -26,10 +26,14 @@ public enum ControlSocket {
     static func makeSocket() throws -> Int32 {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw posixError("socket") }
-        var on: Int32 = 1
-        // A peer that hangs up mid-write must not kill the process with SIGPIPE.
-        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+        disableSIGPIPE(fd)
         return fd
+    }
+
+    /// A peer that hangs up mid-write must not kill the process with SIGPIPE.
+    static func disableSIGPIPE(_ fd: Int32) {
+        var on: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
     }
 
     static func setTimeout(_ fd: Int32, _ timeout: Duration) {
@@ -140,8 +144,7 @@ public final class ControlServer: Sendable {
     private static func serve(_ connection: Int32, handler: @escaping Handler) {
         // An accepted socket inherits the listener's O_NONBLOCK; reads here should block.
         _ = fcntl(connection, F_SETFL, fcntl(connection, F_GETFL) & ~O_NONBLOCK)
-        var on: Int32 = 1
-        setsockopt(connection, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+        ControlSocket.disableSIGPIPE(connection)
         ControlSocket.setTimeout(connection, .seconds(10))
         Task.detached {
             defer { Darwin.close(connection) }
