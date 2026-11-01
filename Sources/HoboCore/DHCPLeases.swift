@@ -47,8 +47,3 @@ public enum DHCPLeases {
         return octets.map { String(format: "%02x", $0) }.joined(separator: ":")
     }
 }
-
-/// Single-quotes `value` for a POSIX shell.
-public func shellQuote(_ value: String) -> String {
-    "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
-}
