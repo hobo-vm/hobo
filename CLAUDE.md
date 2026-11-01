@@ -1,6 +1,8 @@
 # Hobo
 
-Vagrant-style CLI for macOS hosts on Apple's Virtualization framework. The design record is
+First-class CLI for named VMs (macOS, Linux, later Windows) on Apple Silicon hosts, built on Apple's
+Virtualization framework: a command-line replacement for VirtualBuddy/Parallels/Fusion. Vagrant-inspired,
+not a Vagrant clone; VMs are built from `.boxcar` recipes, and there are no boxes. The design record is
 `docs/design.md`; read it before architectural changes, and update it when a decision changes.
 Deferred work lives in `TODO.md`.
 
