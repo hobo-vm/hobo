@@ -16,7 +16,7 @@ extension Recipe {
 
     private static func template(source: String) -> String {
         """
-        # Hobo recipe: build a VM from it with `hobo create <name> --from Hobo.toml`.
+        # Hobo recipe: build a VM from it with `hobo create <name>`.
         # The guest gets the Vagrant conventions (vagrant/vagrant, passwordless sudo, SSH, no sleep or
         # automatic updates); add your own setup as [[provision]] steps.
 
