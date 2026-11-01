@@ -1,13 +1,28 @@
+import CryptoKit
 import Foundation
 
 /// Vagrant box conventions applied to every macOS box: `vagrant`/`vagrant`, passwordless sudo,
-/// the insecure key, and no sleep or screensaver. Bump `version` whenever `script` changes so
-/// stale build checkpoints are not reused.
+/// the insecure key, and no sleep or screensaver. Everything here that shapes the
+/// post-conventions disk feeds `fingerprint`, so build checkpoints never outlive a change to it.
 public enum Conventions {
-    public static let version = 1
     public static let username = "vagrant"
     public static let password = "vagrant"
     public static let fullName = "Vagrant"
+    /// Unattended-setup options for the first boot (`VZMacGuestProvisioningOptions`).
+    public static let logsInAutomatically = true
+    public static let enablesRemoteLogin = true
+
+    /// A hash of every input that shapes the post-conventions disk: the unattended-setup options
+    /// and `script`. Part of the checkpoint key. Add any new such input here.
+    public static var fingerprint: String {
+        let inputs = [fullName, username, password, "\(logsInAutomatically)", "\(enablesRemoteLogin)", script]
+        var hasher = SHA256()
+        for input in inputs {
+            // Length-prefixed so ("ab", "c") and ("a", "bc") hash differently.
+            hasher.update(data: Data("\(input.utf8.count):\(input)".utf8))
+        }
+        return hasher.finalize().hexString
+    }
 
     /// https://github.com/hashicorp/vagrant/tree/main/keys
     public static let insecurePublicKeys = [

@@ -125,8 +125,8 @@ public struct BoxBuilder {
         provisioning.fullName = Conventions.fullName
         provisioning.username = Conventions.username
         provisioning.password = Conventions.password
-        provisioning.logsInAutomatically = true
-        provisioning.enablesRemoteLogin = true
+        provisioning.logsInAutomatically = Conventions.logsInAutomatically
+        provisioning.enablesRemoteLogin = Conventions.enablesRemoteLogin
         log("First boot with unattended setup")
         try await vm.start(provisioning: provisioning)
         // Until the conventions script installs the insecure key, the guest only takes the password.

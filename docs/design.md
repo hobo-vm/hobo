@@ -72,7 +72,8 @@ were reached in a design interview on 2026-10-28.
     3. conventions, over password SSH: passwordless sudo, Vagrant's insecure keys (ed25519 + RSA) in
        `authorized_keys`, no sleep/screensaver, no automatic updates. The disk is then checkpointed in the
        **roundhouse** (`~/.hobo/roundhouse/checkpoints/<key>`, keyed by IPSW hash, disk size and
-       `Conventions.version`) and rebuilds clone it (APFS clone) unless `--fresh`;
+       `Conventions.fingerprint`, a hash of the conventions script and unattended-setup options) and
+       rebuilds clone it (APFS clone) unless `--fresh`;
     4. recipe steps: Boxcar `[[provision]]` steps (shell/file), run once each over key SSH;
     5. optional GUI-testing prep (opt-in `[gui_testing]`, deferred to Later): disable SIP via recovery
        boot, pre-grant Accessibility and Screen Recording in TCC.db so ephemeral runs never prompt;

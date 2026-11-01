@@ -62,8 +62,8 @@ public struct BoxMetadata: Codable, Equatable, Sendable {
 
 /// The post-install disk saved in the roundhouse, keyed by everything that shapes it.
 public enum Checkpoint {
-    public static func key(ipswSHA256: String, diskBytes: UInt64, conventionsVersion: Int = Conventions.version) -> String {
-        let input = "\(ipswSHA256)|\(diskBytes)|\(conventionsVersion)"
+    public static func key(ipswSHA256: String, diskBytes: UInt64, conventions: String = Conventions.fingerprint) -> String {
+        let input = "\(ipswSHA256)|\(diskBytes)|\(conventions)"
         return String(SHA256.hash(data: Data(input.utf8)).hexString.prefix(16))
     }
 }

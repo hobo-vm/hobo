@@ -147,12 +147,14 @@ import Testing
     }
 
     @Test func checkpointKeyTracksEverythingThatShapesTheDisk() {
-        let base = Checkpoint.key(ipswSHA256: "a", diskBytes: 1, conventionsVersion: 1)
+        let base = Checkpoint.key(ipswSHA256: "a", diskBytes: 1, conventions: "x")
         #expect(base.count == 16)
-        #expect(base == Checkpoint.key(ipswSHA256: "a", diskBytes: 1, conventionsVersion: 1))
-        #expect(base != Checkpoint.key(ipswSHA256: "b", diskBytes: 1, conventionsVersion: 1))
-        #expect(base != Checkpoint.key(ipswSHA256: "a", diskBytes: 2, conventionsVersion: 1))
-        #expect(base != Checkpoint.key(ipswSHA256: "a", diskBytes: 1, conventionsVersion: 2))
+        #expect(base == Checkpoint.key(ipswSHA256: "a", diskBytes: 1, conventions: "x"))
+        #expect(base != Checkpoint.key(ipswSHA256: "b", diskBytes: 1, conventions: "x"))
+        #expect(base != Checkpoint.key(ipswSHA256: "a", diskBytes: 2, conventions: "x"))
+        #expect(base != Checkpoint.key(ipswSHA256: "a", diskBytes: 1, conventions: "y"))
+        #expect(Checkpoint.key(ipswSHA256: "a", diskBytes: 1)
+            == Checkpoint.key(ipswSHA256: "a", diskBytes: 1, conventions: Conventions.fingerprint))
     }
 }
 
