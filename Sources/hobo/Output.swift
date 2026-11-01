@@ -5,7 +5,8 @@ import HoboCore
 /// A command that prints a result, and so supports `--json`. Conforming is the whole of its
 /// `--json` support: the shared `run()` builds the `Output`, hands `execute` its `log` for progress,
 /// prints the one `Reply` in the right format, and reports a thrown error as JSON. `execute` must
-/// not print; text-only interaction (`delete`'s prompt) belongs where `--json` can't reach.
+/// not print its result; text-only interaction (`delete`'s prompt) belongs where `--json` can't
+/// reach. Streamed guest output (`exec`, `cp`) is fine: in JSON mode it lands on stderr.
 protocol OutputCommand: AsyncParsableCommand {
     /// The command's `--json` flag, declared by each command for its own help text.
     var json: Bool { get }
@@ -27,8 +28,8 @@ extension OutputCommand {
 }
 
 /// A command's outcome, for people (`text`, nil when the command's own output said it all) and
-/// as JSON (`value`). A nonzero `exitStatus` (`exec`'s, passed through) ends hobo with it once the
-/// outcome is printed.
+/// as JSON (`value`). A nonzero `exitStatus` (a guest command's or scp's, passed through by `exec`
+/// and `cp`) ends hobo with it once the outcome is printed.
 struct Reply {
     let value: any Encodable
     let text: String?
