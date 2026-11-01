@@ -1,5 +1,3 @@
-import Foundation
-
 /// The control-socket protocol between hobo clients (CLI, MCP) and a VM's `hobo _vm-run` process.
 /// Each connection carries one request, as a line of JSON, and gets one line of JSON back.
 public enum ControlProtocol {
