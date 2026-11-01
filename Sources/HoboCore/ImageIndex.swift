@@ -42,17 +42,18 @@ public struct ImageIndex: Sendable {
         }
 
         // A same-named file nobody indexed, e.g. downloaded in a browser: adopt it if it matches.
-        let named = downloads.appending(path: url.lastPathComponent.isEmpty ? "image.ipsw" : url.lastPathComponent)
-        if FileManager.default.fileExists(atPath: named.path), indexed?.path != named.standardizedFileURL.path {
-            let entry = try Self.entry(for: named, log: log)
+        let vendorNamed = downloads.appending(path: url.lastPathComponent.isEmpty ? "image.ipsw" : url.lastPathComponent)
+        let alreadyRejected = indexed?.path == vendorNamed.standardizedFileURL.path
+        if !alreadyRejected, FileManager.default.fileExists(atPath: vendorNamed.path) {
+            let entry = try Self.entry(for: vendorNamed, log: log)
             if accepts(entry.sha256) {
                 entries[key] = entry
                 try save(entries)
-                return (named, entry.sha256)
+                return (vendorNamed, entry.sha256)
             }
         }
 
-        let destination = freeName(for: named)
+        let destination = freeName(for: vendorNamed)
         let part = destination.appendingPathExtension("part")
         try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
         try? FileManager.default.removeItem(at: part)
