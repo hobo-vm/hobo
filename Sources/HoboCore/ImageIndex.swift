@@ -35,7 +35,7 @@ public struct ImageIndex: Sendable {
         let key = url.absoluteString
         let accepts = { (sha: String) in expectedSHA256 == nil || sha == expectedSHA256 }
         var entries = load()
-        let indexed = try entries[key].flatMap { try current($0, log: log) }
+        let indexed = try entries[key].flatMap { try refreshed($0, log: log) }
         if let indexed, accepts(indexed.sha256) {
             if indexed != entries[key] { entries[key] = indexed; try save(entries) }
             return (URL(filePath: indexed.path), indexed.sha256)
@@ -77,7 +77,7 @@ public struct ImageIndex: Sendable {
         let key = file.standardizedFileURL.path
         var entries = load()
         let cached = entries[key]
-        let entry = try cached.flatMap { try current($0, log: log) } ?? Self.entry(for: file, log: log)
+        let entry = try cached.flatMap { try refreshed($0, log: log) } ?? Self.entry(for: file, log: log)
         if entry != cached {
             entries[key] = entry
             try save(entries)
@@ -96,7 +96,7 @@ public struct ImageIndex: Sendable {
 
     /// `entry` refreshed from disk: as is if size and mtime are unchanged, rehashed if they
     /// changed, nil if the file is gone.
-    private func current(_ entry: Entry, log: @Sendable (String) -> Void) throws -> Entry? {
+    private func refreshed(_ entry: Entry, log: @Sendable (String) -> Void) throws -> Entry? {
         let file = URL(filePath: entry.path)
         guard let (size, mtime) = Self.stat(file) else { return nil }
         if size == entry.size && mtime == entry.mtime { return entry }
