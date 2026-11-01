@@ -95,6 +95,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try windowShown() == false)
         #expect(try run(hobo, ["view", "itest"], in: work, environment: env) == 0)
         #expect(try windowShown() == true)
+        #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+running \(window\)/))
 
         #expect(try output(hobo, ["stop", "itest"], environment: env).contains("Stopped itest"))
         #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+stopped/))

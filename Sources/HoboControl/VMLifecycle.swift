@@ -130,6 +130,14 @@ public struct VMLifecycle: Sendable {
         throw LifecycleError.stopTimedOut(vm.name)
     }
 
+    /// What a running VM's process reports, or nil if it doesn't answer within `timeout`. Short by
+    /// default, so one wedged VM process can't stall a listing.
+    public func runStatus(_ name: String, timeout: Duration = .seconds(1)) async -> VMRunStatus? {
+        guard case .status(let status)? = try? await ControlClient.send(.status, to: store.job(for: name).socket, timeout: timeout)
+        else { return nil }
+        return status
+    }
+
     /// How long a just-bootstrapped job may go without a process before `start` calls it exited:
     /// launchd can list the job before its process exists.
     static let launchGrace: Duration = .seconds(10)

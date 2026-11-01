@@ -37,6 +37,9 @@ public struct VMSummary: Codable, Equatable, Sendable {
     public var exitStatus: Int32?
     /// Absent while `building`, or when `failed` or `broken`.
     public var config: VMConfig?
+    /// Whether the VM's window is showing (`hobo view`). Only for a `running` VM whose process
+    /// answered; filled in by the client, since only the VM process knows.
+    public var windowShown: Bool?
 
     public init(_ vm: VMStore.VM) {
         name = vm.name

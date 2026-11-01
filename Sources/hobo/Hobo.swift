@@ -200,17 +200,22 @@ struct List: OutputCommand {
     func execute(_ output: Output) async throws -> Reply {
         let store = VMStore.standard()
         let vms = store.list()
-        return Reply(vms.map(VMSummary.init), text: vms.isEmpty ? "No VMs in \(store.directory.path)." : table(vms))
+        let lifecycle = VMLifecycle(store: store) { _ in }
+        var summaries = vms.map(VMSummary.init)
+        for index in summaries.indices where summaries[index].state == .running {
+            summaries[index].windowShown = await lifecycle.runStatus(summaries[index].name)?.windowShown
+        }
+        return Reply(summaries, text: vms.isEmpty ? "No VMs in \(store.directory.path)." : table(vms, summaries: summaries))
     }
 
-    private func table(_ vms: [VMStore.VM]) -> String {
-        let rows = [["NAME", "STATE", "OS", "CPUS", "MEMORY", "DISK (USED/SIZE)"]] + vms.map { vm in
+    private func table(_ vms: [VMStore.VM], summaries: [VMSummary]) -> String {
+        let rows = [["NAME", "STATE", "OS", "CPUS", "MEMORY", "DISK (USED/SIZE)"]] + zip(vms, summaries).map { vm, summary in
             let used = fileSize(vm.allocatedBytes)
             switch vm.status {
             case .stopped(let config):
                 return [vm.name, "stopped"] + columns(config, used: used)
             case .running(let config, _):
-                return [vm.name, "running"] + columns(config, used: used)
+                return [vm.name, summary.windowShown == true ? "running (window)" : "running"] + columns(config, used: used)
             case .crashed(let config, let status):
                 return [vm.name, "crashed (\(status < 0 ? "signal \(-status)" : "exit \(status)"))"] + columns(config, used: used)
             case .building: return [vm.name, "building", "—", "—", "—", "\(used) / —"]

@@ -211,8 +211,8 @@ global VMs on 2026-11-01.
     vmnet custom networks (`VZVmnetNetworkDeviceAttachment` with DHCP reservations) were rejected
     (decided 2026-11-01): a VM can only use a network created in its own process, which rules out
     one network shared by per-VM processes, and creating one needs an entitlement.
-17. **Display and UI testing.** VMs are headless by default; the VM process is an `NSApplication` with
-    `.accessory` activation policy, so it never takes focus on its own. `hobo view` opens a window on
+17. **Display and UI testing.** VMs are headless by default; a headless VM process is an `NSApplication`
+    with `.accessory` activation policy, so it never takes focus on its own. `hobo view` opens a window on
     demand; `start --gui` opens one at boot. No VNC. Decided 2026-11-01:
     - `view` is a control-socket request (no protocol bump: an older VM process just refuses it). It
       errors on a stopped VM rather than booting it, and works while the VM is booting. `start --gui`
@@ -220,7 +220,11 @@ global VMs on 2026-11-01.
       sends `view`. `status` reports whether the window is showing.
     - Showing the window brings it to the front and asks for focus, since a human asked for it;
       cooperative activation may still leave focus with the terminal. It captures system keys
-      (⌘Tab, ⌘Space go to the guest).
+      (⌘Tab, ⌘Space go to the guest). While the window shows, the process switches to `.regular`
+      (Dock, ⌘Tab, its own menu bar, a full-screen Space): as `.accessory` it never owned the menu
+      bar, so clicking it sent the window behind the active app. Hidden, it goes back to `.accessory`.
+      Its menu has Keep Running in Background and Shut Down, but no Quit, which would kill the VM.
+      `hobo list` shows `running (window)` while it shows.
     - Closing it asks: Keep Running (hides it; the next `view` re-shows the same window), Shut Down
       (the `stop` sequence), or Cancel. The dialog is a sheet, so the socket keeps being served.
     - The guest display follows the window's size while it shows, and is set back to the configured
