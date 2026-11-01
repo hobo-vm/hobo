@@ -54,11 +54,7 @@ public struct BoxMetadata: Codable, Equatable, Sendable {
     public static func contentHash(of files: [URL]) throws -> String {
         var hasher = SHA256()
         for file in files {
-            let handle = try FileHandle(forReadingFrom: file)
-            defer { try? handle.close() }
-            while let chunk = try handle.read(upToCount: 8 << 20), !chunk.isEmpty {
-                hasher.update(data: chunk)
-            }
+            try hasher.update(contentsOf: file)
         }
         return hasher.finalize().hexString
     }

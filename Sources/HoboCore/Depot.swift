@@ -45,16 +45,8 @@ public struct Depot: Sendable {
     }
 
     public static func sha256(of file: URL) throws -> String {
-        let handle = try FileHandle(forReadingFrom: file)
-        defer { try? handle.close() }
         var hasher = SHA256()
-        // Each chunk is autoreleased; without a pool per chunk, hashing a 28 GB box keeps
-        // every chunk alive until the loop ends and the process is killed for memory.
-        while try autoreleasepool(invoking: {
-            guard let chunk = try handle.read(upToCount: 8 << 20), !chunk.isEmpty else { return false }
-            hasher.update(data: chunk)
-            return true
-        }) {}
+        try hasher.update(contentsOf: file)
         return hasher.finalize().hexString
     }
 
@@ -76,6 +68,21 @@ public enum DepotError: Error, Equatable, CustomStringConvertible {
             "sha256 mismatch for \(what): expected \(expected), got \(actual)"
         case .httpStatus(let url, let status): "download of \(url) failed with HTTP \(status)"
         }
+    }
+}
+
+extension SHA256 {
+    /// Feeds `file` to the hasher in 8 MB chunks.
+    mutating func update(contentsOf file: URL) throws {
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        // Each chunk is autoreleased; without a pool per chunk, hashing a 28 GB box keeps
+        // every chunk alive until the loop ends and the process is killed for memory.
+        while try autoreleasepool(invoking: {
+            guard let chunk = try handle.read(upToCount: 8 << 20), !chunk.isEmpty else { return false }
+            update(data: chunk)
+            return true
+        }) {}
     }
 }
 
