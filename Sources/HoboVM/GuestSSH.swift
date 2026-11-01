@@ -48,12 +48,16 @@ public struct GuestSSH: Sendable {
 
     /// Runs `command` (an argv, quoted for the guest's shell) like `stream`, but cancelling also
     /// ends the command in the guest: without a TTY, closing the ssh session doesn't signal it.
-    /// The guest shell prints its PID, which sshd made a process group leader, before exec'ing the
-    /// command; that first line is kept out of the output and used to kill the group on cancel.
+    /// Before exec'ing the command, the guest shell prints its PID (sshd made it a process group
+    /// leader) after a marker unique to this run. The marker line is kept out of the output and
+    /// the PID used to kill the group on cancel; anything a startup file printed first passes through.
     public func exec(_ command: [String], onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
-        let leader = LeaderLine(onOutput)
-        let status = try await stream("echo $$; exec " + command.map(shellQuote).joined(separator: " "), onOutput: leader.receive)
-        if Task.isCancelled, let pid = leader.pid {
+        let marker = PIDMarker(onOutput)
+        let status = try await stream(
+            "echo \(marker.marker)$$; exec " + command.map(shellQuote).joined(separator: " "), onOutput: marker.receive
+        )
+        marker.finish()
+        if Task.isCancelled, let pid = marker.pid {
             // A task of its own, since this one's cancellation would end the kill's ssh at once.
             _ = try? await Task { try await run("kill -TERM -- -\(pid)", quiet: true) }.value
         }
@@ -113,30 +117,51 @@ public struct GuestSSH: Sendable {
     }
 
     /// Takes the guest shell's PID from the first line of stdout and passes the rest on.
-    final class LeaderLine: Sendable {
+    /// Takes the guest shell's PID from the `<marker><pid>` line in stdout and passes everything
+    /// else on, in order.
+    final class PIDMarker: Sendable {
+        let marker: String
         private let onOutput: @Sendable (GuestStream, Data) -> Void
-        /// The first line so far, until its newline arrives; then nil.
-        private let state = Mutex<(firstLine: Data?, pid: Int32?)>((Data(), nil))
+        /// Stdout not yet passed on while looking for the marker line; nil once it has been found.
+        private let state = Mutex<(pending: Data?, pid: Int32?)>((Data(), nil))
 
-        init(_ onOutput: @escaping @Sendable (GuestStream, Data) -> Void) { self.onOutput = onOutput }
+        init(token: String = String(UUID().uuidString.prefix(8)).lowercased(), _ onOutput: @escaping @Sendable (GuestStream, Data) -> Void) {
+            marker = "hobo-pid-\(token):"
+            self.onOutput = onOutput
+        }
 
         var pid: Int32? { state.withLock { $0.pid } }
 
         func receive(_ stream: GuestStream, _ data: Data) {
             guard stream == .stdout else { return onOutput(stream, data) }
-            let rest: Data? = state.withLock { state in
-                guard let earlier = state.firstLine else { return data }
-                guard let newline = data.firstIndex(of: UInt8(ascii: "\n")) else {
-                    state.firstLine = earlier + data
-                    return nil
+            let ready: Data = state.withLock { state in
+                guard var pending = state.pending else { return data }
+                pending.append(data)
+                let marker = Data(self.marker.utf8)
+                guard let found = pending.firstRange(of: marker) else {
+                    // Hold back a tail that could be the start of a marker split across chunks.
+                    let keep = min(pending.count, marker.count - 1)
+                    state.pending = Data(pending.suffix(keep))
+                    return Data(pending.dropLast(keep))
                 }
-                state.firstLine = nil
-                state.pid = Int32(String(decoding: earlier + data[..<newline], as: UTF8.self))
-                // Not a PID (a guest startup file printed first, say): it's the command's output.
-                if state.pid == nil { return earlier + data }
-                return data[data.index(after: newline)...]
+                guard let newline = pending[found.upperBound...].firstIndex(of: UInt8(ascii: "\n")) else {
+                    state.pending = Data(pending[found.lowerBound...])
+                    return Data(pending[..<found.lowerBound])
+                }
+                state.pid = Int32(String(decoding: pending[found.upperBound..<newline], as: UTF8.self))
+                state.pending = nil
+                return Data(pending[..<found.lowerBound]) + pending[pending.index(after: newline)...]
             }
-            if let rest, !rest.isEmpty { onOutput(stream, Data(rest)) }
+            if !ready.isEmpty { onOutput(stream, ready) }
+        }
+
+        /// Passes on anything still held back, once the command's output has ended.
+        func finish() {
+            let rest = state.withLock { state in
+                defer { state.pending = nil }
+                return state.pending ?? Data()
+            }
+            if !rest.isEmpty { onOutput(.stdout, rest) }
         }
     }
 
