@@ -37,7 +37,9 @@ public enum IPSWCatalog {
         return try decode(data)
     }
 
-    /// Decodes an ipsw.me device response, newest version first.
+    /// Decodes an ipsw.me device response, newest version first. A record missing a field (as a
+    /// just-uploaded build can be) or without a valid SHA-256 is skipped rather than hiding every
+    /// other build; the response is unreadable only if it has records and none of them decode.
     public static func decode(_ data: Data) throws -> [Image] {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -47,7 +49,11 @@ public enum IPSWCatalog {
         } catch {
             throw CatalogError.unreadable(String(describing: error))
         }
-        return device.firmwares.map { raw in
+        let firmwares = device.firmwares.compactMap(\.firmware)
+        if firmwares.isEmpty && !device.firmwares.isEmpty {
+            throw CatalogError.unreadable("none of its \(device.firmwares.count) firmware records are complete")
+        }
+        return firmwares.map { raw in
             Image(
                 name: marketingName(major: major(of: raw.version)),
                 version: raw.version, build: raw.buildid, url: raw.url, sha256: raw.sha256sum.lowercased(),
@@ -122,7 +128,17 @@ public enum IPSWCatalog {
     }
 
     private struct RawDevice: Decodable {
-        var firmwares: [RawFirmware]
+        var firmwares: [MaybeFirmware]
+    }
+
+    private struct MaybeFirmware: Decodable {
+        var firmware: RawFirmware?
+
+        init(from decoder: Decoder) throws {
+            let raw = try? RawFirmware(from: decoder)
+            let sha = raw?.sha256sum ?? ""
+            firmware = sha.count == 64 && sha.allSatisfy(\.isHexDigit) ? raw : nil
+        }
     }
 
     private struct RawFirmware: Decodable {

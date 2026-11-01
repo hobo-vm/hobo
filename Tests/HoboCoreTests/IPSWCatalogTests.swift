@@ -56,6 +56,15 @@ import Testing
         }
     }
 
+    @Test func skipsIncompleteRecords() throws {
+        let good = Self.firmware("27.2", "26B123", day: "2026-10-26")
+        let noSHA = Self.firmware("27.3", "26C1", day: "2026-11-01").replacingOccurrences(of: String(repeating: "AB", count: 32), with: "")
+        let noDate = #"{"version": "27.3", "buildid": "26C2", "url": "https://x/y.ipsw", "sha256sum": "\#(String(repeating: "a", count: 64))", "filesize": 1, "releasedate": null, "signed": true}"#
+        let data = Data("{\"firmwares\": [\(noSHA), \(good), \(noDate)]}".utf8)
+        #expect(try IPSWCatalog.decode(data).map(\.build) == ["26B123"])
+        #expect(try IPSWCatalog.decode(Data(#"{"firmwares": []}"#.utf8)).isEmpty)
+    }
+
     @Test func rejectsAnUnexpectedResponse() {
         #expect(throws: CatalogError.self) { try IPSWCatalog.decode(Data(#"{"firmwares": [{"version": "27.2"}]}"#.utf8)) }
         #expect(throws: CatalogError.self) { try IPSWCatalog.decode(Data("<html>".utf8)) }
