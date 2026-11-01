@@ -227,6 +227,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: store.directory) }
         for name in ["up", "crashed", "down"] { try made(name) }
         try orphaned("failed")
+        _ = try store.beginCreate("building")
         launchctl.list = """
         PID\tStatus\tLabel
         4242\t0\t\(store.job(for: "up").label)
@@ -237,6 +238,7 @@ import Testing
         #expect(summaries["crashed"]?.state == .crashed && summaries["crashed"]?.exitStatus == -9 && summaries["crashed"]?.pid == nil)
         #expect(summaries["down"]?.state == .stopped && summaries["down"]?.bundle == store.bundle(for: "down").path)
         #expect(summaries["failed"]?.state == .failed && summaries["failed"]?.config == nil)
+        #expect(summaries["building"]?.state == .building && summaries["building"]?.pid == getpid() && summaries["building"]?.config == nil)
     }
 
     @Test func summaryJSONUsesBytesAndISO8601() throws {
