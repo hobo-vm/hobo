@@ -48,6 +48,7 @@ import Testing
         defer { cleanUp() }
         let ip = try serve { _, _ in .status(VMRunStatus(state: .running, pid: 4242, ipAddress: "192.168.64.5")) }
         #expect(try channel.ipAddress("dev") == "192.168.64.5")
+        #expect(try channel.address("DEV") == GuestAddress(name: "dev", ipAddress: "192.168.64.5"), "the stored name, not the one typed")
         ip.close()
         let none = try serve { _, _ in .status(VMRunStatus(state: .starting, pid: 4242, detail: "booting")) }
         defer { none.close() }

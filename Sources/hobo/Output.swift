@@ -19,19 +19,25 @@ extension OutputCommand {
     func run() async throws {
         let output = Output(json: json, style: Self.jsonStyle)
         try await output.reporting {
-            output.result(try await execute(output))
+            let reply = try await execute(output)
+            output.result(reply)
+            if reply.exitStatus != 0 { throw ExitCode(reply.exitStatus) }
         }
     }
 }
 
-/// A command's outcome, for people (`text`) and as JSON (`value`).
+/// A command's outcome, for people (`text`, nil when the command's own output said it all) and
+/// as JSON (`value`). A nonzero `exitStatus` (`exec`'s, passed through) ends hobo with it once the
+/// outcome is printed.
 struct Reply {
     let value: any Encodable
-    let text: String
+    let text: String?
+    let exitStatus: Int32
 
-    init(_ value: some Encodable, text: String) {
+    init(_ value: some Encodable, text: String?, exitStatus: Int32 = 0) {
         self.value = value
         self.text = text
+        self.exitStatus = exitStatus
     }
 }
 
@@ -80,9 +86,9 @@ struct Output: Sendable {
     }
 
     /// Opens `Reply`'s `any Encodable` into a concrete type, which the generic `ResultEvent` needs.
-    private func emit(_ value: some Encodable, text: String) {
+    private func emit(_ value: some Encodable, text: String?) {
         switch format {
-        case .text: print(text)
+        case .text: if let text { print(text) }
         case .document: write(Self.encoded { try HoboJSON.document(value) })
         case .events: writeLine(ResultEvent(result: value))
         }

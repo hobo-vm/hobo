@@ -12,10 +12,15 @@ public struct GuestChannel: Sendable {
 
     /// The guest's IP as its VM process knows it (its DHCP lease).
     public func ipAddress(_ name: String) throws -> String {
+        try address(name).ipAddress
+    }
+
+    /// The VM's name as stored and its guest's IP, as `hobo ip --json` reports them.
+    public func address(_ name: String) throws -> GuestAddress {
         let (vm, job) = try runningJob(name)
         let status = try ControlClient.status(at: job.socket)
         guard let ip = status.ipAddress else { throw GuestChannelError.noIPAddress(vm.name, status.detail) }
-        return ip
+        return GuestAddress(name: vm.name, ipAddress: ip)
     }
 
     /// Runs `command` in the guest and returns its exit status.
@@ -43,6 +48,25 @@ public struct GuestChannel: Sendable {
         guard vm.job?.pid != nil else { throw GuestChannelError.notRunning(vm.name) }
         return (vm, store.job(for: vm.name))
     }
+}
+
+/// `hobo ip --json`.
+public struct GuestAddress: Codable, Equatable, Sendable {
+    public var name: String
+    public var ipAddress: String
+
+    public init(name: String, ipAddress: String) {
+        self.name = name
+        self.ipAddress = ipAddress
+    }
+}
+
+/// `hobo exec --json` and `hobo cp --json`: the guest command's (or scp's) exit status. Its output
+/// went to stderr, keeping stdout for this.
+public struct GuestCommandResult: Codable, Equatable, Sendable {
+    public var exitStatus: Int32
+
+    public init(exitStatus: Int32) { self.exitStatus = exitStatus }
 }
 
 public enum GuestChannelError: Error, Equatable, CustomStringConvertible {

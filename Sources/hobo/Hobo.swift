@@ -283,14 +283,20 @@ struct Stop: OutputCommand {
     }
 }
 
-struct IP: ParsableCommand {
+struct IP: OutputCommand {
     static let configuration = CommandConfiguration(commandName: "ip", abstract: "Print a running VM's IP address.")
 
     @Argument(help: "Name of the VM.")
     var name: String
 
-    func run() throws {
-        print(try GuestChannel().ipAddress(name))
+    @Flag(help: "Print the VM's name and IP address as JSON.")
+    var json = false
+
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        let address = try GuestChannel().address(name)
+        return Reply(address, text: address.ipAddress)
     }
 }
 
@@ -298,7 +304,10 @@ struct SSH: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "ssh",
         abstract: "SSH into a running VM, or run a command there with -- <command>.",
-        discussion: "Runs the system ssh as the vagrant user, so the session, exit status and any command behave as plain ssh's do."
+        discussion: """
+            Runs the system ssh as the vagrant user, so the session, exit status and any command behave as plain ssh's do. \
+            There is no --json: hobo exec runs a command and reports its exit status as JSON.
+            """
     )
 
     @Argument(help: "Name of the VM.")
@@ -325,7 +334,7 @@ struct SSH: ParsableCommand {
     }
 }
 
-struct Exec: ParsableCommand {
+struct Exec: OutputCommand {
     static let configuration = CommandConfiguration(
         abstract: "Run a command in a running VM.",
         discussion: """
@@ -337,20 +346,25 @@ struct Exec: ParsableCommand {
     @Argument(help: "Name of the VM.")
     var name: String
 
+    @Flag(help: "Print the command's exit status as JSON; its output goes to stderr.")
+    var json = false
+
     @Argument(parsing: .postTerminator, help: ArgumentHelp("The command, after --.", valueName: "command"))
     var command: [String] = []
+
+    static let jsonStyle = Output.JSONStyle.document
 
     func validate() throws {
         if command.isEmpty { throw ValidationError("give the command after --, e.g. hobo exec \(name) -- uname -a") }
     }
 
-    func run() throws {
+    func execute(_ output: Output) async throws -> Reply {
         let status = try GuestChannel().exec(name, command: command, onOutput: writeOutput)
-        if status != 0 { throw ExitCode(status) }
+        return Reply(GuestCommandResult(exitStatus: status), text: nil, exitStatus: status)
     }
 }
 
-struct Copy: ParsableCommand {
+struct Copy: OutputCommand {
     static let configuration = CommandConfiguration(
         commandName: "cp",
         abstract: "Copy files between the host and a running VM.",
@@ -360,17 +374,23 @@ struct Copy: ParsableCommand {
     @Flag(name: .shortAndLong, help: "Copy directories recursively.")
     var recursive = false
 
+    @Flag(help: "Print scp's exit status as JSON; its messages go to stderr.")
+    var json = false
+
     @Argument(help: ArgumentHelp("Sources, then the destination.", valueName: "path"))
     var paths: [String] = []
 
-    func run() throws {
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
         let (vm, copy) = try GuestCopy.parse(paths, recursive: recursive, currentDirectory: .currentDirectory())
         let status = try GuestChannel().copy(vm, copy, onOutput: writeOutput)
-        if status != 0 { throw ExitCode(status) }
+        return Reply(GuestCommandResult(exitStatus: status), text: nil, exitStatus: status)
     }
 }
 
-/// Writes a guest command's output to the matching stream of this process.
+/// Writes a guest command's output to the matching stream of this process. With `--json`,
+/// `Output` has pointed fd 1 at stderr, so stdout carries only the JSON.
 private func writeOutput(_ stream: GuestStream, _ data: Data) throws {
     switch stream {
     case .stdout: try FileHandle.standardOutput.write(contentsOf: data)
