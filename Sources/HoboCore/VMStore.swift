@@ -3,7 +3,8 @@ import Foundation
 
 /// The VMs on this host: one visible bundle per VM, `<directory>/<name>.hobovm`, in `~/Hobo`
 /// (`HOBO_VMS` overrides it). A bundle being built holds a `building` marker with the creating
-/// process's PID; `config.json` is written only once the build succeeds.
+/// process's PID; `config.json` is written only once the build succeeds. A VM runs as a launchd
+/// job (see `VMJob`), and launchd's job table says whether it is running.
 public struct VMStore: Sendable {
     public static let bundleExtension = "hobovm"
     public static let configFile = "config.json"
@@ -11,8 +12,15 @@ public struct VMStore: Sendable {
     public static let buildingMarker = "building"
 
     public var directory: URL
+    /// Where the VM processes' sockets, logs and plists live.
+    public var home: HoboHome
+    public var launchd: Launchd
 
-    public init(directory: URL) { self.directory = directory }
+    public init(directory: URL, home: HoboHome = .standard(), launchd: Launchd = .system) {
+        self.directory = directory
+        self.home = home
+        self.launchd = launchd
+    }
 
     public static func standard() -> VMStore {
         if let override = ProcessInfo.processInfo.environment["HOBO_VMS"], !override.isEmpty {
@@ -23,6 +31,10 @@ public struct VMStore: Sendable {
 
     public enum Status: Equatable, Sendable {
         case stopped(VMConfig)
+        /// Its VM process (`hobo _vm-run`) is running under launchd.
+        case running(VMConfig, pid: Int32)
+        /// Its VM process last exited with a nonzero status; cleared by the next `start` or `stop`.
+        case crashed(VMConfig, exitStatus: Int32)
         /// Being built by a live process.
         case building(pid: Int32)
         /// Its build process died without finishing or cleaning up.
@@ -37,6 +49,8 @@ public struct VMStore: Sendable {
         public var status: Status
         /// Bytes the bundle occupies on the host.
         public var allocatedBytes: UInt64
+        /// The VM's launchd job, if it is loaded.
+        public var job: Launchd.Job?
     }
 
     public func bundle(for name: String) -> URL {
@@ -45,13 +59,39 @@ public struct VMStore: Sendable {
 
     /// Every VM, sorted by name. Anything in `directory` that isn't a `.hobovm` is ignored.
     public func list() -> [VM] {
-        names().sorted { $0.localizedStandardCompare($1) == .orderedAscending }.map { vm(named: $0) }
+        let jobs = launchd.jobs()
+        return names().sorted { $0.localizedStandardCompare($1) == .orderedAscending }.map { vm(named: $0, jobs: jobs) }
     }
 
     /// The VM called `name`, matched case-insensitively.
     public func find(_ name: String) throws -> VM {
         guard let existing = existingName(matching: name) else { throw VMStoreError.notFound(name) }
-        return vm(named: existing)
+        return vm(named: existing, jobs: launchd.jobs())
+    }
+
+    /// The launchd job and files of the VM process for `name`. They are keyed by this store's
+    /// directory as well as the name, so two stores (`HOBO_VMS`) can each run a VM called `dev`.
+    public func job(for name: String) -> VMJob {
+        // realpath, not resolvingSymlinksInPath, which strips /private and so isn't canonical.
+        let path = realpath(directory.path, nil).map { resolved in
+            defer { free(resolved) }
+            return String(cString: resolved)
+        } ?? directory.standardizedFileURL.path
+        let key = "\(Self.sha256(Data(path.utf8)).prefix(8)).\(name)"
+        return VMJob(
+            label: Launchd.labelPrefix + key,
+            socket: home.root.appending(path: "\(key).sock"),
+            log: home.root.appending(path: "\(key).log"),
+            plist: home.root.appending(path: "launchd/\(key).plist")
+        )
+    }
+
+    /// Unloads a VM's leftover job (one that has exited) and removes its files, for a VM that is
+    /// going away or changing name.
+    func forgetJob(of name: String) {
+        let job = job(for: name)
+        launchd.bootout(job.label)
+        for file in [job.plist, job.socket, job.log] { try? FileManager.default.removeItem(at: file) }
     }
 
     /// Starts a build: checks the name is valid and free, creates the bundle and marks it as
@@ -89,14 +129,17 @@ public struct VMStore: Sendable {
         try FileManager.default.removeItem(at: bundle(for: name))
     }
 
-    /// Throws if `vm` is in use. Today only a live build counts; the VM process will too.
+    /// Throws if `vm` is being built or its VM process is running.
     public func checkNotRunning(_ vm: VM) throws {
         if case .building = vm.status { throw VMStoreError.busy(vm.name, reason: "being built") }
+        // The job, not the status: a running VM whose config.json has gone bad still runs.
+        if vm.job?.pid != nil { throw VMStoreError.busy(vm.name, reason: "running (hobo stop \(vm.name))") }
     }
 
     public func delete(_ name: String) throws {
         let vm = try find(name)
         try checkNotRunning(vm)
+        forgetJob(of: vm.name)
         try FileManager.default.removeItem(at: vm.bundle)
     }
 
@@ -107,6 +150,7 @@ public struct VMStore: Sendable {
         if let existing = existingName(matching: new), existing != vm.name { throw VMStoreError.exists(existing) }
         try checkNotRunning(vm)
         try FileManager.default.moveItem(at: vm.bundle, to: bundle(for: new))
+        forgetJob(of: vm.name)
     }
 
     /// A VM name is a filename, a launchd label suffix and a socket name, so it is kept plain.
@@ -129,12 +173,13 @@ public struct VMStore: Sendable {
         names().first { $0.lowercased() == name.lowercased() }
     }
 
-    private func vm(named name: String) -> VM {
+    private func vm(named name: String, jobs: [String: Launchd.Job]) -> VM {
         let bundle = bundle(for: name)
-        return VM(name: name, bundle: bundle, status: status(of: bundle), allocatedBytes: Self.allocatedBytes(of: bundle))
+        let job = jobs[job(for: name).label]
+        return VM(name: name, bundle: bundle, status: status(of: bundle, job: job), allocatedBytes: Self.allocatedBytes(of: bundle), job: job)
     }
 
-    private func status(of bundle: URL) -> Status {
+    private func status(of bundle: URL, job: Launchd.Job?) -> Status {
         let marker = bundle.appending(path: Self.buildingMarker)
         if FileManager.default.fileExists(atPath: marker.path) {
             guard let text = try? String(contentsOf: marker, encoding: .utf8),
@@ -145,6 +190,10 @@ public struct VMStore: Sendable {
             return .building(pid: pid)
         }
         guard let config = try? VMConfig.load(from: bundle.appending(path: Self.configFile)) else { return .broken }
+        if let job {
+            if let pid = job.pid { return .running(config, pid: pid) }
+            if job.lastExitStatus != 0 { return .crashed(config, exitStatus: job.lastExitStatus) }
+        }
         return .stopped(config)
     }
 
@@ -170,6 +219,16 @@ public struct VMStore: Sendable {
         }
         return total
     }
+}
+
+/// A VM process's launchd job and the files in `~/.hobo` that go with it.
+public struct VMJob: Equatable, Sendable {
+    public var label: String
+    /// The control socket the VM process serves (see `HoboControl`).
+    public var socket: URL
+    /// The VM process's stdout and stderr.
+    public var log: URL
+    public var plist: URL
 }
 
 public enum VMStoreError: Error, Equatable, CustomStringConvertible {

@@ -1,15 +1,36 @@
+import AppKit
 import ArgumentParser
 import Foundation
+import HoboControl
 import HoboCore
 import HoboVM
 
+/// A synchronous entry point, because `_vm-run` must run AppKit's event loop from the top of the
+/// main thread: started from inside Swift's async main, the loop never services the main actor.
 @main
+enum Entry {
+    static func main() {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if arguments.first == VMRun.configuration.commandName {
+            VMRun.main(Array(arguments.dropFirst()))
+        }
+        Task {
+            await HoboCommand.main()
+            exit(0)
+        }
+        dispatchMain()
+    }
+}
+
 struct HoboCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "hobo",
         abstract: "Named VMs on Apple's Virtualization framework.",
         version: Hobo.version,
-        subcommands: [Init.self, Validate.self, Images.self, Create.self, List.self, Rename.self, Delete.self]
+        subcommands: [
+            Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self,
+            Rename.self, Delete.self,
+        ]
     )
 }
 
@@ -163,8 +184,11 @@ struct List: ParsableCommand {
             let used = fileSize(vm.allocatedBytes)
             switch vm.status {
             case .stopped(let config):
-                return [vm.name, "stopped", "\(config.os.rawValue) \(config.guestOSVersion)", String(config.cpus),
-                        fileSize(config.memory), "\(used) / \(fileSize(config.disk))"]
+                return [vm.name, "stopped"] + columns(config, used: used)
+            case .running(let config, _):
+                return [vm.name, "running"] + columns(config, used: used)
+            case .crashed(let config, let status):
+                return [vm.name, "crashed (\(status < 0 ? "signal \(-status)" : "exit \(status)"))"] + columns(config, used: used)
             case .building: return [vm.name, "building", "—", "—", "—", "\(used) / —"]
             case .failed: return [vm.name, "failed", "—", "—", "—", "\(used) / —"]
             case .broken: return [vm.name, "broken", "—", "—", "—", "\(used) / —"]
@@ -176,6 +200,89 @@ struct List: ParsableCommand {
                 .trimmingCharacters(in: .whitespaces))
         }
     }
+
+    private func columns(_ config: VMConfig, used: String) -> [String] {
+        ["\(config.os.rawValue) \(config.guestOSVersion)", String(config.cpus), fileSize(config.memory), "\(used) / \(fileSize(config.disk))"]
+    }
+}
+
+struct Start: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Boot a VM headless, in the background under launchd.",
+        discussion: "Waits until the guest answers SSH. Interrupting the wait leaves the VM booting."
+    )
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    func run() async throws {
+        let interrupt = signalSource(SIGINT) {
+            print("\nLeft \(name) booting (hobo stop \(name) to stop it)")
+            Darwin.exit(130)
+        }
+        defer { interrupt.cancel() }
+        switch try await VMLifecycle(log: { print($0) }).start(name) {
+        case .started(let status):
+            print("\(name) is running\(status.ipAddress.map { " (\($0))" } ?? "")")
+        case .alreadyRunning(let status):
+            print("\(name) is already running\(status?.ipAddress.map { " (\($0))" } ?? "")")
+        }
+    }
+}
+
+struct Stop: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Shut a VM down.",
+        discussion: "Runs shutdown over SSH if the guest answers, otherwise asks the guest to shut down, then powers it off if it is still on."
+    )
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    @Flag(help: "Power the VM off at once, and kill its VM process if it isn't answering.")
+    var force = false
+
+    func run() async throws {
+        switch try await VMLifecycle(log: { print($0) }).stop(name, force: force) {
+        case .stopped: print("Stopped \(name)")
+        case .wasNotRunning: print("\(name) is not running")
+        }
+    }
+}
+
+/// The VM process launchd runs for `hobo start`. Hidden, and dispatched by `Entry` before the
+/// async commands, since it runs AppKit's event loop.
+struct VMRun: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "_vm-run", shouldDisplay: false)
+
+    @Argument var name: String
+
+    func run() throws {
+        let name = name
+        // `Entry` calls this on the main thread, before anything else is running.
+        MainActor.assumeIsolated {
+            let app = NSApplication.shared
+            // Never in the Dock and never takes focus; `hobo view` will add a window.
+            app.setActivationPolicy(.accessory)
+            Task {
+                await VMRunner(name: name) { line in
+                    print("\(Date.now.formatted(.iso8601)) \(line)")
+                    fflush(stdout)
+                }.start()
+            }
+            app.run()
+        }
+    }
+}
+
+/// Handles `signo` on a background queue instead of the default action, until cancelled.
+private func signalSource(_ signo: Int32, _ handler: @escaping @Sendable () -> Void) -> any DispatchSourceSignal {
+    signal(signo, SIG_IGN)
+    let source = DispatchSource.makeSignalSource(signal: signo, queue: .global())
+    source.setEventHandler(handler: handler)
+    source.setCancelHandler { signal(signo, SIG_DFL) }
+    source.resume()
+    return source
 }
 
 struct Rename: ParsableCommand {

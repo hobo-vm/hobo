@@ -22,11 +22,13 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["validate"], in: work) == 0)
     }
 
-    /// Creates a VM from the latest IPSW, then renames and deletes it. The recipe's step asserts
-    /// the Vagrant conventions from inside the guest, so a VM that builds has them. VMs go to a
-    /// temp `HOBO_VMS`; the IPSW goes through the real image index, so it downloads only once.
-    @Test(.timeLimit(.minutes(120)))
-    func createListRenameDelete() throws {
+    /// Creates a VM from the latest IPSW, runs it through start and stop under launchd, then
+    /// renames and deletes it. The recipe's step asserts the Vagrant conventions from inside the
+    /// guest, so a VM that builds has them. VMs go to a temp `HOBO_VMS`, whose store hash keeps
+    /// their launchd jobs apart from real ones; the IPSW goes through the real image index, so it
+    /// downloads only once.
+    @Test(.timeLimit(.minutes(150)))
+    func lifecycle() throws {
         let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
         let work = FileManager.default.temporaryDirectory.appending(path: "hobo-create-\(UUID().uuidString)")
         let vms = work.appending(path: "vms")
@@ -61,6 +63,23 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(!config.macAddress.isEmpty)
         let list = try output(hobo, ["list"], environment: env)
         #expect(list.contains(/itest\s+stopped\s+macOS 27\./))
+
+        // Never leak a running VM: only 2 macOS guests fit on a host.
+        defer { _ = try? run(hobo, ["stop", "--force", "itest"], in: work, environment: env) }
+        let started = try output(hobo, ["start", "itest"], environment: env)
+        #expect(started.contains(/itest is running \(\d+\.\d+\.\d+\.\d+\)/), "\(started)")
+        #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+running/))
+        #expect(try run(hobo, ["rename", "itest", "itest2"], in: work, environment: env) != 0, "running")
+        #expect(try run(hobo, ["delete", "itest", "--yes"], in: work, environment: env) != 0, "running")
+        #expect(try output(hobo, ["start", "itest"], environment: env).contains("already running"))
+
+        #expect(try output(hobo, ["stop", "itest"], environment: env).contains("Stopped itest"))
+        #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+stopped/))
+        #expect(try output(hobo, ["stop", "itest"], environment: env).contains("not running"))
+
+        #expect(try run(hobo, ["start", "itest"], in: work, environment: env) == 0)
+        #expect(try output(hobo, ["stop", "--force", "itest"], environment: env).contains("Stopped itest"))
+        #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+stopped/))
 
         #expect(try run(hobo, ["rename", "itest", "itest2"], in: work, environment: env) == 0)
         #expect(try output(hobo, ["list"], environment: env).contains("itest2"))

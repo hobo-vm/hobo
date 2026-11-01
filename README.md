@@ -8,12 +8,13 @@ hobo init                          # write a starter Hobo.toml
 hobo validate                      # check it without building
 hobo create dev                    # build a VM from ./Hobo.toml
 hobo list
-hobo start dev                     # headless; never steals focus
+hobo start dev                     # headless under launchd; never steals focus
 hobo ssh dev
+hobo stop dev                      # clean shutdown; --force powers off
 ```
 
-> Status: **M1 in progress.** `init`, `validate`, `create`, `list`, `rename` and `delete` are
-> implemented. VMs live in `~/Hobo/<name>.hobovm` (`HOBO_VMS` overrides the directory).
+> Status: **M1 in progress.** `init`, `validate`, `create`, `list`, `start`, `stop`, `rename` and
+> `delete` are implemented. VMs live in `~/Hobo/<name>.hobovm` (`HOBO_VMS` overrides the directory).
 > See [docs/design.md](docs/design.md) for the design and milestones.
 
 ## Recipes
