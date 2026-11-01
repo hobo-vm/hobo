@@ -34,8 +34,12 @@ public struct VMCreator {
     }
 
     public func create() async throws -> VMConfig {
+        // Parsed from the bytes that are hashed and copied into the bundle, so all three agree.
         let recipeData = try Data(contentsOf: options.recipeFile)
-        let recipe = try Recipe.load(from: options.recipeFile)
+        guard let toml = String(data: recipeData, encoding: .utf8) else {
+            throw CocoaError(.fileReadInapplicableStringEncoding, userInfo: [NSURLErrorKey: options.recipeFile])
+        }
+        let recipe = try Recipe.parse(toml, directory: options.recipeFile.deletingLastPathComponent())
         try recipe.checkFilesExist()
 
         let bundle = try store.beginCreate(options.name)
