@@ -166,6 +166,10 @@ import Testing
 /// `python3 -m http.server` on a free port, serving `directory`.
 final class HTTPServer {
     private let process = Process()
+    /// Signalled by the termination handler. `waitUntilExit()` spins the calling thread's run
+    /// loop, which on a Swift concurrency thread can miss the exit and hang the test run.
+    private let exited = DispatchSemaphore(value: 0)
+    private var stopped = false
     let port: Int
 
     init(directory: URL) throws {
@@ -174,6 +178,7 @@ final class HTTPServer {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
+        process.terminationHandler = { [exited] _ in exited.signal() }
         try process.run()
         // First line: "Serving HTTP on 127.0.0.1 port 54321 (http://127.0.0.1:54321/) ..."
         var line = Data()
@@ -191,9 +196,9 @@ final class HTTPServer {
     func url(for path: String) -> URL { URL(string: "http://127.0.0.1:\(port)/\(path)")! }
 
     func stop() {
-        if process.isRunning {
-            process.terminate()
-            process.waitUntilExit()
-        }
+        guard !stopped else { return }
+        stopped = true
+        process.terminate()
+        exited.wait()
     }
 }
