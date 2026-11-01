@@ -94,6 +94,22 @@ import Testing
         }
     }
 
+    @Test func invalidProvisionerNamesTheStepOneBased() {
+        #expect(throws: BoxcarError.invalidProvisioner(scope: "machine \"app\"", index: 1, reason: "file needs source and destination")) {
+            try Boxcar.parse("""
+            [[machine]]
+            name = "app"
+              [[machine.provision]]
+              type = "shell"
+              inline = "true"
+              [[machine.provision]]
+              type = "file"
+            """)
+        }
+        let error = BoxcarError.invalidProvisioner(scope: "machine \"app\"", index: 1, reason: "file needs source and destination")
+        #expect(error.description == "machine \"app\" provision step 2: file needs source and destination")
+    }
+
     @Test func shellCommandIsPrivilegedByDefaultWithQuotedSortedEnv() {
         let step = Provisioner(type: .shell, inline: "true", env: ["B": "two words", "A": "it's"])
         #expect(step.shellCommand(running: "/tmp/s.sh")
