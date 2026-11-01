@@ -78,7 +78,7 @@ public struct VMCreator {
             let image = try await VZMacOSRestoreImage.latestSupported
             log("warning: source is unpinned (ipsw = \"latest\"); resolved to \(image.url.absoluteString)")
             let (file, sha) = try await images.fetch(image.url, expectedSHA256: nil, log: log, progress: progress.report)
-            log("Pin it with: ipsw = \"\(image.url.absoluteString)\", sha256 = \"\(sha)\"")
+            log("Pin it by replacing ipsw = \"latest\" in [source] with:\nipsw = \"\(image.url.absoluteString)\"\nsha256 = \"\(sha)\"")
             return file
         case .remote(let url, let sha):
             return try await images.fetch(url, expectedSHA256: sha, log: log, progress: progress.report).file
