@@ -11,9 +11,9 @@ public struct BoxBuilder {
     public struct Options: Sendable {
         public var output: URL
         /// Ignore any checkpoint and reinstall from the IPSW.
-        public var fresh = false
+        public var fresh: Bool
         /// On failure, leave the VM running for SSH until interrupted.
-        public var holdOnFailure = false
+        public var holdOnFailure: Bool
 
         public init(output: URL, fresh: Bool = false, holdOnFailure: Bool = false) {
             self.output = output
