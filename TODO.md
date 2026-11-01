@@ -21,7 +21,6 @@ Only 2 macOS guests can run per host, so a `create` plus a boot test fill both s
 - M5: QEMU engine (`engine = "qemu"`) for Windows: same bundle, clone, snapshot, suspend, leases; `exec --gui` via scheduled task; UI Automation/WinAppDriver
 - Later: host-side framebuffer screenshot for wedged guests
 - Later: project-level file attaching VMs and shares to a directory
-- Later: recipe IPSW sources by version (`ipsw = "27.1"`) via a catalog, as Mist does
 - Later: an Xcode recipe (macOS 27 + Xcode, pinned)
 - Later: `hobo sim` for host iOS Simulator (headless simctl; input via idb/XCUITest) and Android Emulator (`-no-window`, adb)
 - Later: Developer ID + notarization, private Homebrew tap, `.app` bundle for VM window identity
