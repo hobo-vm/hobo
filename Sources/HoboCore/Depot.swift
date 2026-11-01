@@ -48,9 +48,13 @@ public struct Depot: Sendable {
         let handle = try FileHandle(forReadingFrom: file)
         defer { try? handle.close() }
         var hasher = SHA256()
-        while let chunk = try handle.read(upToCount: 8 << 20), !chunk.isEmpty {
+        // Each chunk is autoreleased; without a pool per chunk, hashing a 28 GB box keeps
+        // every chunk alive until the loop ends and the process is killed for memory.
+        while try autoreleasepool(invoking: {
+            guard let chunk = try handle.read(upToCount: 8 << 20), !chunk.isEmpty else { return false }
             hasher.update(data: chunk)
-        }
+            return true
+        }) {}
         return hasher.finalize().hexString
     }
 
