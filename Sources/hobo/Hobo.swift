@@ -246,8 +246,12 @@ struct Start: AsyncParsableCommand {
         let output = Output(json: json, streaming: true)
         let name = name
         let interrupt = signalSource(SIGINT) {
-            let message = "interrupted; left \(name) booting (hobo stop \(name) to stop it)"
-            if output.isJSON { output.fail(message) } else { print("\n" + message.prefix(1).uppercased() + message.dropFirst()) }
+            let stopHint = "(hobo stop \(name) to stop it)"
+            if output.isJSON {
+                output.fail("interrupted; left \(name) booting \(stopHint)")
+            } else {
+                print("\nLeft \(name) booting \(stopHint)")
+            }
             Darwin.exit(130)
         }
         defer { interrupt.cancel() }
