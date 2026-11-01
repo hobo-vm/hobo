@@ -134,6 +134,15 @@ import Testing
         #expect(try downloaded() == ["mac.ipsw"])
     }
 
+    @Test(arguments: [
+        ("https://h.example/a/mac.ipsw?x=1", "mac.ipsw"), ("https://h.example/a/b%2Fc.ipsw", "b_c.ipsw"),
+        ("https://h.example/", "image.ipsw"), ("https://h.example", "image.ipsw"),
+        ("https://h.example/a/..", "image.ipsw"), ("https://h.example/a/.", "image.ipsw"),
+    ])
+    func downloadNameStaysInsideDownloads(url: String, name: String) {
+        #expect(ImageIndex.filename(for: URL(string: url)!) == name)
+    }
+
     @Test func localFilesAreVerifiedInPlaceAndIndexed() throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let file = served.appending(path: "mac.ipsw")

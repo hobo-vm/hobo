@@ -42,7 +42,7 @@ public struct ImageIndex: Sendable {
         }
 
         // A same-named file nobody indexed, e.g. downloaded in a browser: adopt it if it matches.
-        let vendorNamed = downloads.appending(path: url.lastPathComponent.isEmpty ? "image.ipsw" : url.lastPathComponent)
+        let vendorNamed = downloads.appending(path: Self.filename(for: url))
         let alreadyRejected = indexed?.path == vendorNamed.standardizedFileURL.path
         if !alreadyRejected, FileManager.default.fileExists(atPath: vendorNamed.path) {
             let entry = try Self.entry(for: vendorNamed, log: log)
@@ -115,6 +115,14 @@ public struct ImageIndex: Sendable {
               let size = attributes[.size] as? NSNumber, let date = attributes[.modificationDate] as? Date
         else { return nil }
         return (size.uint64Value, date.timeIntervalSince1970)
+    }
+
+    /// The download's name in `downloads`: the URL's last path component, kept to a single plain
+    /// filename. A recipe URL can end in `/`, `.` or `..`, or decode `%2F` to a slash, any of
+    /// which would otherwise point outside `downloads` or at a directory.
+    static func filename(for url: URL) -> String {
+        let name = url.lastPathComponent.replacing("/", with: "_").replacing(":", with: "_")
+        return ["", "_", ".", ".."].contains(name) ? "image.ipsw" : name
     }
 
     /// `file`, or Finder-style `name 2.ext`, `name 3.ext`, ... if it is taken.
