@@ -75,6 +75,13 @@ import Testing
         }
     }
 
+    @Test(arguments: ["1.0/../../x", "1 0", "../.."])
+    func versionsThatAreNotFileNameSafeAreRejected(version: String) {
+        #expect(throws: RecipeError.invalidVersion(version)) {
+            try Recipe.parse(minimal(source: #"ipsw = "latest""#, version: version), directory: directory)
+        }
+    }
+
     @Test func malformedStepsAreRejected() {
         #expect(throws: RecipeError.invalidProvisioner(0, "shell needs exactly one of inline or path")) {
             try Recipe.parse(minimal(source: #"ipsw = "latest""#) + "\n[[provision]]\ntype = \"shell\"", directory: directory)
@@ -94,10 +101,10 @@ import Testing
         #expect(recipe.missingFiles() == ["setup.sh"])
     }
 
-    private func minimal(source: String, name: String = "greg/macos-27") -> String {
+    private func minimal(source: String, name: String = "greg/macos-27", version: String = "1.0.0") -> String {
         """
         name = "\(name)"
-        version = "1.0.0"
+        version = "\(version)"
         [source]
         \(source)
         """

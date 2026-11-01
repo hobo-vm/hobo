@@ -31,7 +31,7 @@ public struct Recipe: Equatable, Sendable {
     public static func parse(_ toml: String, directory: URL) throws -> Recipe {
         let raw = try TOMLDecoder().decode(RawRecipe.self, from: toml)
         try validateName(raw.name)
-        if raw.version.isEmpty { throw RecipeError.missingVersion }
+        try validateVersion(raw.version)
         if raw.guiTesting?.enabled == true { throw RecipeError.guiTestingNotImplemented }
 
         let recipe = Recipe(
@@ -87,12 +87,21 @@ public struct Recipe: Equatable, Sendable {
         return .local(URL(filePath: path, relativeTo: directory).standardizedFileURL, sha256: sha)
     }
 
+    private static let nameCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
+
     private static func validateName(_ name: String) throws {
         let parts = name.split(separator: "/", omittingEmptySubsequences: false)
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
         guard (1...2).contains(parts.count),
-              parts.allSatisfy({ !$0.isEmpty && $0.unicodeScalars.allSatisfy(allowed.contains) })
+              parts.allSatisfy({ !$0.isEmpty && $0.unicodeScalars.allSatisfy(nameCharacters.contains) })
         else { throw RecipeError.invalidName(name) }
+    }
+
+    /// The version names the build's working directory and the `.box`, so it must not carry a path.
+    private static func validateVersion(_ version: String) throws {
+        if version.isEmpty { throw RecipeError.missingVersion }
+        guard version.unicodeScalars.allSatisfy(nameCharacters.union(CharacterSet(charactersIn: "+")).contains) else {
+            throw RecipeError.invalidVersion(version)
+        }
     }
 
     private static func validate(_ step: Provisioner, index: Int) throws {
@@ -110,6 +119,7 @@ public struct Recipe: Equatable, Sendable {
 public enum RecipeError: Error, Equatable, CustomStringConvertible {
     case invalidName(String)
     case missingVersion
+    case invalidVersion(String)
     case missingSHA256(String)
     case invalidSHA256(String)
     case invalidProvisioner(Int, String)
@@ -120,6 +130,7 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
         switch self {
         case .invalidName(let name): "invalid box name \"\(name)\" (expected e.g. \"greg/macos-27\")"
         case .missingVersion: "recipe needs a version"
+        case .invalidVersion(let version): "invalid version \"\(version)\" (expected e.g. \"1.0.0\")"
         case .missingSHA256(let ipsw): "source \"\(ipsw)\" needs a sha256 (only ipsw = \"latest\" may omit it)"
         case .invalidSHA256(let sha): "invalid sha256 \"\(sha)\" (expected 64 hex digits)"
         case .invalidProvisioner(let index, let reason): "provision step \(index + 1): \(reason)"
