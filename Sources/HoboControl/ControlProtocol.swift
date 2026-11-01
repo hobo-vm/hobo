@@ -54,8 +54,9 @@ public struct VMRunStatus: Codable, Equatable, Sendable {
     /// What the VM process is doing now, e.g. which stop step it is on.
     public var detail: String?
     public var ipAddress: String?
-    /// Whether the VM's window is showing (`hobo view`, `start --gui`) rather than hidden or never opened.
-    public var windowShown: Bool
+    /// Whether the VM's window is showing (`hobo view`, `start --gui`) rather than hidden or never
+    /// opened. VM processes from before it existed don't send it.
+    @MissingAsFalse public var windowShown: Bool
 
     public init(state: State, pid: Int32, detail: String? = nil, ipAddress: String? = nil, windowShown: Bool = false) {
         self.state = state
@@ -64,17 +65,30 @@ public struct VMRunStatus: Codable, Equatable, Sendable {
         self.ipAddress = ipAddress
         self.windowShown = windowShown
     }
+}
 
-    enum CodingKeys: String, CodingKey { case state, pid, detail, ipAddress, windowShown }
+/// A flag that decodes as false when its key is missing, so a field added to the protocol keeps
+/// synthesized `Codable` (one list of fields) while older peers leave it out.
+@propertyWrapper
+public struct MissingAsFalse: Codable, Equatable, Sendable {
+    public var wrappedValue: Bool
 
-    /// `windowShown` may be missing: VM processes from before it existed don't send it.
+    public init(wrappedValue: Bool) { self.wrappedValue = wrappedValue }
+
     public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        state = try container.decode(State.self, forKey: .state)
-        pid = try container.decode(Int32.self, forKey: .pid)
-        detail = try container.decodeIfPresent(String.self, forKey: .detail)
-        ipAddress = try container.decodeIfPresent(String.self, forKey: .ipAddress)
-        windowShown = try container.decodeIfPresent(Bool.self, forKey: .windowShown) ?? false
+        wrappedValue = try decoder.singleValueContainer().decode(Bool.self)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(wrappedValue)
+    }
+}
+
+extension KeyedDecodingContainer {
+    /// Chosen over the generic `decode` by synthesized `init(from:)`, and tolerates a missing key.
+    public func decode(_ type: MissingAsFalse.Type, forKey key: Key) throws -> MissingAsFalse {
+        try decodeIfPresent(type, forKey: key) ?? MissingAsFalse(wrappedValue: false)
     }
 }
 

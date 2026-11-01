@@ -109,6 +109,12 @@ import HoboCore
         #expect(ContinuousClock.now - start < .seconds(5))
     }
 
+    /// The flag goes on the wire as a plain bool, not wrapped.
+    @Test func windowShownIsAPlainBool() throws {
+        let text = String(decoding: try ControlSocket.encode(VMRunStatus(state: .running, pid: 7, windowShown: true)), as: UTF8.self)
+        #expect(text.contains(#""windowShown":true"#))
+    }
+
     @Test func serverRefusesOtherProtocolVersions() throws {
         let server = try ControlServer(path: socket) { _, _ in .accepted }
         defer { server.close() }
