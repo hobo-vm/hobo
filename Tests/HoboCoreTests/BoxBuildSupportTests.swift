@@ -44,7 +44,7 @@ import Testing
         #expect(fetched.file == depot.file(sha256: sha))
         let index = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: depot.directory.appending(path: "index.json")))
         #expect(index == [url.absoluteString: sha])
-        #expect(!FileManager.default.fileExists(atPath: depot.directory.appending(path: "download.part").path))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: depot.directory.path).sorted() == ["\(sha).ipsw", "index.json"])
 
         // Cached: served from the index with the server gone.
         server.stop()
@@ -69,6 +69,7 @@ import Testing
         await #expect(throws: DepotError.httpStatus(server.url(for: "missing.ipsw").absoluteString, 404)) {
             try await depot.fetch(server.url(for: "missing.ipsw"), expectedSHA256: nil) { _, _ in }
         }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: depot.directory.path).isEmpty)
     }
 
     private func shasum(_ file: URL) throws -> String {

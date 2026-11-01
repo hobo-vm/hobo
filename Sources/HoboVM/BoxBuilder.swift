@@ -189,8 +189,9 @@ public struct BoxBuilder {
     }
 
     private func saveCheckpoint(_ bundle: MacVMBundle, at checkpoint: URL) throws {
-        let staging = checkpoint.appendingPathExtension("partial")
-        try? FileManager.default.removeItem(at: staging)
+        // Unique per build, so two builds saving the same checkpoint don't clone into one directory.
+        let staging = checkpoint.appendingPathExtension("partial-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: staging) }
         _ = try bundle.clone(to: staging)
         try? FileManager.default.removeItem(at: checkpoint)
         try FileManager.default.moveItem(at: staging, to: checkpoint)

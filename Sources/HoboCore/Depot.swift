@@ -20,13 +20,13 @@ public struct Depot: Sendable {
             return (file(sha256: sha), sha)
         }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let part = directory.appending(path: "download.part")
-        try? FileManager.default.removeItem(at: part)
+        // Unique per download, so parallel builds fetching into one depot don't share a part file.
+        let part = directory.appending(path: "download-\(UUID().uuidString).part")
+        defer { try? FileManager.default.removeItem(at: part) }
         try await Download(url: url, destination: part, progress: progress).run()
 
         let sha = try Self.sha256(of: part)
         if let expectedSHA256, sha != expectedSHA256 {
-            try? FileManager.default.removeItem(at: part)
             throw DepotError.checksumMismatch(url.absoluteString, expected: expectedSHA256, actual: sha)
         }
         let destination = file(sha256: sha)
