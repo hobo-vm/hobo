@@ -33,9 +33,6 @@ public struct GuestSSH: Sendable {
         (["ssh"] + sshArguments(command)).map { $0.contains(" ") ? shellQuote($0) : $0 }.joined(separator: " ")
     }
 
-    /// The command a person can paste to get into the guest.
-    public var commandLine: String { commandLine() }
-
     /// Runs `command` in the guest, streaming its output unless `quiet`. Returns the exit status
     /// (255 means ssh itself failed).
     @discardableResult
@@ -163,9 +160,10 @@ public struct GuestSSH: Sendable {
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice
         case .capture:
-            pipes = [(.stdout, Pipe()), (.stderr, Pipe())]
-            process.standardOutput = pipes[0].1
-            process.standardError = pipes[1].1
+            let stdout = Pipe(), stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+            pipes = [(.stdout, stdout), (.stderr, stderr)]
         }
         var askpass: URL?
         if case .password(let password) = auth {

@@ -215,7 +215,7 @@ public struct VMCreator {
         if options.holdOnFailure, let ip = DHCPLeases.ipAddress(forMAC: vm.macAddress.string) {
             let ssh = GuestSSH(host: ip, auth: auth)
             let password = if case .password(let password) = auth { " (password: \(password))" } else { "" }
-            log("VM left running for debugging; press ^C to stop and delete it:\n  \(ssh.commandLine)\(password)")
+            log("VM left running for debugging; press ^C to stop and delete it:\n  \(ssh.commandLine())\(password)")
             while !vm.isStopped { try await Task.sleep(for: .seconds(1)) }
         }
         try await vm.forceStop()
