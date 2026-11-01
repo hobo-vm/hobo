@@ -34,11 +34,11 @@ global VMs on 2026-11-01.
    GUI can write one to a temp directory and discard it; the GUI edits a VM through `hobo set`,
    not its recipe. Relative `path`/`source` values resolve against the recipe's directory. Recipes
    should pin sources (IPSW URL + SHA, image URL + SHA, Xcode version + SHA); unpinned sources
-   warn. The `init` template uses `ipsw = "latest"` and says to paste in the pin the first
-   `create` prints (decided 2026-11-01: Apple publishes no SHA-256, so pinning at `init` would
-   mean a 20 GB download there); listing versions to pin is the catalog's job (see `TODO.md`).
+   warn. A bare `hobo init` writes `ipsw = "latest"` and says to paste in the pin the first
+   `create` prints (decided 2026-11-01: Apple publishes no SHA-256, so pinning there would mean a
+   20 GB download); `hobo init <build>` pins a build from `hobo images` (decision 8).
 4. **Commands.** VM-centric verbs, no Vagrant aliases:
-   `init [--force]`, `validate [file]`, `create <name> --from Hobo.toml [--ipsw path]`, `list`, `start [--ephemeral] [--gui] [--cold]
+   `init [<build>] [--force]`, `images [--latest]`, `validate [file]`, `create <name> --from Hobo.toml [--ipsw path]`, `list`, `start [--ephemeral] [--gui] [--cold]
    [--share path] [--idle-timeout d]`, `stop [--force]`, `suspend`, `ssh <name> [-- cmd]`,
    `exec <name> [--gui] -- cmd`, `cp`, `ip`, `view`, `screenshot`, `clone <src> <dst> [--ephemeral]`,
    `delete`, `rename`, `set <name> --cpus/--memory/--disk/--share/--unshare`,
@@ -67,6 +67,15 @@ global VMs on 2026-11-01.
    `.part` restarts from scratch; there is no resume, and concurrent downloads of one URL are
    unsupported. Local paths (`--ipsw`, or a path in `[source]`) are used in place, never copied.
    `ipsw = "latest"` uses `VZMacOSRestoreImage.latestSupported`, warns as unpinned and prints the pin.
+   Choosing a version replaces Mist (decided 2026-11-01): `hobo images` lists the macOS IPSWs
+   (name, version, build, release date, size; `--latest` keeps the newest of each major) from
+   ipsw.me's `v4/device/VirtualMac2,1?type=ipsw`, fetched live with no cache, hiding guests newer
+   than the host's macOS. Apple publishes only the newest IPSW (what `latestSupported` reads), and
+   `softwareupdate --list-full-installers` lists installer apps, not IPSWs, so ipsw.me is the only
+   source of the history; it includes each file's SHA-256. `hobo init <build>` looks the build up
+   there and writes `[source]` pinned to its URL and SHA-256. Only `images` and `init` read the
+   catalog; recipes always hold a URL, so builds never depend on it. Later, `images --os` adds
+   Linux, Windows and simulator images.
 9. **Runtime config.** The recipe supplies defaults; `create` copies them into the bundle's
    `config.json`, which is the truth thereafter. `hobo set` changes CPUs, memory, disk (grow only) and
    persistent shares (virtio-fs; macOS default mount `/Volumes/My Shared Files/<tag>`, `readonly`
