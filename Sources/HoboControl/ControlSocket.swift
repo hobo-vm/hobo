@@ -87,7 +87,7 @@ public enum ControlSocket {
     }
 
     static func posixError(_ call: String) -> Error {
-        ControlError.badMessage("\(call): \(String(cString: strerror(errno)))")
+        ControlError.system("\(call): \(String(cString: strerror(errno)))")
     }
 }
 
@@ -109,11 +109,14 @@ public final class ControlServer: Sendable {
         let bound = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
         }
-        guard bound == 0, chmod(self.path, 0o600) == 0, listen(fd, 16) == 0 else {
-            let error = ControlSocket.posixError("bind \(self.path)")
+        func failed(_ call: String) -> Error {
+            let error = ControlSocket.posixError("\(call) \(path.path)")
             Darwin.close(fd)
-            throw error
+            return error
         }
+        guard bound == 0 else { throw failed("bind") }
+        guard chmod(path.path, 0o600) == 0 else { throw failed("chmod") }
+        guard listen(fd, 16) == 0 else { throw failed("listen") }
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
         self.fd = fd
         source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: DispatchQueue(label: "hobo.control.accept"))

@@ -53,6 +53,8 @@ public enum ControlError: Error, Equatable, CustomStringConvertible {
     case pathTooLong(String)
     case unreachable(String, String)
     case badMessage(String)
+    /// A socket system call failed.
+    case system(String)
 
     public var description: String {
         switch self {
@@ -60,6 +62,7 @@ public enum ControlError: Error, Equatable, CustomStringConvertible {
             "socket path \(path) is longer than the \(ControlSocket.maxPathBytes) bytes a Unix socket allows (shorten HOBO_HOME or the VM name)"
         case .unreachable(let path, let reason): "can't reach the VM process at \(path): \(reason)"
         case .badMessage(let reason): "bad control message: \(reason)"
+        case .system(let reason): "control socket: \(reason)"
         }
     }
 }
