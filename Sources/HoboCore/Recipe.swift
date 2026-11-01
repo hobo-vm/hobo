@@ -63,7 +63,9 @@ public struct Recipe: Equatable, Sendable {
     public var slug: String { "\(name.replacingOccurrences(of: "/", with: "-"))-\(version)" }
     public var boxFileName: String { "\(slug).box" }
 
-    public func resolve(_ path: String) -> URL {
+    public func resolve(_ path: String) -> URL { Self.resolve(path, in: directory) }
+
+    private static func resolve(_ path: String, in directory: URL) -> URL {
         URL(filePath: (path as NSString).expandingTildeInPath, relativeTo: directory).standardizedFileURL
     }
 
@@ -87,8 +89,7 @@ public struct Recipe: Equatable, Sendable {
         if let url = URL(string: raw.ipsw), url.scheme == "https" || url.scheme == "http" {
             return .remote(url, sha256: sha)
         }
-        let path = (raw.ipsw as NSString).expandingTildeInPath
-        return .local(URL(filePath: path, relativeTo: directory).standardizedFileURL, sha256: sha)
+        return .local(resolve(raw.ipsw, in: directory), sha256: sha)
     }
 
     private static let nameCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
