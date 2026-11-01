@@ -2,7 +2,6 @@
 
 Only 2 macOS guests can run per host, so a `create` plus a boot test fill both slots.
 
-- M1 [verify]: disk grow end to end: resize the ASIF, then grow the guest's APFS container without removing Recovery (needed by `[gui_testing]`)
 - M1: `hobo set` (cpus, memory, disk grow, persistent virtio-fs shares), `start --share`, `hobo provision <name> [recipe]`
 - M1 [parallel]: Windows spike: Windows 11 on Arm on `qemu-system-aarch64 -accel hvf`, unattended install via `autounattend.xml`, headless boot, OpenSSH, screenshot from the interactive session
 - M2 [spike first]: can a cloned macOS VM take a new machine identifier and still boot (fresh identifier alone, then with fresh aux storage; check Tart)? If not, a clone and its source can't run concurrently: same identifier means network on only one and Apple ID re-auth

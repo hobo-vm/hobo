@@ -105,9 +105,14 @@ global VMs on 2026-11-01.
    supported). `start --share` adds a share for that run only. Clones inherit `config.json`.
    Shares must be folders: virtio-fs rejects volume roots, so Hobo refuses them up front. Guests
    don't Spotlight-index shares, and some guests have shown shared files' creation dates as
-   2001-01-01. Growing the disk image doesn't grow the guest's APFS container, and in a macOS VM the
-   Recovery container after it may block `diskutil apfs resizeContainer`; how grow finishes inside
-   the guest is open (see `TODO.md`), and it must keep Recovery, which `[gui_testing]` needs.
+   2001-01-01. Disk grow is two steps, verified end to end on a macOS 27.2 guest (2026-11-01, 80 →
+   100 GB). On the host, with the VM stopped, `diskutil image resize --image-only --size <n>
+   disk.asif` grows the image and moves the trailing `Apple_APFS_Recovery` container to the new
+   end, so the free space directly follows the main container. Then in the guest, `sudo diskutil apfs
+   resizeContainer disk0s2 0` grows the container live, without a reboot. Recovery is kept: its
+   container is intact, the guest still boots normally, and booting with
+   `startUpFromMacOSRecovery` reaches the recoveryOS startup options, which `[gui_testing]` needs.
+   `hobo set` updates `config.json`'s `disk` along with the image.
 
 ### VM lifecycle
 
