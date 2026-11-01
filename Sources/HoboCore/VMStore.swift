@@ -86,7 +86,7 @@ public struct VMStore: Sendable {
 
     /// Throws if `vm` is in use. Today only a live build counts; the VM process will too.
     public func checkNotRunning(_ vm: VM) throws {
-        if case .building = vm.status { throw VMStoreError.busy(vm.name, "being built") }
+        if case .building = vm.status { throw VMStoreError.busy(vm.name, reason: "being built") }
     }
 
     public func delete(_ name: String) throws {
@@ -160,7 +160,7 @@ public enum VMStoreError: Error, Equatable, CustomStringConvertible {
     case invalidName(String)
     case exists(String)
     case notFound(String)
-    case busy(String, String)
+    case busy(String, reason: String)
 
     public var description: String {
         switch self {
@@ -168,7 +168,7 @@ public enum VMStoreError: Error, Equatable, CustomStringConvertible {
             "invalid VM name \"\(name)\" (letters, digits, '.', '_' and '-', starting with a letter or digit, at most 63)"
         case .exists(let name): "a VM named \"\(name)\" already exists (hobo delete \(name) to replace it)"
         case .notFound(let name): "no VM named \"\(name)\""
-        case .busy(let name, let why): "VM \"\(name)\" is \(why)"
+        case .busy(let name, let reason): "VM \"\(name)\" is \(reason)"
         }
     }
 }

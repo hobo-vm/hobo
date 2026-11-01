@@ -72,8 +72,8 @@ import Testing
     @Test func liveBuildCannotBeDeletedOrRenamed() throws {
         defer { try? FileManager.default.removeItem(at: store.directory) }
         _ = try store.beginCreate("dev")
-        #expect(throws: VMStoreError.busy("dev", "being built")) { try store.delete("dev") }
-        #expect(throws: VMStoreError.busy("dev", "being built")) { try store.rename("dev", to: "other") }
+        #expect(throws: VMStoreError.busy("dev", reason: "being built")) { try store.delete("dev") }
+        #expect(throws: VMStoreError.busy("dev", reason: "being built")) { try store.rename("dev", to: "other") }
     }
 
     @Test func abandonedCreateLeavesNothing() throws {
