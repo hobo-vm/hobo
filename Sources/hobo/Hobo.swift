@@ -31,15 +31,15 @@ struct Init: ParsableCommand {
 struct Validate: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Check a recipe without building it.")
 
-    @Argument(help: "Recipe file.")
-    var recipe: String = Recipe.fileName
+    @Argument(help: ArgumentHelp("Recipe file.", valueName: "recipe"))
+    var path: String = Recipe.fileName
 
     func run() throws {
-        let recipe = try Recipe.load(from: URL(filePath: recipe))
+        let recipe = try Recipe.load(from: URL(filePath: path))
         try recipe.checkFilesExist()
         if !recipe.source.isPinned {
             print("warning: source is unpinned (ipsw = \"latest\")")
         }
-        print("\(self.recipe): \(recipe.cpus) CPUs, \(recipe.memory) memory, \(recipe.disk) disk, \(recipe.provisioners.count) provision step(s)")
+        print("\(path): \(recipe.cpus) CPUs, \(recipe.memory) memory, \(recipe.disk) disk, \(recipe.provisioners.count) provision step(s)")
     }
 }
