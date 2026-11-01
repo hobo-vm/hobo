@@ -61,12 +61,11 @@ struct Init: AsyncParsableCommand {
             if FileManager.default.fileExists(atPath: url.path) && !force {
                 throw ValidationError("\(Recipe.fileName) already exists (use --force to overwrite)")
             }
-            var template = Recipe.template
             var image: IPSWCatalog.Image?
             if let build {
                 image = try IPSWCatalog.image(build: build, in: try await IPSWCatalog.fetch(), hostMajor: IPSWCatalog.hostMajor)
-                template = Recipe.template(pinnedTo: image!)
             }
+            let template = image.map(Recipe.template(pinnedTo:)) ?? Recipe.template
             try template.write(to: url, atomically: true, encoding: .utf8)
             let pinned = image.map { " pinned to \($0.name) \($0.version) (\($0.build))" } ?? ""
             output.result(Result(path: url.path, image: image), text: "Wrote \(Recipe.fileName)\(pinned)")
