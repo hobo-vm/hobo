@@ -44,10 +44,9 @@ public final class VMRunner {
     private func boot() async throws {
         let vm = try store.find(name)
         let job = store.job(for: vm.name)
-        // Every VM runs under launchd, whose job table is how clients see it; refuse to run outside it.
-        guard vm.job?.pid == getpid(), case .running(let config, _) = vm.status else {
-            throw RunnerError.notUnderLaunchd(vm.name)
-        }
+        // Every VM runs under launchd (always PID 1), whose job table is how clients see it.
+        guard getppid() == 1 else { throw RunnerError.notUnderLaunchd(vm.name) }
+        let config = try VMConfig.load(from: vm.bundle.appending(path: VMStore.configFile))
         guard config.engine == .vz, config.os == .macOS else { throw RunnerError.unsupported(config.engine, config.os) }
         guard let mac = VZMACAddress(string: config.macAddress) else { throw RunnerError.badMACAddress(config.macAddress) }
 
@@ -96,19 +95,22 @@ public final class VMRunner {
         }
     }
 
-    /// Decision 11: ask the guest, then `shutdown -h now` over SSH, then power off.
+    /// Decision 11: `shutdown -h now` over SSH if the guest answers, otherwise ask it (a virtual
+    /// power-button press, which a macOS guest may only answer with a dialog), then power off.
     private func stop(force: Bool) async {
         guard let guest else { finish(0) }
         if !force {
-            status.detail = "asking the guest to shut down"
             log("Stop requested")
-            if guest.requestStop(), await stopped(guest, within: Self.gracefulTimeout) { finish(0) }
-            if let ip = status.ipAddress ?? DHCPLeases.ipAddress(forMAC: guest.macAddress.string) {
+            if let ip = status.ipAddress ?? DHCPLeases.ipAddress(forMAC: guest.macAddress.string),
+               let ssh = try? ssh(ip), (try? await ssh.run("true", quiet: true)) == 0 {
                 status.detail = "shutting down over SSH"
-                log("No shutdown after \(Self.gracefulTimeout); running shutdown over SSH")
                 // ssh usually drops mid-command here; the VM state is what matters.
-                _ = try? await ssh(ip).run("sudo -n shutdown -h now", quiet: true)
+                _ = try? await ssh.run("sudo -n shutdown -h now", quiet: true)
                 if await stopped(guest, within: Self.sshShutdownTimeout) { finish(0) }
+            } else {
+                status.detail = "asking the guest to shut down"
+                log("The guest doesn't answer SSH; asking it to shut down")
+                if guest.requestStop(), await stopped(guest, within: Self.gracefulTimeout) { finish(0) }
             }
         }
         status.detail = "forcing the VM off"

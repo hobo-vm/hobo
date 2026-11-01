@@ -132,8 +132,10 @@ global VMs on 2026-11-01.
     it). It returns once the guest answers SSH (10 min timeout; a timeout or ^C leaves it booting),
     and if the VM process exits first it prints the tail of its log. Starting a running VM is a
     no-op; a `building`, `failed` or `broken` bundle is refused. `stop` is a clean shutdown, run by
-    the VM process so a ^C on the client can't strand it halfway: `requestStop` (30 s; a macOS
-    guest may only show a dialog), then SSH `sudo shutdown -h now` (2 min), then force. `--force`
+    the VM process so a ^C on the client can't strand it halfway: SSH `sudo shutdown -h now` (2 min)
+    if the guest answers SSH, else `requestStop` (30 s), then force. SSH comes first because
+    `requestStop` (a virtual power-button press) doesn't shut a macOS guest down, which made every
+    stop wait out its timeout (checked 2026-11-01). `--force`
     powers off at once, and kills a VM process that doesn't answer its socket (`launchctl kill
     SIGKILL`). A guest that shuts itself down ends its VM process too. `suspend` saves memory and
     device state and exits the VM process; `hobo list` shows suspended VMs and their state size.
@@ -159,8 +161,7 @@ global VMs on 2026-11-01.
     `hobo _vm-run <name>`, which owns the VM and serves a Unix control socket. CLI and `hobo mcp` are
     thin clients over a shared library. On-disk state is the source of truth; there is no central daemon.
     Every VM runs under launchd, and launchd's job table (one `launchctl list`) is how Hobo knows a
-    VM is running; `_vm-run` refuses to run unless that table lists its label with its own PID
-    (launchd sets `XPC_SERVICE_NAME` to `0` for plain agents, so it can't tell). Decided 2026-11-01:
+    VM is running; `_vm-run` refuses to run unless its parent is launchd (PID 1). Decided 2026-11-01:
     - The label is `com.hobo.vm.<key>`, where the key is `<first 8 hex of SHA-256 of the store's
       realpath>.<name>`, so two stores (`HOBO_VMS`) can each run a `dev`. The key also names
       `~/.hobo/<key>.sock`, `~/.hobo/<key>.log` (the process's stdout/stderr) and
