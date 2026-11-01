@@ -177,7 +177,7 @@ struct Create: OutputCommand {
             throw CLIError("no recipe at \(path)\(hint)")
         }
         let options = VMCreator.Options(name: name, recipeFile: recipeFile, holdOnFailure: holdOnFailure)
-        let config = try await Self.create(options, log: output.log)
+        let config = try await Self.create(options, output: output)
         return Reply(
             VMSummary(try VMStore.standard().find(name)),
             text: "Created \(name): macOS \(config.guestOSVersion), \(config.cpus) CPUs, \(ByteSize(bytes: config.memory)) memory"
@@ -186,8 +186,8 @@ struct Create: OutputCommand {
 
     /// `VMCreator` runs on the main actor.
     @MainActor
-    private static func create(_ options: VMCreator.Options, log: @escaping @Sendable (String) -> Void) async throws -> VMConfig {
-        try await VMCreator(options: options, log: log).create()
+    private static func create(_ options: VMCreator.Options, output: Output) async throws -> VMConfig {
+        try await VMCreator(options: options, log: output.log, interrupted: output.interrupted).create()
     }
 }
 

@@ -25,12 +25,20 @@ public struct VMCreator {
     let home: HoboHome
     let options: Options
     let log: @Sendable (String) -> Void
+    /// Reports a ^C or SIGTERM, given what it leaves behind, just before the process exits.
+    let interrupted: @Sendable (String) -> Void
 
-    public init(store: VMStore = .standard(), home: HoboHome = .standard(), options: Options, log: @escaping @Sendable (String) -> Void) {
+    /// `interrupted` defaults to a log line; a caller whose output needs a final error (`--json`)
+    /// passes its own.
+    public init(
+        store: VMStore = .standard(), home: HoboHome = .standard(), options: Options,
+        log: @escaping @Sendable (String) -> Void, interrupted: (@Sendable (String) -> Void)? = nil
+    ) {
         self.store = store
         self.home = home
         self.options = options
         self.log = log
+        self.interrupted = interrupted ?? { consequence in log("\nInterrupted; \(consequence)") }
     }
 
     public func create() async throws -> VMConfig {
@@ -43,7 +51,7 @@ public struct VMCreator {
         try recipe.checkFilesExist()
 
         let bundle = try store.beginCreate(options.name)
-        let interrupts = InterruptCleanup(bundle: bundle, log: log)
+        let interrupts = InterruptCleanup(bundle: bundle, interrupted: interrupted)
         defer { interrupts.cancel() }
         do {
             log("Creating \(options.name) from \(options.recipeFile.path) in \(bundle.path)")
@@ -225,12 +233,12 @@ extension GuestVM {
 private final class InterruptCleanup: Sendable {
     private let sources: [any DispatchSourceSignal]
 
-    init(bundle: URL, log: @escaping @Sendable (String) -> Void) {
+    init(bundle: URL, interrupted: @escaping @Sendable (String) -> Void) {
         sources = [SIGINT, SIGTERM].map { signo in
             signal(signo, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: signo, queue: .global())
             source.setEventHandler {
-                log("\nInterrupted; deleting \(bundle.path)")
+                interrupted("deleting \(bundle.path)")
                 try? FileManager.default.removeItem(at: bundle)
                 exit(128 + signo)
             }
