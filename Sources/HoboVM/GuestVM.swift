@@ -32,7 +32,8 @@ public final class GuestVM {
         try await machine.start(options: options)
     }
 
-    public var isStopped: Bool { machine.state == .stopped }
+    /// Powered off or crashed: either way there is no guest left to reach.
+    public var isStopped: Bool { machine.state == .stopped || machine.state == .error }
 
     /// Waits for the guest to power itself off; forces it off after `timeout`.
     /// Returns false if it had to be forced.
@@ -50,8 +51,10 @@ public final class GuestVM {
         return false
     }
 
+    /// No-op once stopped, or in states VZ can't stop from (e.g. `.error`), where `stop()` would
+    /// throw and hide the failure that got us here.
     public func forceStop() async throws {
-        if machine.state != .stopped { try await machine.stop() }
+        if machine.state != .stopped, machine.canStop { try await machine.stop() }
     }
 
     /// Polls the DHCP leases for this VM's address.
