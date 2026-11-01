@@ -73,11 +73,7 @@ struct Images: AsyncParsableCommand {
             return
         }
         let rows = [["NAME", "VERSION", "BUILD", "RELEASED", "SIZE"]] + images.map { image in
-            [
-                image.name, image.version, image.build,
-                image.released.formatted(.iso8601.year().month().day()),
-                ByteCountFormatter.string(fromByteCount: Int64(image.size), countStyle: .file),
-            ]
+            [image.name, image.version, image.build, image.releasedDay, image.formattedSize]
         }
         let widths = rows[0].indices.map { column in rows.map { $0[column].count }.max()! }
         for row in rows {
@@ -91,11 +87,10 @@ struct Images: AsyncParsableCommand {
             print(String(decoding: try IPSWCatalog.json(image), as: UTF8.self))
             return
         }
-        let size = ByteCountFormatter.string(fromByteCount: Int64(image.size), countStyle: .file)
         let fields = [
             ("Name", image.name), ("Version", image.version), ("Build", image.build),
-            ("Released", image.released.formatted(.iso8601.year().month().day())),
-            ("Size", "\(size) (\(image.size) bytes)"), ("URL", image.url.absoluteString),
+            ("Released", image.releasedDay),
+            ("Size", "\(image.formattedSize) (\(image.size) bytes)"), ("URL", image.url.absoluteString),
             ("SHA-256", image.sha256), ("Signed", image.signed ? "yes" : "no"),
         ]
         for (label, value) in fields {
@@ -121,4 +116,9 @@ struct Validate: ParsableCommand {
         }
         print("\(path): \(recipe.cpus) CPUs, \(recipe.memory) memory, \(recipe.disk) disk, \(recipe.provisioners.count) provision step(s)")
     }
+}
+
+private extension IPSWCatalog.Image {
+    var releasedDay: String { released.formatted(.iso8601.year().month().day()) }
+    var formattedSize: String { ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file) }
 }
