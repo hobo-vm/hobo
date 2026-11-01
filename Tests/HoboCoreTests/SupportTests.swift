@@ -121,7 +121,6 @@ import Testing
     func invalidSizesAreRejected(text: String) {
         #expect(throws: RecipeError.invalidSize(text)) { try ByteSize(parsing: text) }
     }
-
 }
 
 @Suite struct ConventionsTests {
