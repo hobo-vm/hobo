@@ -114,6 +114,10 @@ public struct VMLifecycle: Sendable {
         }
     }
 
+    /// How long a just-bootstrapped job may go without a process before `start` calls it exited:
+    /// launchd can list the job before its process exists.
+    static let launchGrace: Duration = .seconds(10)
+
     private func waitUntilRunning(_ name: String, job: VMJob, timeout: Duration) async throws -> VMRunStatus {
         var lastDetail: String?
         var sawProcess = false
@@ -122,8 +126,7 @@ public struct VMLifecycle: Sendable {
             let entry = store.launchd.jobs()[job.label]
             if entry?.pid != nil {
                 sawProcess = true
-            } else if sawProcess || ContinuousClock.now - started > .seconds(10) {
-                // launchd may list a just-bootstrapped job before its process exists, hence the grace.
+            } else if sawProcess || ContinuousClock.now - started > Self.launchGrace {
                 throw LifecycleError.exited(name, entry?.lastExitStatus, Self.tail(of: job.log))
             }
             if case .status(let status)? = try? ControlClient.send(.status, to: job.socket) {
