@@ -12,7 +12,11 @@ struct Output: Sendable {
     let format: Format
 
     init(json: Bool, streaming: Bool = false) {
-        format = !json ? .text : streaming ? .events : .document
+        if !json {
+            format = .text
+        } else {
+            format = streaming ? .events : .document
+        }
     }
 
     var isJSON: Bool { format != .text }

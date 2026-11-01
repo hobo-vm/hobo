@@ -15,7 +15,8 @@ public enum HoboJSON {
 
     private static func encoder(pretty: Bool) -> JSONEncoder {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = pretty ? [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes] : [.sortedKeys, .withoutEscapingSlashes]
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        if pretty { encoder.outputFormatting.insert(.prettyPrinted) }
         encoder.dateEncodingStrategy = .iso8601
         return encoder
     }
