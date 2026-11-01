@@ -126,15 +126,15 @@ public struct GuestSSH: Sendable {
         func receive(_ stream: GuestStream, _ data: Data) {
             guard stream == .stdout else { return onOutput(stream, data) }
             let rest: Data? = state.withLock { state in
-                guard var line = state.firstLine else { return data }
+                guard let earlier = state.firstLine else { return data }
                 guard let newline = data.firstIndex(of: UInt8(ascii: "\n")) else {
-                    line.append(data)
-                    state.firstLine = line
+                    state.firstLine = earlier + data
                     return nil
                 }
-                line.append(data[..<newline])
-                state.pid = Int32(String(decoding: line, as: UTF8.self))
                 state.firstLine = nil
+                state.pid = Int32(String(decoding: earlier + data[..<newline], as: UTF8.self))
+                // Not a PID (a guest startup file printed first, say): it's the command's output.
+                if state.pid == nil { return earlier + data }
                 return data[data.index(after: newline)...]
             }
             if let rest, !rest.isEmpty { onOutput(stream, Data(rest)) }
