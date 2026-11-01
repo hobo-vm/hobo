@@ -67,7 +67,12 @@ public struct VMStore: Sendable {
         } catch CocoaError.fileWriteFileExists {
             throw VMStoreError.exists(name)
         }
-        try String(getpid()).write(to: bundle.appending(path: Self.buildingMarker), atomically: true, encoding: .utf8)
+        do {
+            try String(getpid()).write(to: bundle.appending(path: Self.buildingMarker), atomically: true, encoding: .utf8)
+        } catch {
+            try? FileManager.default.removeItem(at: bundle)
+            throw error
+        }
         return bundle
     }
 
