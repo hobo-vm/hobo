@@ -9,9 +9,9 @@ public final class GuestVM {
     public let macAddress: VZMACAddress
     let machine: VZVirtualMachine
 
-    public init(bundle: MacVMBundle, cpus: Int, memoryBytes: UInt64) throws {
+    public init(bundle: MacVMBundle, cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress) throws {
         self.bundle = bundle
-        macAddress = .randomLocallyAdministered()
+        self.macAddress = macAddress
         machine = VZVirtualMachine(configuration: try bundle.configuration(cpus: cpus, memoryBytes: memoryBytes, macAddress: macAddress))
     }
 

@@ -5,8 +5,8 @@ Only 2 macOS guests can run per host, so a `create` plus a boot test fill both s
 - M1: VM bundles in `~/Hobo/<name>.hobovm` (`HOBO_VMS`), `config.json`, `hobo create --from` wiring `VMCreator` (`building` state, `--hold-on-failure`; decide whether `--from` defaults to `./Hobo.toml`), `hobo list`, `delete`, `rename`; restore the VM integration test (`create` + in-guest convention checks, using a local IPSW via `HOBO_TEST_IPSW`)
 - M1: `hobo _vm-run` VM process + LaunchAgent registration + `HoboControl` socket protocol; headless `start`, `stop [--force]`
 - M1: `hobo view` on-demand window (`.accessory` NSApplication), `start --gui`
-- M1: `ssh` / `exec` / `cp` / `ip`, shared vmnet NAT with Hobo-controlled DHCP
-- M1: `hobo set` (cpus, memory, disk grow, persistent virtio-fs shares), `start --share`, `hobo provision --from`
+- M1: `ssh` / `exec` / `cp` / `ip`, shared vmnet NAT with Hobo-controlled DHCP; replace the insecure key with a per-VM key at the end of `create` (design decision 10.3)
+- M1: `hobo set` (cpus, memory, disk grow, persistent virtio-fs shares), `start --share`, `hobo provision <name> [recipe]`
 - M1: `hobo df`: sizes of bundles, snapshots, saved state and indexed images
 - M1 [parallel]: Windows spike: Windows 11 on Arm on `qemu-system-aarch64 -accel hvf`, unattended install via `autounattend.xml`, headless boot, OpenSSH, screenshot from the interactive session
 - M2: `hobo clone` (APFS clone, new machine identifier + MAC, source stopped), `--ephemeral` on `clone` and `start`
