@@ -50,7 +50,8 @@ import Testing
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
         }
         try #require(connected == 0)
-        try ControlSocket.writeAll(fd, ControlSocket.encode(ControlEnvelope(version: ControlProtocol.version + 1, request: .status)))
+        // A request this version doesn't know must still get the version error, not a decoding one.
+        try ControlSocket.writeAll(fd, Data("{\"version\":\(ControlProtocol.version + 1),\"request\":{\"view\":{}}}\n".utf8))
         let response = try ControlSocket.decode(ControlResponse.self, from: ControlSocket.readLine(fd))
         guard case .error(let message) = response else { Issue.record("expected an error, got \(response)"); return }
         #expect(message.contains("hobo stop --force"))

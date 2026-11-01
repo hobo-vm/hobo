@@ -141,6 +141,8 @@ public final class ControlServer: Sendable {
         unlink(path)
     }
 
+    private struct VersionOnly: Decodable { var version: Int }
+
     private static func serve(_ connection: Int32, handler: @escaping Handler) {
         // An accepted socket inherits the listener's O_NONBLOCK; reads here should block.
         _ = fcntl(connection, F_SETFL, fcntl(connection, F_GETFL) & ~O_NONBLOCK)
@@ -150,12 +152,14 @@ public final class ControlServer: Sendable {
             defer { Darwin.close(connection) }
             let response: ControlResponse
             do {
-                let envelope = try ControlSocket.decode(ControlEnvelope.self, from: ControlSocket.readLine(connection))
-                if envelope.version == ControlProtocol.version {
-                    response = await handler(envelope.request)
+                let line = try ControlSocket.readLine(connection)
+                // The version alone first: another version's request may not decode as one of ours.
+                let version = try ControlSocket.decode(VersionOnly.self, from: line).version
+                if version == ControlProtocol.version {
+                    response = await handler(try ControlSocket.decode(ControlEnvelope.self, from: line).request)
                 } else {
                     response = .error(
-                        "this VM process speaks control protocol \(ControlProtocol.version), not \(envelope.version); "
+                        "this VM process speaks control protocol \(ControlProtocol.version), not \(version); "
                             + "restart the VM with the current hobo (hobo stop --force, then hobo start)"
                     )
                 }
