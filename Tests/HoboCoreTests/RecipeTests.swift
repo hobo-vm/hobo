@@ -114,9 +114,9 @@ import Testing
         #expect(throws: RecipeError.missingFiles(recipe.missingFiles())) { try recipe.checkFilesExist() }
     }
 
-    @Test func initTemplateParsesAndIsPinned() throws {
+    @Test func initTemplateParsesAndUsesLatest() throws {
         let recipe = try Recipe.parse(Recipe.template, directory: directory)
-        #expect(recipe.source.isPinned)
+        #expect(recipe.source == .latest)
         #expect(recipe.missingFiles().isEmpty)
         #expect(recipe.provisioners.isEmpty)
     }

@@ -13,8 +13,8 @@ public struct HoboHome: Sendable {
         return HoboHome(root: FileManager.default.homeDirectoryForCurrentUser.appending(path: ".hobo"))
     }
 
-    /// Downloaded IPSWs, named by content hash.
-    public var depot: URL { root.appending(path: "depot") }
+    /// The image index, `images.json` (see `ImageIndex`).
+    public var images: URL { root.appending(path: "images.json") }
     /// Vagrant's insecure private key, written out for `ssh -i`.
     public var insecurePrivateKey: URL { root.appending(path: "insecure_private_key") }
 

@@ -1,6 +1,6 @@
 extension Recipe {
-    /// The starter `Hobo.toml` written by `hobo init`: a pinned macOS 27.2 base. Update the pin when
-    /// a newer IPSW ships.
+    /// The starter `Hobo.toml` written by `hobo init`. It starts unpinned (`ipsw = "latest"`): the
+    /// first `create` prints the pin to paste in.
     public static let template = """
     # Hobo recipe: build a VM from it with `hobo create <name> --from Hobo.toml`.
     # The guest gets the Vagrant conventions (vagrant/vagrant, passwordless sudo, SSH, no sleep or
@@ -11,9 +11,10 @@ extension Recipe {
     disk   = "80GB"
 
     [source]
-    # A URL or a local path, with its SHA-256. ipsw = "latest" picks the newest IPSW this Mac supports.
-    ipsw   = "https://updates.cdn-apple.com/2026FallFCS/c9671975-52db-4fb5-9af2-00217169ba8d/UniversalMac_27.2_26B123_Restore.ipsw"
-    sha256 = "6613b34e8589db2202a01ec37a2648afb141ece13428175183f8f3e38438534f"
+    # A URL or a local path, with its SHA-256. "latest" is the newest IPSW this Mac supports; it is
+    # unpinned, so `hobo create` warns and prints the URL and sha256 to pin it with. Replace this
+    # with those lines so every build uses the same macOS.
+    ipsw = "latest"
 
     # Steps run once each, in order, over SSH. Paths are relative to this file.
     #

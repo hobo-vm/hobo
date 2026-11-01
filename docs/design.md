@@ -34,7 +34,9 @@ global VMs on 2026-11-01.
    GUI can write one to a temp directory and discard it; the GUI edits a VM through `hobo set`,
    not its recipe. Relative `path`/`source` values resolve against the recipe's directory. Recipes
    should pin sources (IPSW URL + SHA, image URL + SHA, Xcode version + SHA); unpinned sources
-   warn. The `init` template pins the current macOS IPSW, updated in code when a newer one ships.
+   warn. The `init` template uses `ipsw = "latest"` and says to paste in the pin the first
+   `create` prints (decided 2026-11-01: Apple publishes no SHA-256, so pinning at `init` would
+   mean a 20 GB download there); listing versions to pin is the catalog's job (see `TODO.md`).
 4. **Commands.** VM-centric verbs, no Vagrant aliases:
    `init [--force]`, `validate [file]`, `create <name> --from Hobo.toml [--ipsw path]`, `list`, `start [--ephemeral] [--gui] [--cold]
    [--share path] [--idle-timeout d]`, `stop [--force]`, `suspend`, `ssh <name> [-- cmd]`,
@@ -57,9 +59,13 @@ global VMs on 2026-11-01.
    still running. `~/.hobo/` holds only small state: the IPSW index, logs, sockets, launchd plists.
 8. **Install images.** Downloads land in `~/Downloads` under the vendor's filename (e.g.
    `UniversalMac_27.2_26B123_Restore.ipsw`) via `<name>.part`, renamed once the SHA-256 verifies, so
-   users can see and delete them. `~/.hobo/images.json` maps URL → SHA → path with size and mtime, so a
-   25 GB file isn't rehashed on every use; a missing or moved file is downloaded again. Local paths
-   (`--ipsw`, or a path in `[source]`) are used in place, never copied. `ipsw = "latest"` uses
+   users can see and delete them. `~/.hobo/images.json` maps each source (URL, or a local file's
+   path) → SHA → path with size and mtime, so a 25 GB file isn't rehashed on every use; a changed
+   size or mtime rehashes, and a missing or moved file is downloaded again. An unindexed file
+   already in `~/Downloads` under the vendor's name is hashed and adopted if it matches; otherwise
+   the download takes a Finder-style free name (`<name> 2.ipsw`) and never overwrites it. A stale
+   `.part` restarts from scratch; there is no resume, and concurrent downloads of one URL are
+   unsupported. Local paths (`--ipsw`, or a path in `[source]`) are used in place, never copied. `ipsw = "latest"` uses
    `VZMacOSRestoreImage.latestSupported`, warns as unpinned and prints the pin.
 9. **Runtime config.** The recipe supplies defaults; `create` copies them into the bundle's
    `config.json`, which is the truth thereafter. `hobo set` changes CPUs, memory, disk (grow only) and
@@ -167,7 +173,7 @@ global VMs on 2026-11-01.
 The 2026-11-01 pivot removed `hobo box build/validate-recipe`, packaging, `BoxMetadata`, roundhouse
 checkpoints and the project-scoped Boxcar (`[[machine]]`, `[defaults]`, `forwarded_port`, `run`).
 `Recipe` is the `Hobo.toml` parser (no `name`/`version`) and `BoxBuilder` became `VMCreator`, which
-builds in a given directory; `Depot` becomes the `~/Downloads` image index next.
+builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` index) replaced `Depot`.
 
 - **M0, skeleton:** done.
 - **M1, a VM you live in:** `init`, `create --from`, `list`, `start` (headless under launchd via

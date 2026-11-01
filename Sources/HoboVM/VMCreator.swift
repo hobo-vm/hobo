@@ -71,20 +71,19 @@ public struct VMCreator {
     }
 
     private func resolveSource() async throws -> URL {
-        let depot = Depot(directory: home.depot)
+        let images = ImageIndex.standard(home: home)
         let progress = ProgressLine(log: log)
         switch recipe.source {
         case .latest:
             let image = try await VZMacOSRestoreImage.latestSupported
             log("warning: source is unpinned (ipsw = \"latest\"); resolved to \(image.url.absoluteString)")
-            let (file, sha) = try await depot.fetch(image.url, expectedSHA256: nil, progress: progress.report)
+            let (file, sha) = try await images.fetch(image.url, expectedSHA256: nil, log: log, progress: progress.report)
             log("Pin it with: ipsw = \"\(image.url.absoluteString)\", sha256 = \"\(sha)\"")
             return file
         case .remote(let url, let sha):
-            return try await depot.fetch(url, expectedSHA256: sha, progress: progress.report).file
+            return try await images.fetch(url, expectedSHA256: sha, log: log, progress: progress.report).file
         case .local(let url, let sha):
-            log("Verifying \(url.lastPathComponent)")
-            try Depot.verify(url, sha256: sha)
+            try images.verify(url, sha256: sha, log: log)
             return url
         }
     }

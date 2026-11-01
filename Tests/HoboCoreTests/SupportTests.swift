@@ -2,74 +2,153 @@ import Foundation
 import Testing
 @testable import HoboCore
 
-@Suite struct DepotTests {
-    @Test func hashesFiles() throws {
-        let file = FileManager.default.temporaryDirectory.appending(path: "hobo-depot-\(UUID().uuidString)")
-        try Data("hobo".utf8).write(to: file)
-        defer { try? FileManager.default.removeItem(at: file) }
-        #expect(try Depot.sha256(of: file) == shasum(file))
-        #expect(throws: DepotError.self) { try Depot.verify(file, sha256: String(repeating: "0", count: 64)) }
-        try Depot.verify(file, sha256: try shasum(file))
-    }
+@Suite struct ImageIndexTests {
+    let root = FileManager.default.temporaryDirectory.appending(path: "hobo-images-\(UUID().uuidString)")
+    var downloads: URL { root.appending(path: "Downloads") }
+    var served: URL { root.appending(path: "served") }
+    var index: ImageIndex { ImageIndex(indexFile: root.appending(path: "hobo/images.json"), downloads: downloads) }
+    let payload = Data((0..<300_000).map { UInt8($0 % 251) })
 
-    @Test func cachedFileIsReusedWithoutDownloading() async throws {
-        let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-depot-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: directory) }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let depot = Depot(directory: directory)
-        let sha = String(repeating: "0", count: 64)
-        try Data().write(to: depot.file(sha256: sha))
-        // An unreachable URL proves no network request is made.
-        let result = try await depot.fetch(URL(string: "https://invalid.invalid/mac.ipsw")!, expectedSHA256: sha) { _, _ in }
-        #expect(result.file == depot.file(sha256: sha))
-    }
-
-    @Test func downloadsVerifiesAndIndexes() async throws {
-        let root = FileManager.default.temporaryDirectory.appending(path: "hobo-depot-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let served = root.appending(path: "served")
+    init() throws {
         try FileManager.default.createDirectory(at: served, withIntermediateDirectories: true)
-        let payload = served.appending(path: "mac.ipsw")
-        try Data((0..<300_000).map { UInt8($0 % 251) }).write(to: payload)
-        let sha = try shasum(payload)
+        try payload.write(to: served.appending(path: "mac.ipsw"))
+    }
 
+    private func entries() throws -> [String: ImageIndex.Entry] {
+        try JSONDecoder().decode([String: ImageIndex.Entry].self, from: Data(contentsOf: index.indexFile))
+    }
+
+    private func downloaded() throws -> [String] {
+        try FileManager.default.contentsOfDirectory(atPath: downloads.path).sorted()
+    }
+
+    @Test func hashesFiles() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = served.appending(path: "mac.ipsw")
+        #expect(try ImageIndex.sha256(of: file) == shasum(file))
+    }
+
+    @Test func downloadsVerifiesIndexesAndReuses() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sha = try shasum(served.appending(path: "mac.ipsw"))
         let server = try HTTPServer(directory: served)
         defer { server.stop() }
         let url = server.url(for: "mac.ipsw")
-        let depot = Depot(directory: root.appending(path: "depot"))
 
         // Unpinned: the computed hash is trusted and recorded.
-        let fetched = try await depot.fetch(url, expectedSHA256: nil) { _, _ in }
+        let fetched = try await index.fetch(url, expectedSHA256: nil) { _, _ in }
         #expect(fetched.sha256 == sha)
-        #expect(fetched.file == depot.file(sha256: sha))
-        let index = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: depot.directory.appending(path: "index.json")))
-        #expect(index == [url.absoluteString: sha])
-        #expect(try FileManager.default.contentsOfDirectory(atPath: depot.directory.path).sorted() == ["\(sha).ipsw", "index.json"])
+        #expect(fetched.file == downloads.appending(path: "mac.ipsw"))
+        #expect(try downloaded() == ["mac.ipsw"])
+        let entry = try #require(try entries()[url.absoluteString])
+        #expect(entry.sha256 == sha && entry.path == fetched.file.standardizedFileURL.path && entry.size == UInt64(payload.count))
 
-        // Cached: served from the index with the server gone.
+        // Cached: served from the index with the server gone, and pinned or not.
         server.stop()
-        #expect(try await depot.fetch(url, expectedSHA256: nil) { _, _ in }.file == fetched.file)
+        #expect(try await index.fetch(url, expectedSHA256: nil) { _, _ in }.file == fetched.file)
+        #expect(try await index.fetch(url, expectedSHA256: sha) { _, _ in }.file == fetched.file)
+    }
+
+    @Test func unchangedFileIsNotRehashedButChangedOneIs() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = try HTTPServer(directory: served)
+        defer { server.stop() }
+        let url = server.url(for: "mac.ipsw")
+        let fetched = try await index.fetch(url, expectedSHA256: nil) { _, _ in }
+
+        // Same size and mtime: the recorded hash is trusted, so a doctored entry wins.
+        var doctored = try entries()
+        let fake = String(repeating: "a", count: 64)
+        doctored[url.absoluteString]!.sha256 = fake
+        try JSONEncoder().encode(doctored).write(to: index.indexFile)
+        #expect(try await index.fetch(url, expectedSHA256: nil) { _, _ in }.sha256 == fake)
+
+        // A touched file is rehashed and the entry corrected.
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -60)], ofItemAtPath: fetched.file.path)
+        #expect(try await index.fetch(url, expectedSHA256: nil) { _, _ in }.sha256 == fetched.sha256)
+        #expect(try entries()[url.absoluteString]?.sha256 == fetched.sha256)
+    }
+
+    @Test func missingFileIsDownloadedAgain() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = try HTTPServer(directory: served)
+        defer { server.stop() }
+        let url = server.url(for: "mac.ipsw")
+        let fetched = try await index.fetch(url, expectedSHA256: nil) { _, _ in }
+        try FileManager.default.removeItem(at: fetched.file)
+        #expect(try await index.fetch(url, expectedSHA256: fetched.sha256) { _, _ in }.file == fetched.file)
+        #expect(try downloaded() == ["mac.ipsw"])
+    }
+
+    @Test func adoptsMatchingUnindexedFile() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+        try payload.write(to: downloads.appending(path: "mac.ipsw"))
+        let sha = try shasum(served.appending(path: "mac.ipsw"))
+        // An unreachable URL proves no download happens.
+        let url = URL(string: "https://invalid.invalid/mac.ipsw")!
+        let fetched = try await index.fetch(url, expectedSHA256: sha) { _, _ in }
+        #expect(fetched.file == downloads.appending(path: "mac.ipsw"))
+        #expect(try entries()[url.absoluteString]?.sha256 == sha)
+    }
+
+    @Test func mismatchedUnindexedFileIsLeftAloneAndDownloadGetsAFreeName() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+        let theirs = Data("someone else's file".utf8)
+        try theirs.write(to: downloads.appending(path: "mac.ipsw"))
+        let server = try HTTPServer(directory: served)
+        defer { server.stop() }
+        let sha = try shasum(served.appending(path: "mac.ipsw"))
+
+        let fetched = try await index.fetch(server.url(for: "mac.ipsw"), expectedSHA256: sha) { _, _ in }
+        #expect(fetched.file == downloads.appending(path: "mac 2.ipsw"))
+        #expect(try Data(contentsOf: downloads.appending(path: "mac.ipsw")) == theirs)
+        #expect(try downloaded() == ["mac 2.ipsw", "mac.ipsw"])
     }
 
     @Test func rejectsWrongHashAndHTTPErrors() async throws {
-        let root = FileManager.default.temporaryDirectory.appending(path: "hobo-depot-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
-        let served = root.appending(path: "served")
-        try FileManager.default.createDirectory(at: served, withIntermediateDirectories: true)
-        try Data("not an ipsw".utf8).write(to: served.appending(path: "mac.ipsw"))
         let server = try HTTPServer(directory: served)
         defer { server.stop() }
-        let depot = Depot(directory: root.appending(path: "depot"))
         let wrong = String(repeating: "0", count: 64)
 
-        await #expect(throws: DepotError.self) {
-            try await depot.fetch(server.url(for: "mac.ipsw"), expectedSHA256: wrong) { _, _ in }
+        await #expect(throws: ImageError.self) {
+            try await index.fetch(server.url(for: "mac.ipsw"), expectedSHA256: wrong) { _, _ in }
         }
-        #expect(try FileManager.default.contentsOfDirectory(atPath: depot.directory.path).isEmpty)
-        await #expect(throws: DepotError.httpStatus(server.url(for: "missing.ipsw").absoluteString, 404)) {
-            try await depot.fetch(server.url(for: "missing.ipsw"), expectedSHA256: nil) { _, _ in }
+        #expect(try downloaded().isEmpty)
+        await #expect(throws: ImageError.httpStatus(server.url(for: "missing.ipsw").absoluteString, 404)) {
+            try await index.fetch(server.url(for: "missing.ipsw"), expectedSHA256: nil) { _, _ in }
         }
-        #expect(try FileManager.default.contentsOfDirectory(atPath: depot.directory.path).isEmpty)
+        #expect(try downloaded().isEmpty)
+    }
+
+    @Test func stalePartFileIsReplaced() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+        try Data("half a download".utf8).write(to: downloads.appending(path: "mac.ipsw.part"))
+        let server = try HTTPServer(directory: served)
+        defer { server.stop() }
+        let sha = try shasum(served.appending(path: "mac.ipsw"))
+        #expect(try await index.fetch(server.url(for: "mac.ipsw"), expectedSHA256: sha) { _, _ in }.sha256 == sha)
+        #expect(try downloaded() == ["mac.ipsw"])
+    }
+
+    @Test func localFilesAreVerifiedInPlaceAndIndexed() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = served.appending(path: "mac.ipsw")
+        let sha = try shasum(file)
+        #expect(throws: ImageError.self) { try index.verify(file, sha256: String(repeating: "0", count: 64)) }
+        try index.verify(file, sha256: sha)
+        #expect(try entries()[file.standardizedFileURL.path]?.sha256 == sha)
+        #expect(!FileManager.default.fileExists(atPath: downloads.path))
+
+        // Unchanged: the recorded hash is trusted without rehashing.
+        var doctored = try entries()
+        let fake = String(repeating: "b", count: 64)
+        doctored[file.standardizedFileURL.path]!.sha256 = fake
+        try JSONEncoder().encode(doctored).write(to: index.indexFile)
+        try index.verify(file, sha256: fake)
     }
 
     private func shasum(_ file: URL) throws -> String {
