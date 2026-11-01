@@ -75,3 +75,13 @@ import Testing
         #expect(throws: LifecycleError.refused("dev", "dev is stopping")) { try channel.copy("dev", copy) { _, _ in } }
     }
 }
+
+/// The shapes `hobo ip --json`, `exec --json` and `cp --json` print, which scripts depend on.
+@Suite struct GuestResultJSONTests {
+    private func json(_ value: some Encodable) throws -> String { String(decoding: try HoboJSON.line(value), as: UTF8.self) }
+
+    @Test func shapes() throws {
+        #expect(try json(GuestAddress(name: "dev", ipAddress: "192.168.64.5")) == #"{"ipAddress":"192.168.64.5","name":"dev"}"#)
+        #expect(try json(GuestCommandResult(exitStatus: 7)) == #"{"exitStatus":7}"#)
+    }
+}
