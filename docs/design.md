@@ -133,7 +133,11 @@ global VMs on 2026-11-01.
    guest. A Linux VM always attaches the device, empty without shares, so `/mnt/hobo` is always a
    mount and nothing written there lands on the guest's disk. The guest sees a shared file's host
    owner, so `vagrant` is created with the host user's uid and shared files are its own; the gid
-   is left alone (host `staff`, 20, shows as `dialout` on Ubuntu). Both commands take
+   is left alone (host `staff`, 20, shows as `dialout` on Ubuntu). A macOS guest needs no such
+   match: its virtio-fs mount ignores ownership, showing every shared file as the calling user's
+   (gid 20; `root` sees 99:99) whatever the host owner, while still enforcing the host's mode bits,
+   and files the guest creates belong to the host user (checked 2026-11-02 on a 27.2 guest with a
+   uid-502 guest user and root-owned host files, hobo-2gi). Both commands take
    `--share <folder>[:ro]`, named by the folder's basename; names must be unique
    case-insensitively, and a clash is refused with a hint to rename or symlink a folder.
    `set --unshare <name|folder>` runs before `--share`, so one call can make a share read-only.
