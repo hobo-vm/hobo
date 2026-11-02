@@ -275,8 +275,8 @@ global VMs on 2026-11-01.
     - Recipe `[security] sip = false` (and `amfi = false`, which needs it) turns SIP and AMFI off,
       for testing ad-hoc signed binaries that claim restricted entitlements (decided 2026-11-02;
       `[gui_testing]` doesn't need it). Checked on a macOS 27.2 guest (2026-11-02): `csrutil disable`
-      works in a VZ guest's recoveryOS (Options → Continue → Utilities › Terminal, no user picker; it
-      asks y/n, then vagrant's password); paste from the host doesn't reach recoveryOS; once SIP is
+      works in a VZ guest's recoveryOS (Options → Continue, sometimes a language picker, no user
+      picker seen, then Utilities › Terminal; it asks y/n, then vagrant's password); paste from the host doesn't reach recoveryOS; once SIP is
       off, `sudo nvram boot-args="amfi_get_out_of_my_way=1"` works over SSH, and after a reboot an
       ad-hoc binary with `com.apple.developer.endpoint-security.client` runs instead of being killed.
       With SIP off the system TCC.db is writable inside the guest too.

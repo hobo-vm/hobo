@@ -4,8 +4,9 @@ import HoboCore
 /// The one manual step of a `create`: with the guest booted into recoveryOS, the VM window comes to
 /// the front with a panel of instructions beside it, and the person runs `csrutil disable`. Their
 /// shutting the guest down is the signal that they're done. Paste doesn't reach recoveryOS, so the
-/// commands are to be typed. Checked on macOS 27.2 (2026-11-02): Options → Continue goes straight
-/// to recoveryOS with no user picker, and `csrutil disable` asks y/n and then vagrant's password.
+/// commands are to be typed. Checked on macOS 27.2 (2026-11-02): Options → Continue sometimes shows
+/// a language picker first (a fresh build did, a clone didn't), with no user picker seen so far, and
+/// `csrutil disable` asks y/n and then vagrant's password.
 @MainActor
 enum SIPRecoveryStep {
     enum Outcome { case shutDown, cancelled }
@@ -67,7 +68,7 @@ private final class InstructionsPanel: NSObject {
         }
         rows.append(NSTextField(wrappingLabelWithString: "In the VM window (typing there; paste doesn't reach recoveryOS):"))
         let steps: [(String, String?)] = [
-            ("Click Options, then Continue.", nil),
+            ("Click Options, then Continue. If it asks for a language, pick one and click the arrow; if it asks for a user, pick \(Conventions.username) (password \(Conventions.password)).", nil),
             ("From the menu bar, choose Utilities › Terminal.", nil),
             ("Type this, press Return, then answer y:", "csrutil disable"),
             ("When asked, type the password:", Conventions.password),
