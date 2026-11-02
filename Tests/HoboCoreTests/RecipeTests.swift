@@ -227,11 +227,7 @@ import Testing
     }
 
     @Test func linuxInitTemplateParsesPinned() throws {
-        let image = UbuntuCatalog.Image(
-            name: "Ubuntu 26.04 LTS", version: "26.04", codename: "Resolute Raccoon", lts: true, serial: "20261016",
-            url: URL(string: "https://cloud-images.ubuntu.com/x/ubuntu-26.04-server-cloudimg-arm64.img")!, sha256: sha,
-            size: 1, supported: true, supportEnds: nil
-        )
+        let image = ubuntuImage
         let template = Recipe.template(pinnedTo: image, desktop: false)
         let recipe = try Recipe.parse(template, directory: directory)
         #expect(recipe.os == .linux)
@@ -248,11 +244,7 @@ import Testing
     }
 
     @Test func linuxDesktopTemplateStartsWithTheDesktopStep() throws {
-        let image = UbuntuCatalog.Image(
-            name: "Ubuntu 26.04 LTS", version: "26.04", codename: "Resolute Raccoon", lts: true, serial: "20261016",
-            url: URL(string: "https://cloud-images.ubuntu.com/x/ubuntu-26.04-server-cloudimg-arm64.img")!, sha256: sha,
-            size: 1, supported: true, supportEnds: nil
-        )
+        let image = ubuntuImage
         let recipe = try Recipe.parse(Recipe.template(pinnedTo: image, desktop: true), directory: directory)
         let step = try #require(recipe.provisioners.first)
         #expect(recipe.provisioners.count == 1)
@@ -260,6 +252,14 @@ import Testing
         #expect(step.inline == Recipe.desktopScript)
         #expect(step.inline?.contains("AutomaticLogin=vagrant") == true)
         #expect(!Recipe.template(pinnedTo: image, desktop: false).contains("ubuntu-desktop-minimal"))
+    }
+
+    private var ubuntuImage: UbuntuCatalog.Image {
+        UbuntuCatalog.Image(
+            name: "Ubuntu 26.04 LTS", version: "26.04", codename: "Resolute Raccoon", lts: true, serial: "20261016",
+            url: URL(string: "https://cloud-images.ubuntu.com/x/ubuntu-26.04-server-cloudimg-arm64.img")!, sha256: sha,
+            size: 1, supported: true, supportEnds: nil
+        )
     }
 
     private func minimal(source: String) -> String {
