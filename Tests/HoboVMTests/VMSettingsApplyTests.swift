@@ -53,6 +53,16 @@ import Testing
         }
     }
 
+    @Test func aSuspendedVMIsRefused() throws {
+        defer { cleanUp() }
+        _ = try store.beginCreate("dev")
+        try store.finishCreate("dev", config: config, recipe: Data())
+        try FileManager.default.createDirectory(at: SavedState.directory(in: store.bundle(for: "dev")), withIntermediateDirectories: false)
+        #expect(throws: VMStoreError.busy("dev", reason: "suspended (hobo discard dev throws its saved state away)")) {
+            try VMSettings(cpus: 2).apply(to: "dev", store: store) { _ in }
+        }
+    }
+
     @Test func aFailedBuildIsRefused() throws {
         defer { cleanUp() }
         let bundle = try store.beginCreate("dev")

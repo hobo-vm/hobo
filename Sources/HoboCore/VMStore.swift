@@ -33,6 +33,8 @@ public struct VMStore: Sendable {
         case stopped(VMConfig)
         /// Its VM process (`hobo _vm-run`) is running under launchd.
         case running(VMConfig, pid: Int32)
+        /// Not running, with saved state that `start` resumes (`hobo suspend`).
+        case suspended(VMConfig, SavedState)
         /// Its VM process last exited with a nonzero status; cleared by the next `start` or `stop`.
         case crashed(VMConfig, exitStatus: Int32)
         /// Being built by a live process.
@@ -136,6 +138,22 @@ public struct VMStore: Sendable {
         if vm.job?.pid != nil { throw VMStoreError.busy(vm.name, reason: "running (hobo stop \(vm.name))") }
     }
 
+    /// Throws if `vm` has saved state, which a change to its configuration would strand.
+    public func checkNotSuspended(_ vm: VM) throws {
+        if case .suspended = vm.status { throw VMStoreError.busy(vm.name, reason: "suspended (hobo discard \(vm.name) throws its saved state away)") }
+    }
+
+    /// `hobo discard`: deletes a suspended VM's saved state, leaving it stopped. Returns false if
+    /// it had none.
+    @discardableResult
+    public func discard(_ name: String) throws -> Bool {
+        let vm = try find(name)
+        try checkNotRunning(vm)
+        guard case .suspended = vm.status else { return false }
+        try FileManager.default.removeItem(at: SavedState.directory(in: vm.bundle))
+        return true
+    }
+
     public func delete(_ name: String) throws {
         let vm = try find(name)
         try checkNotRunning(vm)
@@ -190,10 +208,10 @@ public struct VMStore: Sendable {
             return .building(pid: pid)
         }
         guard let config = try? VMConfig.load(from: bundle.appending(path: Self.configFile)) else { return .broken }
-        if let job {
-            if let pid = job.pid { return .running(config, pid: pid) }
-            if job.lastExitStatus != 0 { return .crashed(config, exitStatus: job.lastExitStatus) }
-        }
+        if let pid = job?.pid { return .running(config, pid: pid) }
+        // Ahead of crashed: a VM process that failed to resume leaves the state for another try.
+        if let saved = SavedState.load(in: bundle) { return .suspended(config, saved) }
+        if let job, job.lastExitStatus != 0 { return .crashed(config, exitStatus: job.lastExitStatus) }
         return .stopped(config)
     }
 

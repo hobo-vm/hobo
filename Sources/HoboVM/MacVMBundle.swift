@@ -11,6 +11,9 @@ public struct MacVMBundle: Sendable {
     /// and hiding the window puts it back, so headless runs always see this.
     static let displayPixels = CGSize(width: 1920, height: 1200)
 
+    /// Where a macOS guest mounts the automount-tagged shares.
+    static let sharesMountPoint = "/Volumes/My Shared Files"
+
     public var directory: URL
 
     public init(directory: URL) { self.directory = directory }

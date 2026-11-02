@@ -26,6 +26,8 @@ public final class VMRunner {
     private static var current: VMRunner?
 
     private var guest: GuestVM?
+    /// The shares this run has, which a suspend records so the resumed run has the same.
+    private var shares: [VMShare] = []
     private var window: VMWindow?
     private var server: ControlServer?
     private var status = VMRunStatus(state: .starting, pid: getpid(), detail: "booting")
@@ -64,25 +66,58 @@ public final class VMRunner {
         server = try ControlServer(path: job.socket) { [weak self] request, reply in
             await self?.handle(request, reply: reply) ?? .error("the VM process is shutting down")
         }
-        let shares = VMShare.available(config.shares + runShares, log: log)
+        // Left by a suspend that died partway; `suspended/` appears only once a save is complete.
+        try? FileManager.default.removeItem(at: SavedState.partialDirectory(in: vm.bundle))
+        let saved = SavedState.load(in: vm.bundle)
+        if let saved {
+            // The saved state fits only the run it came from, shares and all.
+            guard let run = saved.run else { throw LifecycleError.cantResume(vm.name, "its \(SavedState.runFile) is unreadable") }
+            shares = run.shares
+        } else {
+            shares = VMShare.available(config.shares + runShares, log: log)
+        }
         // `hobo start` checked these, but config.json may have changed since; a bad or duplicate
         // name would otherwise trap building the share's directory map.
         try VMShare.checkNames(shares)
-        let guest = try GuestVM(
-            bundle: MacVMBundle(directory: vm.bundle), cpus: config.cpus, memoryBytes: config.memory, macAddress: mac, shares: shares
-        )
+        let guest: GuestVM
+        do {
+            guest = try GuestVM(
+                bundle: MacVMBundle(directory: vm.bundle), cpus: config.cpus, memoryBytes: config.memory, macAddress: mac, shares: shares
+            )
+        } catch where saved != nil {
+            throw LifecycleError.cantResume(vm.name, String(describing: error))
+        }
         guest.onStop = { [weak self] error in
             if let error { self?.log("error: the VM stopped: \(error)") } else { self?.log("The guest shut down") }
             self?.finish(error == nil ? 0 : 1)
         }
         self.guest = guest
-        log("Booting \(vm.name)")
-        try await guest.start()
+        if saved != nil {
+            try await resume(guest, from: SavedState.directory(in: vm.bundle))
+        } else {
+            log("Booting \(vm.name)")
+            try await guest.start()
+        }
         if gui { showWindow(guest) }
-        Task { await waitUntilReachable(guest) }
+        Task { await waitUntilReachable(guest, resumed: saved != nil) }
     }
 
-    private func waitUntilReachable(_ guest: GuestVM) async {
+    /// Restores the saved state and runs the guest on from it. The state is deleted before the
+    /// guest runs: the disk moves on from then, so restoring it again would corrupt the disk.
+    /// A failure leaves the guest unrun, and the state there for another try.
+    private func resume(_ guest: GuestVM, from directory: URL) async throws {
+        status.detail = "resuming"
+        log("Resuming \(name) from its saved state")
+        do {
+            try await guest.restoreState(from: directory.appending(path: SavedState.stateFile))
+        } catch {
+            throw LifecycleError.cantResume(name, String(describing: error))
+        }
+        try FileManager.default.removeItem(at: directory)
+        try await guest.resume()
+    }
+
+    private func waitUntilReachable(_ guest: GuestVM, resumed: Bool) async {
         do {
             status.detail = "waiting for a DHCP lease"
             let ip = try await guest.waitForIPAddress(timeout: Self.bootTimeout)
@@ -90,6 +125,10 @@ public final class VMRunner {
             status.detail = "waiting for SSH on \(ip)"
             let guestSSH = try ssh(ip)
             try await guestSSH.waitUntilReachable(timeout: Self.bootTimeout)
+            if resumed {
+                await setClock(guestSSH)
+                if !shares.isEmpty { await remountShares(guestSSH) }
+            }
             await growContainerIfPending(guestSSH)
             guard status.state == .starting else { return }
             status.state = .running
@@ -100,6 +139,45 @@ public final class VMRunner {
             log("warning: \(error)")
             if status.state == .starting { status.detail = "unreachable: \(error)" }
         }
+    }
+
+    /// A resumed guest's clock is behind by however long it was suspended. NTP first, then the
+    /// host's clock if the guest can't reach a time server; either failing only warns.
+    private func setClock(_ ssh: GuestSSH) async {
+        status.detail = "setting the guest's clock"
+        if (try? await ssh.run("sudo -n sntp -sS time.apple.com", quiet: true)) == 0 { return }
+        do {
+            try await ssh.check(Self.setDateCommand(.now), what: "setting the guest's clock")
+        } catch {
+            log("warning: \(error); the guest's clock may be behind")
+        }
+    }
+
+    /// A restored VM's virtio-fs device starts afresh on the host, so the guest's handles into
+    /// the shares are stale: lookups fail with ENOENT (checked 2026-11-02 on 27.2) until the
+    /// mount is replaced. Files the guest had open in a share are lost either way.
+    private func remountShares(_ ssh: GuestSSH) async {
+        status.detail = "remounting the shared folders"
+        do {
+            try await ssh.check(Self.remountSharesCommand, what: "remounting the shared folders")
+        } catch {
+            log("warning: \(error); the guest may not see its shared folders until it restarts")
+        }
+    }
+
+    static let remountSharesCommand = {
+        let mountPoint = shellQuote(MacVMBundle.sharesMountPoint)
+        return "sudo -n umount -f \(mountPoint); sudo -n mkdir -p \(mountPoint) && "
+            + "sudo -n mount -t virtiofs \(VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag) \(mountPoint)"
+    }()
+
+    /// Sets the guest's clock to `date`, in `date`'s `mmddHHMMccyy.ss` form.
+    nonisolated static func setDateCommand(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "MMddHHmmyyyy.ss"
+        return "sudo -n date -u \(formatter.string(from: date)) >/dev/null"
     }
 
     /// Decision 9's second step: `hobo set --disk` grew the image while the VM was stopped, and
@@ -132,6 +210,11 @@ public final class VMRunner {
         case .stop(let force):
             beginStop(force: force)
             return .accepted
+        case .suspend:
+            guard status.state != .stopping else { return .error("\(name) is shutting down") }
+            guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
+            // Its own task, so a client that hangs up can't cancel the save halfway.
+            return await Task { await suspend(guest, reply: reply) }.value
         case .view:
             guard status.state != .stopping else { return .error("\(name) is shutting down") }
             guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
@@ -179,6 +262,51 @@ public final class VMRunner {
             self.window = window
         }
         window?.show()
+    }
+
+    /// Decision 11: pauses the VM, saves its state into `suspending/` and renames that into
+    /// place, then powers the paused VM off and exits; the guest never runs past the save, so the
+    /// disk stays as the state expects. A failed save is cleaned up and the VM resumed.
+    private func suspend(_ guest: GuestVM, reply: ControlReply) async -> ControlResponse {
+        let previous = (state: status.state, detail: status.detail)
+        status.state = .stopping
+        status.detail = "saving state"
+        log("Suspend requested")
+        let bundle = store.bundle(for: name)
+        let partial = SavedState.partialDirectory(in: bundle)
+        do {
+            try await guest.pause()
+            do {
+                try? FileManager.default.removeItem(at: partial)
+                try FileManager.default.createDirectory(at: partial, withIntermediateDirectories: false)
+                try await guest.saveState(to: partial.appending(path: SavedState.stateFile))
+                try SuspendedRun(shares: shares, suspendedAt: .now).write(to: partial.appending(path: SavedState.runFile))
+                try FileManager.default.moveItem(at: partial, to: SavedState.directory(in: bundle))
+            } catch {
+                try? FileManager.default.removeItem(at: partial)
+                do {
+                    try await guest.resume()
+                } catch {
+                    log("error: resuming after the failed save failed: \(error)")
+                }
+                throw error
+            }
+        } catch {
+            log("error: suspending failed: \(error)")
+            status.state = previous.state
+            status.detail = previous.detail
+            return .error("suspending \(name) failed: \(error)")
+        }
+        log("Saved the VM's state; powering it off")
+        // Answered now: once the process exits, the return value below can't be.
+        try? reply.send(.accepted)
+        do {
+            try await guest.forceStop()
+        } catch {
+            // Exiting ends the VM anyway; the saved state is what matters.
+            log("warning: powering the paused VM off failed: \(error)")
+        }
+        finish(0)
     }
 
     /// A repeated stop is ignored unless it escalates to a forced one.

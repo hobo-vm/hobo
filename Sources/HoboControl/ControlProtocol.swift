@@ -21,6 +21,9 @@ public enum ControlRequest: Codable, Equatable, Sendable {
     case exec(command: [String])
     /// Runs scp between host paths and the guest: scp's output as `output` lines, then `exited`.
     case copy(GuestCopy)
+    /// Pauses the VM and saves its state, answering once the state is saved (or with what stopped
+    /// it, leaving the VM running); the VM process then powers the VM off and exits.
+    case suspend
     /// Shows the VM's window, creating it the first time, and brings it to the front.
     case view
 }

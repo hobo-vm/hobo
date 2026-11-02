@@ -13,3 +13,11 @@ import Testing
         #expect(line.contains(" -o StrictHostKeyChecking=no "))
     }
 }
+
+@Suite struct ResumeClockTests {
+    /// macOS `date`'s `mmddHHMMccyy.ss`, in UTC whatever the host's time zone.
+    @Test func setDateCommandUsesUTC() {
+        let date = Date(timeIntervalSince1970: 1_800_000_007) // 2027-01-15 08:00:07 UTC
+        #expect(VMRunner.setDateCommand(date) == "sudo -n date -u 011508002027.07 >/dev/null")
+    }
+}

@@ -53,7 +53,7 @@ import HoboCore
 
     @Test func streamingRequestsRoundTrip() throws {
         let copy = GuestCopy(direction: .toGuest, sources: ["/a b"], destination: "/tmp/", recursive: true)
-        for request: ControlRequest in [.exec(command: ["echo", "a\nb"]), .copy(copy)] {
+        for request: ControlRequest in [.exec(command: ["echo", "a\nb"]), .copy(copy), .suspend] {
             let envelope = ControlEnvelope(version: ControlProtocol.version, request: request)
             #expect(try ControlSocket.decode(ControlEnvelope.self, from: ControlSocket.encode(envelope).dropLast()) == envelope)
         }
