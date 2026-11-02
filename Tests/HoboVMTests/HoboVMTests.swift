@@ -223,8 +223,15 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(!FileManager.default.fileExists(atPath: bundle.appending(path: "cidata.iso").path), "the seed is only for create")
         #expect(try output(hobo, ["list"], environment: env).contains(/litest\s+stopped\s+Ubuntu\s/))
 
+        // Shares: a persistent read-only one (set) and a writable one for this run only (start --share).
+        let kept = work.appending(path: "kept")
+        let scratch = work.appending(path: "scratch")
+        for folder in [kept, scratch] { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
+        try "kept\n".write(to: kept.appending(path: "hello.txt"), atomically: true, encoding: .utf8)
+        #expect(try run(hobo, ["set", "litest", "--share", "\(kept.path):ro"], in: work, environment: env) == 0)
+
         defer { _ = try? run(hobo, ["stop", "--force", "litest"], in: work, environment: env) }
-        let started = try output(hobo, ["start", "litest"], environment: env)
+        let started = try output(hobo, ["start", "litest", "--share", scratch.path], environment: env)
         #expect(started.contains(/litest is running \(\d+\.\d+\.\d+\.\d+\)/), "\(started)")
         let ip = try output(hobo, ["ip", "litest"], environment: env).trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(started.contains("(\(ip))"))
@@ -244,6 +251,23 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["view", "litest"], in: work, environment: env) == 0)
         #expect(try String(contentsOf: bundle.appending(path: "console.log"), encoding: .utf8).contains("litest login:"))
 
+        // vagrant has the host user's uid, so shared files are its own, and what it writes is the host user's.
+        let shared = CloudInit.shareMountPoint
+        #expect(try output(hobo, ["exec", "litest", "--", "cat", "\(shared)/kept/hello.txt"], environment: env) == "kept\n")
+        #expect(try output(hobo, ["exec", "litest", "--", "stat", "-c", "%U", "\(shared)/kept/hello.txt"], environment: env) == "vagrant\n")
+        #expect(try run(hobo, ["exec", "litest", "--", "touch", "\(shared)/kept/new"], in: work, environment: env) != 0, "read-only")
+        #expect(try run(hobo, ["exec", "litest", "--", "sh", "-c", "echo out > \(shared)/scratch/from-guest"], in: work, environment: env) == 0)
+        let fromGuest = scratch.appending(path: "from-guest")
+        #expect(try String(contentsOf: fromGuest, encoding: .utf8) == "out\n")
+        let owner = try FileManager.default.attributesOfItem(atPath: fromGuest.path)[.ownerAccountID] as? NSNumber
+        #expect(owner?.uint32Value == getuid())
+
+        #expect(try output(hobo, ["stop", "litest"], environment: env).contains("Stopped litest"))
+        // With no shares the device is still attached, so /mnt/hobo is an empty mount, not the disk.
+        #expect(try run(hobo, ["set", "litest", "--unshare", "kept"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["start", "litest"], in: work, environment: env) == 0)
+        #expect(try output(hobo, ["exec", "litest", "--", "findmnt", "-n", "-o", "FSTYPE", shared], environment: env) == "virtiofs\n")
+        #expect(try output(hobo, ["exec", "litest", "--", "ls", "-A", shared], environment: env) == "")
         #expect(try output(hobo, ["stop", "litest"], environment: env).contains("Stopped litest"))
         #expect(try run(hobo, ["delete", "litest", "--yes"], in: work, environment: env) == 0)
         #expect(try FileManager.default.contentsOfDirectory(atPath: vms.path).isEmpty)

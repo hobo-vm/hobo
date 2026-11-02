@@ -46,8 +46,6 @@ public struct VMLifecycle: Sendable {
         case .broken:
             throw LifecycleError.notStartable(vm.name, "its bundle has no valid \(VMStore.configFile)")
         }
-        // Checked here, not left to the VM process, whose failure would only reach its log.
-        if !(config.shares + shares).isEmpty { try VMShare.checkSupported(on: config.os) }
         guard Entitlements.has(Entitlements.virtualization) else { throw LifecycleError.unsigned(executable.path) }
         try ControlSocket.checkPath(job.socket.path)
         // Run-only shares were just typed, so a bad one fails here; a persistent share whose folder

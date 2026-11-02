@@ -2,16 +2,23 @@ import Foundation
 
 /// The NoCloud seed that applies the Vagrant conventions to a Linux guest on its first boot:
 /// `vagrant`/`vagrant` with passwordless sudo and the insecure keys, password SSH, and no
-/// automatic updates. It is attached (as a `cidata` ISO) only while `create` runs; cleanup then
-/// disables cloud-init, so later boots and clones never re-run it.
+/// automatic updates, plus the fstab line that mounts the VM's shares. It is attached (as a
+/// `cidata` ISO) only while `create` runs; cleanup then disables cloud-init, so later boots and
+/// clones never re-run it.
 public enum CloudInit {
     public static let volumeName = "cidata"
 
-    /// The seed's files, by name, for the VM `vmName`.
-    public static func seed(vmName: String, macAddress: String) -> [String: String] {
+    /// The virtio-fs tag a Linux VM's shares are all on, as one multiple-directory share, and
+    /// where the guest mounts it: each share appears at `<shareMountPoint>/<name>`.
+    public static let shareTag = "hobo"
+    public static let shareMountPoint = "/mnt/hobo"
+
+    /// The seed's files, by name, for the VM `vmName`. `uid` is the host user's, given to
+    /// `vagrant` so that shared files, which the guest sees with their host owner, are its own.
+    public static func seed(vmName: String, macAddress: String, uid: UInt32) -> [String: String] {
         [
             "meta-data": metaData(hostname: hostname(for: vmName)),
-            "user-data": userData,
+            "user-data": userData(uid: uid),
             "network-config": networkConfig(macAddress: macAddress),
         ]
     }
@@ -32,12 +39,13 @@ public enum CloudInit {
     }
 
     /// `users` without `default` leaves out the image's own `ubuntu` user.
-    static var userData: String {
+    static func userData(uid: UInt32) -> String {
         let username = Conventions.username
         return """
         #cloud-config
         users:
           - name: \(username)
+            uid: \(uid)
             gecos: \(Conventions.fullName)
             groups: [adm, sudo]
             shell: /bin/bash
@@ -59,7 +67,15 @@ public enum CloudInit {
           - path: /etc/default/grub.d/99-hobo-console.cfg
             content: |
               GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT console=hvc0 fbcon=font:TER10x18"
+          # Shares, mounted on every boot: the device is always attached, so shares added later
+          # appear with nothing changed in the guest. Not the mounts module, which takes a bare
+          # name like this tag for a cloud device.
+          - path: /etc/fstab
+            append: true
+            content: |
+              \(shareTag) \(shareMountPoint) virtiofs defaults,nofail 0 0
         runcmd:
+          - [mkdir, -p, \(shareMountPoint)]
           - [update-grub]
           # setupcon would otherwise load the 8x16 font back partway through boot. 10x20 is its
           # Terminus size closest to the kernel's 10x18.

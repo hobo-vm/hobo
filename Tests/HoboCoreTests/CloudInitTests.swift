@@ -3,7 +3,7 @@ import Testing
 @testable import HoboCore
 
 @Suite struct CloudInitTests {
-    let seed = CloudInit.seed(vmName: "dev", macAddress: "AA:BB:CC:DD:EE:0F")
+    let seed = CloudInit.seed(vmName: "dev", macAddress: "AA:BB:CC:DD:EE:0F", uid: 502)
 
     @Test func seedHasTheNoCloudFiles() {
         #expect(Set(seed.keys) == ["meta-data", "user-data", "network-config"])
@@ -15,7 +15,7 @@ import Testing
         #expect(CloudInit.hostname(for: "dev") == "dev")
         #expect(CloudInit.hostname(for: "my_vm.2") == "my-vm-2")
         #expect(CloudInit.hostname(for: "build-") == "build")
-        #expect(CloudInit.seed(vmName: "a_b", macAddress: "AA:BB:CC:DD:EE:0F")["meta-data"]?.contains("local-hostname: a-b\n") == true)
+        #expect(CloudInit.seed(vmName: "a_b", macAddress: "AA:BB:CC:DD:EE:0F", uid: 502)["meta-data"]?.contains("local-hostname: a-b\n") == true)
     }
 
     @Test func userDataAppliesTheVagrantConventions() throws {
@@ -32,6 +32,15 @@ import Testing
         // A readable text console: the kernel's built-in Terminus font, which setupcon then keeps.
         #expect(userData.contains("console=hvc0 fbcon=font:TER10x18\""))
         #expect(userData.contains(#"'s/^FONTSIZE=.*/FONTSIZE="10x20"/'"#))
+    }
+
+    /// Shared files show with their host owner, so vagrant takes the host user's uid; the fstab
+    /// line mounts every share on every boot, after cloud-init is disabled.
+    @Test func userDataMountsShares() throws {
+        let userData = try #require(seed["user-data"])
+        #expect(userData.contains("  - name: vagrant\n    uid: 502\n"))
+        #expect(userData.contains("  - path: /etc/fstab\n    append: true\n    content: |\n      hobo /mnt/hobo virtiofs defaults,nofail 0 0\n"))
+        #expect(userData.contains("  - [mkdir, -p, /mnt/hobo]\n"))
     }
 
     /// bootpd records the client ID it is sent, and leases are found by MAC.

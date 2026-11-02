@@ -1,8 +1,8 @@
 import Foundation
 
 /// A host folder shared into the guest over virtio-fs. A macOS guest mounts every share at
-/// `/Volumes/My Shared Files/<name>` (decision 9). Persistent shares live in `config.json`
-/// (`hobo set --share`); `hobo start --share` adds one for a single run.
+/// `/Volumes/My Shared Files/<name>`, a Linux guest at `/mnt/hobo/<name>` (decision 9). Persistent
+/// shares live in `config.json` (`hobo set --share`); `hobo start --share` adds one for a single run.
 public struct VMShare: Codable, Equatable, Sendable {
     /// The folder's name in the guest: the host folder's basename.
     public var name: String
@@ -84,12 +84,6 @@ public struct VMShare: Codable, Equatable, Sendable {
         return nil
     }
 
-    /// Throws unless `os`'s guests can mount shares: only macOS's can yet (a Linux VM's
-    /// configuration refuses them, so it would fail to boot).
-    public static func checkSupported(on os: VMConfig.OS) throws {
-        if os != .macOS { throw VMShareError.unsupported(os) }
-    }
-
     /// Throws if a share's name can't mount in the guest, or two would mount at the same guest
     /// path. Names compare case-insensitively, as the guest's volume does.
     public static func checkNames(_ shares: [VMShare]) throws {
@@ -123,16 +117,14 @@ public enum VMShareError: Error, Equatable, CustomStringConvertible {
     case unusable(String, String)
     case duplicateName(String, String, String)
     case unknown(String)
-    case unsupported(VMConfig.OS)
 
     public var description: String {
         switch self {
         case .emptyPath: "--share needs a folder"
         case .unusable(let path, let problem): "can't share \(path): \(problem)"
         case .duplicateName(let name, let first, let second):
-            "\(first) and \(second) would both mount as \"\(name)\" in /Volumes/My Shared Files; rename or symlink one of them"
+            "\(first) and \(second) would both mount as \"\(name)\" in the guest; rename or symlink one of them"
         case .unknown(let target): "no share named \(target)"
-        case .unsupported(let os): "shared folders aren't supported on \(os.rawValue) VMs yet"
         }
     }
 }

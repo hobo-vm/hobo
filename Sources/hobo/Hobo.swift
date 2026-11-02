@@ -593,8 +593,9 @@ struct SetCommand: OutputCommand {
             The disk only grows. Its image grows now, and the guest's APFS container grows into the new space \
             at the next hobo start.
 
-            A shared folder appears in the guest at /Volumes/My Shared Files/<folder name>. --unshare runs before \
-            --share, so --unshare src --share ~/src:ro makes a share read-only.
+            A shared folder appears in the guest at /Volumes/My Shared Files/<folder name> (macOS) or \
+            /mnt/hobo/<folder name> (Linux). --unshare runs before --share, so \
+            --unshare src --share ~/src:ro makes a share read-only.
             """
     )
 

@@ -50,3 +50,12 @@ func natNetwork(macAddress: VZMACAddress) -> VZVirtioNetworkDeviceConfiguration 
     network.macAddress = macAddress
     return network
 }
+
+/// A virtio-fs device on `tag` holding every share, each a directory named after it (decision 9).
+func shareDevice(tag: String, shares: [VMShare]) -> VZVirtioFileSystemDeviceConfiguration {
+    let device = VZVirtioFileSystemDeviceConfiguration(tag: tag)
+    device.share = VZMultipleDirectoryShare(directories: Dictionary(uniqueKeysWithValues: shares.map { share in
+        (share.name, VZSharedDirectory(url: URL(filePath: share.path, directoryHint: .isDirectory), readOnly: share.readOnly))
+    }))
+    return device
+}

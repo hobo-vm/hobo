@@ -79,11 +79,7 @@ public struct MacVMBundle: VMBundle {
         config.pointingDevices = [VZMacTrackpadConfiguration()]
         config.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
         if !shares.isEmpty {
-            let device = VZVirtioFileSystemDeviceConfiguration(tag: VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag)
-            device.share = VZMultipleDirectoryShare(directories: Dictionary(uniqueKeysWithValues: shares.map { share in
-                (share.name, VZSharedDirectory(url: URL(filePath: share.path, directoryHint: .isDirectory), readOnly: share.readOnly))
-            }))
-            config.directorySharingDevices = [device]
+            config.directorySharingDevices = [shareDevice(tag: VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag, shares: shares)]
         }
         try config.validate()
         return config
