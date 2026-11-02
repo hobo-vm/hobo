@@ -131,9 +131,11 @@ public final class VMRunner {
             let guestSSH = try ssh(ip)
             try await guestSSH.waitUntilReachable(timeout: Self.bootTimeout)
             if resumed {
-                let os = type(of: guest.bundle)
-                await setClock(guestSSH, os: os)
-                if !shares.isEmpty, let command = os.remountSharesCommand { await remountShares(guestSSH, command: command) }
+                let platform = type(of: guest.bundle)
+                await setClock(guestSSH, platform: platform)
+                if !shares.isEmpty, let command = platform.remountSharesCommand {
+                    await remountShares(guestSSH, command: command)
+                }
             }
             await growContainerIfPending(guestSSH)
             guard status.state == .starting else { return }
@@ -149,11 +151,11 @@ public final class VMRunner {
 
     /// A resumed guest's clock is behind by however long it was suspended. NTP first where the
     /// guest has it, then the host's clock; either failing only warns.
-    private func setClock(_ ssh: GuestSSH, os: any VMBundle.Type) async {
+    private func setClock(_ ssh: GuestSSH, platform: any VMBundle.Type) async {
         status.detail = "setting the guest's clock"
-        if let ntp = os.ntpClockCommand, (try? await ssh.run(ntp, quiet: true)) == 0 { return }
+        if let ntp = platform.ntpClockCommand, (try? await ssh.run(ntp, quiet: true)) == 0 { return }
         do {
-            try await ssh.check(os.setClockCommand(.now), what: "setting the guest's clock")
+            try await ssh.check(platform.setClockCommand(.now), what: "setting the guest's clock")
         } catch {
             log("warning: \(error); the guest's clock may be behind")
         }

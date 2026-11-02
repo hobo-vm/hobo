@@ -224,8 +224,8 @@ global VMs on 2026-11-01.
     uutils `date` rejects the BSD form) and chrony refines it. A macOS guest's shares are also
     remounted over SSH: VZ's virtio-fs device restarts on the host, and its old handles fail lookups
     with ENOENT until the mount is replaced (files a guest process had open in a share are lost). A
-    Linux guest's mount keeps working across the restore, so it is left alone. Resume took about 6 s and a suspend about 8 s for an 8 GB guest
-    using 1.5 GB. A resume that fails (a share folder gone, state the host's VZ can't read) keeps
+    Linux guest's mount keeps working across the restore, so it is left alone. Resume took about
+    6 s and a suspend about 8 s for an 8 GB guest using 1.5 GB. A resume that fails (a share folder gone, state the host's VZ can't read) keeps
     the state and points to `start --cold`. Discarding memory is always explicit: `stop` refuses a
     suspended VM, and `hobo discard` (or `start --cold`) throws the state away, leaving it stopped.
     `set` and `start --share` refuse a suspended VM, whose state fits only its old configuration;
