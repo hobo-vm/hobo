@@ -245,6 +245,19 @@ import Testing
         #expect(throws: VMStoreError.busy("dev", reason: "running (hobo stop dev)")) { try store.discard("dev") }
     }
 
+    /// The default guard for anything that changes a VM's disk, configuration or identity
+    /// (set, and later snapshot restore and clone): saved state fits only what it was saved with.
+    @Test func checkStoppedRefusesASuspendedVMUnlessAllowed() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try made("dev")
+        try suspend("dev")
+        let vm = try store.find("dev")
+        #expect(throws: VMStoreError.busy("dev", reason: "suspended (hobo discard dev throws its saved state away)")) {
+            try store.checkStopped(vm)
+        }
+        try store.checkStopped(vm, allowSuspended: true)
+    }
+
     @Test func suspendedVMCanBeRenamedAndDeleted() throws {
         defer { try? FileManager.default.removeItem(at: store.directory) }
         try made("dev")

@@ -677,7 +677,7 @@ struct Delete: OutputCommand {
     func execute(_ output: Output) async throws -> Reply {
         let store = VMStore.standard()
         let vm = try store.find(name)
-        try store.checkNotRunning(vm)
+        try store.checkStopped(vm, allowSuspended: true)
         // The prompt is text only: validate() requires --yes with --json.
         if !yes {
             guard isatty(STDIN_FILENO) != 0 else {

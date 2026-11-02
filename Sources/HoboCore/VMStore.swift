@@ -131,16 +131,17 @@ public struct VMStore: Sendable {
         try FileManager.default.removeItem(at: bundle(for: name))
     }
 
-    /// Throws if `vm` is being built or its VM process is running.
-    public func checkNotRunning(_ vm: VM) throws {
+    /// Throws unless `vm` is stopped: being built, running, or (unless `allowSuspended`) holding
+    /// saved state. Saved state fits only the disk, configuration and identity it was saved with,
+    /// so anything that changes those must refuse a suspended VM; only what keeps the bundle whole
+    /// (delete, rename, discard) passes `allowSuspended`.
+    public func checkStopped(_ vm: VM, allowSuspended: Bool = false) throws {
         if case .building = vm.status { throw VMStoreError.busy(vm.name, reason: "being built") }
         // The job, not the status: a running VM whose config.json has gone bad still runs.
         if vm.job?.pid != nil { throw VMStoreError.busy(vm.name, reason: "running (hobo stop \(vm.name))") }
-    }
-
-    /// Throws if `vm` has saved state, which a change to its configuration would strand.
-    public func checkNotSuspended(_ vm: VM) throws {
-        if case .suspended = vm.status { throw VMStoreError.busy(vm.name, reason: "suspended (hobo discard \(vm.name) throws its saved state away)") }
+        if !allowSuspended, case .suspended = vm.status {
+            throw VMStoreError.busy(vm.name, reason: "suspended (hobo discard \(vm.name) throws its saved state away)")
+        }
     }
 
     /// `hobo discard`: deletes a suspended VM's saved state, leaving it stopped. Returns false if
@@ -148,7 +149,7 @@ public struct VMStore: Sendable {
     @discardableResult
     public func discard(_ name: String) throws -> Bool {
         let vm = try find(name)
-        try checkNotRunning(vm)
+        try checkStopped(vm, allowSuspended: true)
         guard case .suspended = vm.status else { return false }
         try FileManager.default.removeItem(at: SavedState.directory(in: vm.bundle))
         return true
@@ -156,7 +157,7 @@ public struct VMStore: Sendable {
 
     public func delete(_ name: String) throws {
         let vm = try find(name)
-        try checkNotRunning(vm)
+        try checkStopped(vm, allowSuspended: true)
         forgetJob(of: vm.name)
         try FileManager.default.removeItem(at: vm.bundle)
     }
@@ -166,7 +167,7 @@ public struct VMStore: Sendable {
         try Self.validate(new)
         // A case-only rename matches the VM itself, which is fine.
         if let existing = existingName(matching: new), existing != vm.name { throw VMStoreError.exists(existing) }
-        try checkNotRunning(vm)
+        try checkStopped(vm, allowSuspended: true)
         try FileManager.default.moveItem(at: vm.bundle, to: bundle(for: new))
         forgetJob(of: vm.name)
     }
