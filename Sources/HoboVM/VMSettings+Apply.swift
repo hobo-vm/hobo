@@ -18,11 +18,12 @@ extension VMSettings {
     public func apply(to name: String, store: VMStore = .standard(), log: @Sendable (String) -> Void) throws -> VMConfig {
         let vm = try store.find(name)
         // Also refuses a VM process still running from a bundle whose config.json has gone bad.
-        try store.checkNotRunning(vm)
+        try store.checkStopped(vm)
         let config: VMConfig
         switch vm.status {
         case .stopped(let stored), .crashed(let stored, _): config = stored
-        case .running, .building: preconditionFailure("checkNotRunning refuses a running or building VM")
+        case .running, .building, .suspended:
+            preconditionFailure("checkStopped refuses a running, building or suspended VM")
         case .failed: throw VMSettingsError.notConfigurable(vm.name, "its build failed (hobo delete \(vm.name))")
         case .broken: throw VMSettingsError.notConfigurable(vm.name, "its bundle has no valid \(VMStore.configFile)")
         }

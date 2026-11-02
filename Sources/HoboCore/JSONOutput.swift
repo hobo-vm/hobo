@@ -24,7 +24,7 @@ public enum HoboJSON {
 
 /// A VM as `--json` reports it: by `list`, and as the result of `create` and `rename`.
 public struct VMSummary: Codable, Equatable, Sendable {
-    public enum State: String, Codable, Sendable { case stopped, running, crashed, building, failed, broken }
+    public enum State: String, Codable, Sendable { case stopped, running, suspended, crashed, building, failed, broken }
 
     public var name: String
     public var state: State
@@ -35,6 +35,10 @@ public struct VMSummary: Codable, Equatable, Sendable {
     public var pid: Int32?
     /// The VM process's last exit status if `crashed`: negative for a signal.
     public var exitStatus: Int32?
+    /// Bytes the saved state occupies, if `suspended`.
+    public var savedStateBytes: UInt64?
+    /// When it was suspended, if `suspended` and its `run.json` is readable.
+    public var suspendedAt: Date?
     /// Absent while `building`, or when `failed` or `broken`.
     public var config: VMConfig?
     /// Whether the VM's window is showing (`hobo view`). Only for a `running` VM whose process
@@ -53,6 +57,11 @@ public struct VMSummary: Codable, Equatable, Sendable {
             state = .running
             self.config = config
             self.pid = pid
+        case .suspended(let config, let saved):
+            state = .suspended
+            self.config = config
+            savedStateBytes = saved.bytes
+            suspendedAt = saved.run?.suspendedAt
         case .crashed(let config, let exitStatus):
             state = .crashed
             self.config = config

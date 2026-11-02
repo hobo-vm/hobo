@@ -18,25 +18,43 @@ public struct VMLifecycle: Sendable {
 
     public enum StartResult: Equatable, Sendable {
         case started(VMRunStatus)
+        /// It was suspended, and carried on from its saved state.
+        case resumed(VMRunStatus)
         /// The status is nil if the VM process didn't answer.
         case alreadyRunning(VMRunStatus?)
     }
 
-    /// Boots `name` under launchd and waits until the guest answers SSH. A timeout leaves it booting.
-    /// With `gui`, the VM's window opens once the guest answers SSH, or at once if it is already
-    /// running. `shares` are for this run only, on top of the VM's own; they can't be added to a VM
-    /// that's already running.
+    /// Boots `name` under launchd, or resumes it if it is suspended, and waits until the guest
+    /// answers SSH. A timeout leaves it booting. `cold` discards a suspended VM's saved state and
+    /// boots it instead. With `gui`, the VM's window opens once the guest answers SSH, or at once if
+    /// it is already running. `shares` are for this run only, on top of the VM's own; they can't be
+    /// added to a VM that's already running, or to a resumed one, whose saved state fits only the
+    /// shares it had.
     public func start(
-        _ name: String, gui: Bool = false, shares: [VMShare] = [], timeout: Duration = .seconds(10 * 60)
+        _ name: String, gui: Bool = false, cold: Bool = false, shares: [VMShare] = [], timeout: Duration = .seconds(10 * 60)
     ) async throws -> StartResult {
         let vm = try store.find(name)
         let job = store.job(for: vm.name)
         let config: VMConfig
+        var resuming = false
         switch vm.status {
         case .running:
             if !shares.isEmpty { throw LifecycleError.sharesNeedStop(vm.name) }
             if gui { try await view(vm.name) }
             return .alreadyRunning(try? await ControlClient.status(at: job.socket))
+        case .suspended(let stored, let saved):
+            config = stored
+            if !cold {
+                if !shares.isEmpty { throw LifecycleError.sharesNeedCold(vm.name) }
+                guard let run = saved.run else { throw LifecycleError.cantResume(vm.name, "its \(SavedState.runFile) is unreadable") }
+                // The VM process would fail on these too, but only its log would say why.
+                do {
+                    for share in run.shares { try share.checkFolder() }
+                } catch {
+                    throw LifecycleError.cantResume(vm.name, String(describing: error))
+                }
+                resuming = true
+            }
         case .stopped(let stored), .crashed(let stored, _):
             config = stored
         case .building:
@@ -48,10 +66,13 @@ public struct VMLifecycle: Sendable {
         }
         guard Entitlements.has(Entitlements.virtualization) else { throw LifecycleError.unsigned(executable.path) }
         try ControlSocket.checkPath(job.socket.path)
-        // Run-only shares were just typed, so a bad one fails here; a persistent share whose folder
-        // has gone only warns, and the VM process leaves it out.
-        for share in shares { try share.checkFolder() }
-        try VMShare.checkNames(VMShare.available(config.shares, log: log) + shares)
+        if !resuming {
+            // Run-only shares were just typed, so a bad one fails here; a persistent share whose
+            // folder has gone only warns, and the VM process leaves it out.
+            for share in shares { try share.checkFolder() }
+            try VMShare.checkNames(VMShare.available(config.shares, log: log) + shares)
+        }
+        if cold, try store.discard(vm.name) { log("Discarded \(vm.name)'s saved state") }
 
         // A job left loaded by the last run (exited, maybe crashed) blocks bootstrapping a new one.
         store.launchd.bootout(job.label)
@@ -65,8 +86,9 @@ public struct VMLifecycle: Sendable {
         )
         try plist.write(to: job.plist, options: .atomic)
         try store.launchd.bootstrap(job.plist)
-        log("Starting \(vm.name)")
-        return .started(try await waitUntilRunning(vm.name, job: job, timeout: timeout))
+        log(resuming ? "Resuming \(vm.name)" : "Starting \(vm.name)")
+        let status = try await waitUntilRunning(vm.name, job: job, timeout: timeout)
+        return resuming ? .resumed(status) : .started(status)
     }
 
     /// The VM process's command line, as launchd runs it.
@@ -101,6 +123,8 @@ public struct VMLifecycle: Sendable {
     public func stop(_ name: String, force: Bool, timeout: Duration = .seconds(5 * 60)) async throws -> StopResult {
         let vm = try store.find(name)
         let job = store.job(for: vm.name)
+        // Throwing the guest's memory away takes `hobo discard`, never a stop.
+        if case .suspended = vm.status { throw LifecycleError.suspended(vm.name) }
         guard vm.job?.pid != nil else {
             // Clears a crashed run's exit status, so the VM shows as stopped.
             store.launchd.bootout(job.label)
@@ -121,13 +145,67 @@ public struct VMLifecycle: Sendable {
             log("The VM process isn't answering (\(error)); killing it")
             try store.launchd.kill(job.label, signal: "SIGKILL")
         }
+        try await waitForExit(vm.name, job: job, timeout: timeout)
+        return .stopped
+    }
 
+    public enum SuspendResult: Equatable, Sendable {
+        case suspended(savedStateBytes: UInt64)
+        case alreadySuspended(savedStateBytes: UInt64)
+        case wasNotRunning
+    }
+
+    /// Has the VM process save the VM's state and exit, and waits for it. If the save fails, the
+    /// VM keeps running and the VM process's error is thrown.
+    public func suspend(_ name: String, timeout: Duration = .seconds(5 * 60)) async throws -> SuspendResult {
+        let vm = try store.find(name)
+        let job = store.job(for: vm.name)
+        if case .suspended(_, let saved) = vm.status { return .alreadySuspended(savedStateBytes: saved.bytes) }
+        guard vm.job?.pid != nil else { return .wasNotRunning }
+        let response: ControlResponse
+        do {
+            // The answer comes once the state is saved, which takes a while for a large memory.
+            response = try await ControlClient.send(.suspend, to: job.socket, timeout: timeout)
+        } catch {
+            throw LifecycleError.unresponsive(vm.name, String(describing: error))
+        }
+        switch response {
+        case .accepted: break
+        case .error(let message): throw LifecycleError.refused(vm.name, message)
+        default: throw ControlError.badMessage("expected an acknowledgement, got \(response)")
+        }
+        let exitStatus = try await waitForExit(vm.name, job: job, timeout: timeout)
+        guard let saved = SavedState.load(in: vm.bundle) else {
+            throw LifecycleError.exited(vm.name, exitStatus, Self.tail(of: job.log))
+        }
+        return .suspended(savedStateBytes: saved.bytes)
+    }
+
+    public enum DiscardResult: Equatable, Sendable {
+        case discarded
+        case notSuspended
+    }
+
+    /// `hobo discard`: throws a suspended VM's saved state away, leaving it stopped.
+    public func discard(_ name: String) throws -> DiscardResult {
+        let vm = try store.find(name)
+        guard try store.discard(vm.name) else { return .notSuspended }
+        // A resume that failed leaves its job's exit status, which would show the VM as crashed.
+        store.launchd.bootout(store.job(for: vm.name).label)
+        return .discarded
+    }
+
+    /// Waits for a VM process told to exit to do so, logging what it reports doing, then unloads
+    /// its job. Returns its exit status.
+    @discardableResult
+    private func waitForExit(_ name: String, job: VMJob, timeout: Duration) async throws -> Int32? {
         var lastDetail: String?
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
-            guard store.launchd.jobs()[job.label]?.pid != nil else {
+            let entry = store.launchd.jobs()[job.label]
+            guard entry?.pid != nil else {
                 store.launchd.bootout(job.label)
-                return .stopped
+                return entry?.lastExitStatus
             }
             if case .status(let status)? = try? await ControlClient.send(.status, to: job.socket),
                let detail = status.detail, detail != lastDetail {
@@ -136,7 +214,7 @@ public struct VMLifecycle: Sendable {
             }
             try await Task.sleep(for: .seconds(1))
         }
-        throw LifecycleError.stopTimedOut(vm.name)
+        throw LifecycleError.stopTimedOut(name)
     }
 
     /// What a running VM's process reports, or nil if it doesn't answer within `timeout`. Short by
@@ -197,6 +275,9 @@ public enum LifecycleError: Error, Equatable, CustomStringConvertible {
     case stopTimedOut(String)
     case notRunning(String)
     case sharesNeedStop(String)
+    case sharesNeedCold(String)
+    case suspended(String)
+    case cantResume(String, String)
 
     public var description: String {
         switch self {
@@ -214,12 +295,18 @@ public enum LifecycleError: Error, Equatable, CustomStringConvertible {
         case .notRunning(let name): "\(name) is not running (hobo start --gui \(name))"
         case .sharesNeedStop(let name):
             "\(name) is already running, and shares can't be added to a running VM (hobo stop \(name) first, or hobo set \(name) --share while it's stopped)"
+        case .sharesNeedCold(let name):
+            "\(name) is suspended, and its saved state only fits the shares it had (hobo start --cold boots it fresh with new ones, discarding the saved state)"
+        case .suspended(let name):
+            "\(name) is suspended (hobo start \(name) resumes it; hobo discard \(name) throws its saved state away)"
+        case .cantResume(let name, let reason):
+            "can't resume \(name): \(reason) (hobo start --cold \(name) boots it fresh, discarding its saved state)"
         }
     }
 }
 
-/// `{"outcome": "started" | "alreadyRunning", "status": {...}}`; the status is absent if an
-/// already-running VM process didn't answer.
+/// `{"outcome": "started" | "resumed" | "alreadyRunning", "status": {...}}`; the status is absent
+/// if an already-running VM process didn't answer.
 extension VMLifecycle.StartResult: Encodable {
     private enum CodingKeys: String, CodingKey { case outcome, status }
 
@@ -228,6 +315,9 @@ extension VMLifecycle.StartResult: Encodable {
         switch self {
         case .started(let status):
             try container.encode("started", forKey: .outcome)
+            try container.encode(status, forKey: .status)
+        case .resumed(let status):
+            try container.encode("resumed", forKey: .outcome)
             try container.encode(status, forKey: .status)
         case .alreadyRunning(let status):
             try container.encode("alreadyRunning", forKey: .outcome)
@@ -245,6 +335,38 @@ extension VMLifecycle.StopResult: Encodable {
         switch self {
         case .stopped: try container.encode("stopped", forKey: .outcome)
         case .wasNotRunning: try container.encode("wasNotRunning", forKey: .outcome)
+        }
+    }
+}
+
+/// `{"outcome": "suspended" | "alreadySuspended" | "wasNotRunning", "savedStateBytes": n}`; the
+/// size is absent if it wasn't running.
+extension VMLifecycle.SuspendResult: Encodable {
+    private enum CodingKeys: String, CodingKey { case outcome, savedStateBytes }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .suspended(let bytes):
+            try container.encode("suspended", forKey: .outcome)
+            try container.encode(bytes, forKey: .savedStateBytes)
+        case .alreadySuspended(let bytes):
+            try container.encode("alreadySuspended", forKey: .outcome)
+            try container.encode(bytes, forKey: .savedStateBytes)
+        case .wasNotRunning: try container.encode("wasNotRunning", forKey: .outcome)
+        }
+    }
+}
+
+/// `{"outcome": "discarded" | "notSuspended"}`.
+extension VMLifecycle.DiscardResult: Encodable {
+    private enum CodingKeys: String, CodingKey { case outcome }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .discarded: try container.encode("discarded", forKey: .outcome)
+        case .notSuspended: try container.encode("notSuspended", forKey: .outcome)
         }
     }
 }

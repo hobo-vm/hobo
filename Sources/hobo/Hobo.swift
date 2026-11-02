@@ -34,7 +34,7 @@ struct HoboCommand: AsyncParsableCommand {
         abstract: "Named VMs on Apple's Virtualization framework.",
         version: Hobo.version,
         subcommands: [
-            Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self, View.self,
+            Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self, Suspend.self, Discard.self, View.self,
             SSH.self, Exec.self, Copy.self, IP.self, SetCommand.self, Provision.self, Rename.self, Delete.self, Claude.self, Usage.self,
         ]
     )
@@ -325,6 +325,8 @@ struct List: OutputCommand {
                 return [vm.name, "stopped"] + columns(config, used: used)
             case .running(let config, _):
                 return [vm.name, summary.windowShown == true ? "running (window)" : "running"] + columns(config, used: used)
+            case .suspended(let config, let saved):
+                return [vm.name, "suspended (\(fileSize(saved.bytes)))"] + columns(config, used: used)
             case .crashed(let config, let status):
                 return [vm.name, "crashed (\(status < 0 ? "signal \(-status)" : "exit \(status)"))"] + columns(config, used: used)
             case .building: return [vm.name, "building", "—", "—", "—", "\(used) / —"]
@@ -342,7 +344,7 @@ struct List: OutputCommand {
 
 struct Start: OutputCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Boot a VM in the background under launchd, headless unless --gui.",
+        abstract: "Boot a VM in the background under launchd, headless unless --gui, or resume it if suspended.",
         discussion: "Waits until the guest answers SSH. Interrupting the wait leaves the VM booting."
     )
 
@@ -352,10 +354,13 @@ struct Start: OutputCommand {
     @Flag(help: "Open the VM's window once the guest is ready (or now, if it is already running).")
     var gui = false
 
+    @Flag(help: "Boot a suspended VM fresh, discarding its saved state, instead of resuming it.")
+    var cold = false
+
     @Option(
         name: .customLong("share"),
         help: ArgumentHelp(
-            "Share a host folder for this run only, read-only with :ro. Repeatable; the VM must be stopped.",
+            "Share a host folder for this run only, read-only with :ro. Repeatable; the VM must be stopped (or suspended, with --cold).",
             valueName: "folder[:ro]"
         ),
         transform: parseShare
@@ -374,9 +379,10 @@ struct Start: OutputCommand {
             Darwin.exit(130)
         }
         defer { interrupt.cancel() }
-        let result = try await VMLifecycle(log: output.log).start(name, gui: gui, shares: shares)
+        let result = try await VMLifecycle(log: output.log).start(name, gui: gui, cold: cold, shares: shares)
         let text = switch result {
         case .started(let status): "\(name) is running\(status.ipAddress.map { " (\($0))" } ?? "")"
+        case .resumed(let status): "\(name) resumed\(status.ipAddress.map { " (\($0))" } ?? "")"
         case .alreadyRunning(let status): "\(name) is already running\(status?.ipAddress.map { " (\($0))" } ?? "")"
         }
         return Reply(result, text: text)
@@ -405,6 +411,55 @@ struct Stop: OutputCommand {
         let text = switch result {
         case .stopped: "Stopped \(name)"
         case .wasNotRunning: "\(name) is not running"
+        }
+        return Reply(result, text: text)
+    }
+}
+
+struct Suspend: OutputCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Save a running VM's memory and device state and stop it.",
+        discussion: "hobo start resumes it where it left off; hobo discard throws the saved state away."
+    )
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    @Flag(help: "Print progress and the outcome as JSON Lines events.")
+    var json = false
+
+    static let jsonStyle = Output.JSONStyle.events
+
+    func execute(_ output: Output) async throws -> Reply {
+        let result = try await VMLifecycle(log: output.log).suspend(name)
+        let text = switch result {
+        case .suspended(let bytes): "Suspended \(name) (\(fileSize(bytes)) saved state)"
+        case .alreadySuspended: "\(name) is already suspended"
+        case .wasNotRunning: "\(name) is not running"
+        }
+        return Reply(result, text: text)
+    }
+}
+
+struct Discard: OutputCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Throw a suspended VM's saved state away, leaving it stopped.",
+        discussion: "Whatever was in the guest's memory is lost, as if it had lost power."
+    )
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    @Flag(help: "Print the outcome as JSON.")
+    var json = false
+
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        let result = try VMLifecycle(log: output.log).discard(name)
+        let text = switch result {
+        case .discarded: "Discarded \(name)'s saved state"
+        case .notSuspended: "\(name) is not suspended"
         }
         return Reply(result, text: text)
     }
@@ -719,7 +774,7 @@ struct Delete: OutputCommand {
     func execute(_ output: Output) async throws -> Reply {
         let store = VMStore.standard()
         let vm = try store.find(name)
-        try store.checkNotRunning(vm)
+        try store.checkStopped(vm, allowSuspended: true)
         // The prompt is text only: validate() requires --yes with --json.
         if !yes {
             guard isatty(STDIN_FILENO) != 0 else {

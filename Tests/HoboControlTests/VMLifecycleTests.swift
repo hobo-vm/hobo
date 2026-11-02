@@ -188,6 +188,111 @@ import Testing
         await #expect(throws: LifecycleError.sharesNeedStop("dev")) { try await lifecycle.start("dev", shares: [share]) }
     }
 
+    /// Gives `dev` saved state, as a suspend leaves it, recording `shares`; nil leaves out `run.json`.
+    func suspend(shares: [VMShare]? = []) throws {
+        let directory = SavedState.directory(in: store.bundle(for: "dev"))
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        try Data(repeating: 1, count: 4096).write(to: directory.appending(path: SavedState.stateFile))
+        if let shares { try SuspendedRun(shares: shares, suspendedAt: .now).write(to: directory.appending(path: SavedState.runFile)) }
+    }
+
+    var isSuspended: Bool { SavedState.load(in: store.bundle(for: "dev")) != nil }
+
+    @Test(arguments: [false, true])
+    func stopRefusesASuspendedVM(force: Bool) async throws {
+        defer { cleanUp() }
+        try suspend()
+        await #expect(throws: LifecycleError.suspended("dev")) { try await lifecycle.stop("dev", force: force) }
+        #expect(isSuspended)
+    }
+
+    @Test func runSharesCantBeAddedToAResumingVM() async throws {
+        defer { cleanUp() }
+        try suspend()
+        let share = VMShare(name: "tmp", path: "/tmp", readOnly: false)
+        await #expect(throws: LifecycleError.sharesNeedCold("dev")) { try await lifecycle.start("dev", shares: [share]) }
+        #expect(isSuspended)
+    }
+
+    @Test func resumeNeedsTheRecordedShareFolders() async throws {
+        defer { cleanUp() }
+        try suspend(shares: [VMShare(name: "gone", path: "/nonexistent-\(UUID().uuidString)", readOnly: false)])
+        await #expect { try await lifecycle.start("dev") } throws: { error in
+            guard case LifecycleError.cantResume("dev", let reason) = error else { return false }
+            return reason.contains("nonexistent")
+        }
+        #expect(isSuspended)
+    }
+
+    @Test func resumeNeedsARunFile() async throws {
+        defer { cleanUp() }
+        try suspend(shares: nil)
+        await #expect(throws: LifecycleError.cantResume("dev", "its run.json is unreadable")) { try await lifecycle.start("dev") }
+    }
+
+    /// The test binary lacks the virtualization entitlement, so this start fails, and must do so
+    /// before it discards anything.
+    @Test func coldStartKeepsTheStateIfItCantBoot() async throws {
+        defer { cleanUp() }
+        try suspend()
+        await #expect(throws: LifecycleError.unsigned("/bin/hobo")) { try await lifecycle.start("dev", cold: true) }
+        #expect(isSuspended)
+    }
+
+    @Test func suspendWaitsForTheSavedState() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let server = try ControlServer(path: store.job(for: "dev").socket) { [launchctl] request, _ in
+            guard request == .suspend else { return .error("unexpected \(request)") }
+            try? suspend()
+            launchctl.pid.withLock { $0 = nil }
+            return .accepted
+        }
+        defer { server.close() }
+        guard case .suspended(let bytes) = try await lifecycle.suspend("dev") else { Issue.record("not suspended"); return }
+        #expect(bytes >= 4096)
+        #expect(launchctl.called("bootout"))
+    }
+
+    @Test func suspendReportsAFailedSave() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let server = try serve(.error("suspending dev failed: no space"))
+        defer { server.close() }
+        await #expect(throws: LifecycleError.refused("dev", "suspending dev failed: no space")) { try await lifecycle.suspend("dev") }
+    }
+
+    @Test func suspendReportsAProcessThatExitsWithoutState() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let server = try ControlServer(path: store.job(for: "dev").socket) { [launchctl] _, _ in
+            launchctl.pid.withLock { $0 = nil }
+            return .accepted
+        }
+        defer { server.close() }
+        await #expect { try await lifecycle.suspend("dev") } throws: { error in
+            guard case LifecycleError.exited("dev", _, _) = error else { return false }
+            return true
+        }
+    }
+
+    @Test func suspendOfAStoppedOrSuspendedVMDoesNothing() async throws {
+        defer { cleanUp() }
+        #expect(try await lifecycle.suspend("dev") == .wasNotRunning)
+        try suspend()
+        guard case .alreadySuspended = try await lifecycle.suspend("dev") else { Issue.record("not already suspended"); return }
+    }
+
+    @Test func discardReportsWhetherThereWasState() throws {
+        defer { cleanUp() }
+        #expect(try lifecycle.discard("dev") == .notSuspended)
+        try suspend()
+        #expect(try lifecycle.discard("dev") == .discarded)
+        #expect(!isSuspended)
+        // Clears a failed resume's exit status, so the VM shows as stopped, not crashed.
+        #expect(launchctl.called("bootout"))
+    }
+
     @Test func runSharesGoToTheVMProcess() {
         let shares = [VMShare(name: "a", path: "/x/a", readOnly: false), VMShare(name: "b", path: "/x/b", readOnly: true)]
         let arguments = VMLifecycle.runArguments(executable: URL(filePath: "/bin/hobo"), name: "dev", gui: false, shares: shares)
@@ -208,11 +313,25 @@ import Testing
         let status = VMRunStatus(state: .running, pid: 42, ipAddress: "192.168.64.5")
         #expect(try json(VMLifecycle.StartResult.started(status))
             == #"{"outcome":"started","status":{"ipAddress":"192.168.64.5","pid":42,"state":"running","windowShown":false}}"#)
+        #expect(try json(VMLifecycle.StartResult.resumed(status))
+            == #"{"outcome":"resumed","status":{"ipAddress":"192.168.64.5","pid":42,"state":"running","windowShown":false}}"#)
         #expect(try json(VMLifecycle.StartResult.alreadyRunning(nil)) == #"{"outcome":"alreadyRunning"}"#)
     }
 
     @Test func stopResults() throws {
         #expect(try json(VMLifecycle.StopResult.stopped) == #"{"outcome":"stopped"}"#)
         #expect(try json(VMLifecycle.StopResult.wasNotRunning) == #"{"outcome":"wasNotRunning"}"#)
+    }
+
+    @Test func suspendResults() throws {
+        #expect(try json(VMLifecycle.SuspendResult.suspended(savedStateBytes: 7)) == #"{"outcome":"suspended","savedStateBytes":7}"#)
+        #expect(try json(VMLifecycle.SuspendResult.alreadySuspended(savedStateBytes: 7))
+            == #"{"outcome":"alreadySuspended","savedStateBytes":7}"#)
+        #expect(try json(VMLifecycle.SuspendResult.wasNotRunning) == #"{"outcome":"wasNotRunning"}"#)
+    }
+
+    @Test func discardResults() throws {
+        #expect(try json(VMLifecycle.DiscardResult.discarded) == #"{"outcome":"discarded"}"#)
+        #expect(try json(VMLifecycle.DiscardResult.notSuspended) == #"{"outcome":"notSuspended"}"#)
     }
 }

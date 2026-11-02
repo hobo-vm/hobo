@@ -187,6 +187,87 @@ import Testing
         #expect(statuses["unloaded"] == .stopped(config))
     }
 
+    /// Gives `name` saved state, as a suspend leaves it: `bytes` of state and, unless nil, `run`.
+    private func suspend(_ name: String, bytes: Int = 4096, run: SuspendedRun? = SuspendedRun(shares: [], suspendedAt: Date(timeIntervalSince1970: 1_800_000_100))) throws {
+        let directory = SavedState.directory(in: store.bundle(for: name))
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        try Data(repeating: 1, count: bytes).write(to: directory.appending(path: SavedState.stateFile))
+        try run?.write(to: directory.appending(path: SavedState.runFile))
+    }
+
+    @Test func savedStateMakesAVMSuspendedUnlessItsProcessRuns() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        for name in ["asleep", "resuming", "failedResume", "unreadable", "partial"] { try made(name) }
+        for name in ["asleep", "resuming", "failedResume"] { try suspend(name) }
+        try suspend("unreadable", run: nil)
+        // A save that never finished leaves only `suspending/`, which doesn't count.
+        try FileManager.default.createDirectory(at: SavedState.partialDirectory(in: store.bundle(for: "partial")), withIntermediateDirectories: false)
+        launchctl.list = """
+        PID\tStatus\tLabel
+        4242\t0\t\(store.job(for: "resuming").label)
+        -\t1\t\(store.job(for: "failedResume").label)
+        """
+        let statuses = Dictionary(uniqueKeysWithValues: store.list().map { ($0.name, $0.status) })
+        let run = SuspendedRun(shares: [], suspendedAt: Date(timeIntervalSince1970: 1_800_000_100))
+        guard case .suspended(config, let saved)? = statuses["asleep"] else { Issue.record("\(String(describing: statuses["asleep"]))"); return }
+        #expect(saved.run == run && saved.bytes >= 4096)
+        #expect(statuses["resuming"] == .running(config, pid: 4242))
+        guard case .suspended(_, let failed)? = statuses["failedResume"] else { Issue.record("not suspended"); return }
+        #expect(failed.run == run)
+        guard case .suspended(_, let unreadable)? = statuses["unreadable"] else { Issue.record("not suspended"); return }
+        #expect(unreadable.run == nil)
+        #expect(statuses["partial"] == .stopped(config))
+    }
+
+    @Test func suspendedRunRoundTrips() throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: "run-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let run = SuspendedRun(
+            shares: [VMShare(name: "src", path: "/Users/me/src", readOnly: true)], suspendedAt: Date(timeIntervalSince1970: 1_800_000_100)
+        )
+        try run.write(to: file)
+        #expect(try SuspendedRun.load(from: file) == run)
+    }
+
+    @Test func discardLeavesASuspendedVMStopped() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try made("dev")
+        try suspend("dev")
+        #expect(try store.discard("dev"))
+        #expect(try store.find("dev").status == .stopped(config))
+        #expect(try !store.discard("dev"))
+    }
+
+    @Test func discardRefusesARunningVM() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try made("dev")
+        launchctl.list = "PID\tStatus\tLabel\n4242\t0\t\(store.job(for: "dev").label)\n"
+        #expect(throws: VMStoreError.busy("dev", reason: "running (hobo stop dev)")) { try store.discard("dev") }
+    }
+
+    /// The default guard for anything that changes a VM's disk, configuration or platform identity
+    /// (set, and later snapshot restore and clone): saved state fits only what it was saved with.
+    @Test func checkStoppedRefusesASuspendedVMUnlessAllowed() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try made("dev")
+        try suspend("dev")
+        let vm = try store.find("dev")
+        #expect(throws: VMStoreError.busy("dev", reason: "suspended (hobo discard dev throws its saved state away)")) {
+            try store.checkStopped(vm)
+        }
+        try store.checkStopped(vm, allowSuspended: true)
+    }
+
+    @Test func suspendedVMCanBeRenamedAndDeleted() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try made("dev")
+        try suspend("dev")
+        try store.rename("dev", to: "exp")
+        guard case .suspended = try store.find("exp").status else { Issue.record("the state didn't move with the bundle"); return }
+        try store.delete("exp")
+        #expect(store.list().isEmpty)
+    }
+
     @Test func runningVMCannotBeDeletedOrRenamed() throws {
         defer { try? FileManager.default.removeItem(at: store.directory) }
         try made("dev")
@@ -225,7 +306,8 @@ import Testing
 
     @Test func summariesCarryEachStatesDetails() throws {
         defer { try? FileManager.default.removeItem(at: store.directory) }
-        for name in ["up", "crashed", "down"] { try made(name) }
+        for name in ["up", "crashed", "down", "asleep"] { try made(name) }
+        try suspend("asleep", bytes: 8192)
         try orphaned("failed")
         _ = try store.beginCreate("building")
         launchctl.list = """
@@ -237,6 +319,10 @@ import Testing
         #expect(summaries["up"]?.state == .running && summaries["up"]?.pid == 4242 && summaries["up"]?.config == config)
         #expect(summaries["crashed"]?.state == .crashed && summaries["crashed"]?.exitStatus == -9 && summaries["crashed"]?.pid == nil)
         #expect(summaries["down"]?.state == .stopped && summaries["down"]?.bundle == store.bundle(for: "down").path)
+        #expect(summaries["down"]?.savedStateBytes == nil)
+        #expect(summaries["asleep"]?.state == .suspended && summaries["asleep"]?.config == config)
+        #expect((summaries["asleep"]?.savedStateBytes ?? 0) >= 8192)
+        #expect(summaries["asleep"]?.suspendedAt == Date(timeIntervalSince1970: 1_800_000_100))
         #expect(summaries["failed"]?.state == .failed && summaries["failed"]?.config == nil)
         #expect(summaries["building"]?.state == .building && summaries["building"]?.pid == getpid() && summaries["building"]?.config == nil)
     }

@@ -46,7 +46,7 @@ global VMs on 2026-11-01.
    `images [--os macos|linux] [<build-or-version>] [--all]`, `validate [recipe]`,
    `create <name> [recipe] [--hold-on-failure]`, `list`,
    `start [--ephemeral] [--gui] [--cold] [--share path] [--idle-timeout d]`, `stop [--force]`,
-   `suspend`, `ssh <name> [--print] [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp [-r] <src>... <dst>`, `ip <name>`, `view`, `screenshot`,
+   `suspend`, `discard`, `ssh <name> [--print] [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp [-r] <src>... <dst>`, `ip <name>`, `view`, `screenshot`,
    `clone <src> <dst> [--ephemeral]`, `delete <name> [--yes]`, `rename <old> <new>`,
    `set <name> --cpus/--memory/--disk/--share/--unshare`, `snapshot save|restore|list|delete`,
    `provision <name> [recipe]` (re-run steps on an existing VM), `df`, `usage`,
@@ -213,6 +213,21 @@ global VMs on 2026-11-01.
     powers off at once, and kills a VM process that doesn't answer its socket (`launchctl kill
     SIGKILL`). A guest that shuts itself down ends its VM process too. `suspend` saves memory and
     device state and exits the VM process; `hobo list` shows suspended VMs and their state size.
+    The VM process pauses the VM, saves into the bundle's `suspending/` (VZ's state plus `run.json`,
+    the run's shares, run-only ones included) and renames it to `suspended/`, then powers the paused
+    VM off: the guest never runs past the save, so the disk stays as the state expects. A failed
+    save resumes the VM and `suspend` reports it. Resuming restores the state with exactly the
+    recorded shares (VZ refuses any other configuration), deletes `suspended/` before the guest
+    runs again, since the disk then moves on, and sets the guest's clock over SSH (`sntp`, else the
+    host's time; checked 2026-11-02: a resumed 27.2 guest is behind by the whole suspension). It
+    also remounts the shares over SSH: VZ's virtio-fs device restarts on the host, and the guest's
+    old handles fail lookups with ENOENT until the mount is replaced (files a guest process had
+    open in a share are lost). Resume took about 6 s and a suspend about 8 s for an 8 GB guest
+    using 1.5 GB. A resume that fails (a share folder gone, state the host's VZ can't read) keeps
+    the state and points to `start --cold`. Discarding memory is always explicit: `stop` refuses a
+    suspended VM, and `hobo discard` (or `start --cold`) throws the state away, leaving it stopped.
+    `set` and `start --share` refuse a suspended VM, whose state fits only its old configuration;
+    `rename` and `delete` don't.
 12. **Clone.** `hobo clone dev exp` APFS-clones the bundle (full copy with a warning across volumes)
     and gives the clone a new machine identifier and MAC so both can run. The source must be stopped.
     The clone keeps the source's aux storage and hardware model; only the identifier and MAC are
@@ -224,7 +239,7 @@ global VMs on 2026-11-01.
     (Tart's way: it keeps a macOS clone's identifier), but the guest's serial is then duplicated,
     which Apple services can notice (Apple ID re-auth, untested here), so Hobo regenerates it.
     `--ephemeral` (on `clone`, or `start dev --ephemeral`, which clones to an auto-named VM and starts
-    it) deletes the clone when it stops; a suspended ephemeral clone is kept until it is stopped.
+    it) deletes the clone when it stops; a suspended ephemeral clone is kept until it is discarded.
 13. **Snapshots.** `hobo snapshot save|restore|list|delete <tag>`, stored in the bundle's
     `snapshots/<tag>/` as APFS clones of the disk and aux files, deleted with the VM. A running VM is
     paused, its state saved (`saveMachineStateTo`), its disk cloned at the same instant, and resumed;

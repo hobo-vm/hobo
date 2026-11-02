@@ -104,6 +104,33 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try windowShown() == true)
         #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+running \(window\)/))
 
+        // suspend and resume: the guest carries on where it was (a process started before is still
+        // there) and the saved state goes; --cold discards it and boots afresh. Not kern.boottime:
+        // macOS derives it from the wall clock, which moves when resume sets it.
+        let sleeper = try output(hobo, ["exec", "itest", "--", "sh", "-c", "nohup sleep 86400 >/dev/null 2>&1 & echo $!"], environment: env)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        func sleeperAlive() throws -> Bool {
+            try run(hobo, ["exec", "itest", "--", "sh", "-c", "ps -p \(sleeper) -o comm= | grep -qx sleep"], in: work, environment: env) == 0
+        }
+        #expect(try sleeperAlive())
+        let savedState = vms.appending(path: "itest.hobovm/suspended")
+        #expect(try output(hobo, ["suspend", "itest"], environment: env).contains("Suspended itest"))
+        #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+suspended \(\d/))
+        #expect(FileManager.default.fileExists(atPath: savedState.path))
+        #expect(try run(hobo, ["stop", "itest"], in: work, environment: env) != 0, "suspended")
+        #expect(try run(hobo, ["set", "itest", "--cpus", "4"], in: work, environment: env) != 0, "suspended")
+        let resumed = try output(hobo, ["start", "itest"], environment: env)
+        #expect(resumed.contains("itest resumed"), "\(resumed)")
+        #expect(!FileManager.default.fileExists(atPath: savedState.path))
+        #expect(try sleeperAlive())
+        // The clock was set on resume: within a minute of the host's.
+        let guestNow = try output(hobo, ["exec", "itest", "--", "date", "+%s"], environment: env)
+        #expect(abs((Double(guestNow.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) - Date.now.timeIntervalSince1970) < 60, "\(guestNow)")
+        #expect(try output(hobo, ["suspend", "itest"], environment: env).contains("Suspended itest"))
+        #expect(try output(hobo, ["start", "--cold", "itest"], environment: env).contains("itest is running"))
+        #expect(!FileManager.default.fileExists(atPath: savedState.path))
+        #expect(try !sleeperAlive())
+
         #expect(try output(hobo, ["stop", "itest"], environment: env).contains("Stopped itest"))
         #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+stopped/))
         #expect(try output(hobo, ["stop", "itest"], environment: env).contains("not running"))
@@ -136,6 +163,14 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try String(contentsOf: scratch.appending(path: "from-guest"), encoding: .utf8) == "out\n")
         #expect(try !VMConfig.load(from: configFile).diskGrowPending)
         #expect(try output(hobo, ["exec", "itest", "--", "sysctl", "-n", "hw.ncpu"], environment: env) == "5\n")
+
+        // A resumed run keeps its run-only share: the saved state fits only the shares it had.
+        #expect(try output(hobo, ["suspend", "itest"], environment: env).contains("Suspended itest"))
+        #expect(try run(hobo, ["start", "itest", "--share", kept.path], in: work, environment: env) != 0, "shares need --cold")
+        #expect(try output(hobo, ["start", "itest"], environment: env).contains("itest resumed"))
+        #expect(try String(contentsOf: scratch.appending(path: "from-guest"), encoding: .utf8) == "out\n")
+        #expect(try output(hobo, ["exec", "itest", "--", "cat", "\(shared)/scratch/from-guest"], environment: env) == "out\n")
+        #expect(try output(hobo, ["exec", "itest", "--", "cat", "\(shared)/kept/hello.txt"], environment: env) == "kept\n")
         // df reports the main container's size for /. Larger than the whole original 64 GB disk means it
         // grew (the Recovery container keeps about 5 GB of the 72).
         let rootKB = try output(hobo, ["exec", "itest", "--", "sh", "-c", "df -k / | awk 'NR == 2 { print $2 }'"], environment: env)
@@ -174,7 +209,10 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["start", "itest"], in: work, environment: env) == 0)
         #expect(try run(hobo, ["exec", "itest", "--", "test", "-e", "\(shared)/scratch"], in: work, environment: env) != 0)
         #expect(try VMConfig.load(from: configFile).shares == [VMShare(name: "gone", path: gone.path, readOnly: false)])
-        #expect(try output(hobo, ["stop", "--force", "itest"], environment: env).contains("Stopped itest"))
+        // discard leaves a suspended VM stopped.
+        #expect(try output(hobo, ["suspend", "itest"], environment: env).contains("Suspended itest"))
+        #expect(try output(hobo, ["discard", "itest"], environment: env).contains("Discarded itest's saved state"))
+        #expect(!FileManager.default.fileExists(atPath: savedState.path))
         #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+stopped/))
 
         #expect(try run(hobo, ["rename", "itest", "itest2"], in: work, environment: env) == 0)

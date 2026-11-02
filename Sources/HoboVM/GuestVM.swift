@@ -50,6 +50,17 @@ public final class GuestVM {
         try await machine.start(options: options)
     }
 
+    public func pause() async throws { try await machine.pause() }
+
+    public func resume() async throws { try await machine.resume() }
+
+    /// Saves a paused VM's memory and device state.
+    public func saveState(to url: URL) async throws { try await machine.saveMachineStateTo(url: url) }
+
+    /// Restores state saved by `saveState` into a VM that hasn't started; it is left paused. VZ
+    /// refuses state saved under another configuration.
+    public func restoreState(from url: URL) async throws { try await machine.restoreMachineStateFrom(url: url) }
+
     /// Powered off or crashed: either way there is no guest left to reach.
     public var isStopped: Bool { machine.state == .stopped || machine.state == .error }
 

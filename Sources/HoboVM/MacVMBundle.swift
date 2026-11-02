@@ -8,6 +8,9 @@ public struct MacVMBundle: VMBundle {
     public static let platformFiles = ["disk.asif", "aux.img", "hardware-model.bin", "machine-identifier.bin"]
     public static let hiDPIDisplay = true
 
+    /// Where a macOS guest mounts the automount-tagged shares.
+    static let sharesMountPoint = "/Volumes/My Shared Files"
+
     public var directory: URL
 
     public init(directory: URL) { self.directory = directory }
