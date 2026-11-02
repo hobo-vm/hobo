@@ -10,6 +10,10 @@
 #   run.sh stop            shut Windows down, falling back to killing QEMU
 #
 # Large files live in $HOBO_SPIKE_DIR (default ~/Downloads/hobo-windows-spike), never in the repo.
+#
+# vTPM and Secure Boot (hobo-f8e; see README.md): HOBO_SPIKE_TPM=1 adds a per-VM swtpm,
+# HOBO_SPIKE_CODE picks the firmware (a Secure Boot build, with an enrolled vars.fd),
+# HOBO_SPIKE_TPM_PPI=on needs a QEMU with hvf-unaligned.patch, given by HOBO_SPIKE_QEMU.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -20,6 +24,8 @@ MEMORY=${HOBO_SPIKE_MEMORY:-8G}
 DISK_SIZE=${HOBO_SPIKE_DISK:-64G}
 
 SHARE=$(brew --prefix qemu)/share/qemu
+CODE=${HOBO_SPIKE_CODE:-$SHARE/edk2-aarch64-code.fd}
+QEMU=${HOBO_SPIKE_QEMU:-qemu-system-aarch64}
 VIRTIO_URL=https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.302-1/virtio-win-0.1.302.iso
 VIRTIO_SHA256=303f7ae40dad495d6ae474fdc571df58958a4dbc5c37a522d80f9a203867949d
 OPENSSH_URL=https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.4.0.0p1-Preview/OpenSSH-ARM64-v10.4.0.0.msi
@@ -70,13 +76,33 @@ host_screenshot() { # dest.png
     qmp "{\"execute\":\"screendump\",\"arguments\":{\"filename\":\"$1\",\"format\":\"png\"}}" >/dev/null
 }
 
+# vTPM (hobo-f8e): with HOBO_SPIKE_TPM=1, a per-VM swtpm whose state lives in $WORK/tpm. QEMU
+# connects to its control socket, and swtpm exits when QEMU disconnects (--terminate).
+TPM_ARGS=()
+start_swtpm() {
+    [[ ${HOBO_SPIKE_TPM:-0} == 1 ]] || return 0
+    command -v swtpm >/dev/null || die "brew install swtpm"
+    if [[ ! -f $WORK/tpm/tpm2-00.permall ]]; then
+        mkdir -p "$WORK/tpm"
+        swtpm_setup --tpm2 --tpmstate "$WORK/tpm" --create-ek-cert --create-platform-cert \
+            --lock-nvram --overwrite >"$WORK/swtpm-setup.log" 2>&1 \
+            || die "swtpm_setup failed; see $WORK/swtpm-setup.log"
+    fi
+    rm -f "$WORK/swtpm.sock"
+    swtpm socket --tpm2 --tpmstate dir="$WORK/tpm" --ctrl type=unixio,path="$WORK/swtpm.sock" \
+        --log file="$WORK/swtpm.log" --pid file="$WORK/swtpm.pid" --terminate --daemon
+    TPM_ARGS=(-chardev socket,id=chrtpm,path="$WORK/swtpm.sock"
+              -tpmdev emulator,id=tpm0,chardev=chrtpm -device tpm-tis-device,tpmdev=tpm0,ppi=${HOBO_SPIKE_TPM_PPI:-off})
+}
+
 start_qemu() { # extra qemu args...
     running && die "QEMU is already running (pid $(cat "$WORK/qemu.pid"))"
     rm -f "$QMP"
-    qemu-system-aarch64 \
+    start_swtpm
+    "$QEMU" \
         -name hobo-win11 \
         -machine virt,highmem=on -accel hvf -cpu host -smp "$CPUS" -m "$MEMORY" \
-        -drive if=pflash,format=raw,readonly=on,file="$SHARE/edk2-aarch64-code.fd" \
+        -drive if=pflash,format=raw,readonly=on,file="$CODE" \
         -drive if=pflash,format=raw,file="$WORK/vars.fd" \
         -device ramfb \
         -device qemu-xhci -device usb-kbd -device usb-tablet \
@@ -84,9 +110,9 @@ start_qemu() { # extra qemu args...
         -device nvme,drive=disk0,serial=hobo0,bootindex=0 \
         -netdev user,id=net0,hostfwd=tcp:127.0.0.1:"$PORT"-:22 \
         -device virtio-net-pci,netdev=net0 \
-        -display none -monitor none -serial none \
+        -display none -monitor none -serial file:"$WORK/serial.log" \
         -qmp unix:"$QMP",server=on,wait=off \
-        "$@" >"$WORK/qemu.log" 2>&1 &
+        ${TPM_ARGS[@]+"${TPM_ARGS[@]}"} "$@" >"$WORK/qemu.log" 2>&1 &
     echo $! >"$WORK/qemu.pid"
     for _ in $(seq 50); do [[ -S $QMP ]] && return; sleep 0.2; done
     die "QEMU didn't start; see $WORK/qemu.log"

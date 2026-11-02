@@ -22,7 +22,8 @@ brew install qemu
 
 Large files live in `~/Downloads/hobo-windows-spike` (12 GB disk after install, plus the 0.9 GB
 virtio-win ISO). The files here: `run.sh` (host side), `autounattend.xml`, `hobo-setup.ps1`
-(first logon), `run-in-session.ps1` (the `exec --gui` prototype), `screenshot.ps1`.
+(first logon), `run-in-session.ps1` (the `exec --gui` prototype), `screenshot.ps1`, and
+`hvf-unaligned.patch` (finding 14).
 
 ## The machine
 
@@ -74,7 +75,7 @@ qemu-system-aarch64 -machine virt,highmem=on -accel hvf -cpu host -smp 4 -m 8G
    picks Pro without a prompt.
 5. **Windows 11 gates.** LabConfig `BypassTPMCheck`/`BypassSecureBootCheck`/`BypassRAMCheck` in
    windowsPE and `BypassNRO` in specialize gave a fully unattended local-account OOBE with no
-   network or Microsoft-account screens. No vTPM: hobo-f8e tracks `swtpm`.
+   network or Microsoft-account screens. A real vTPM and Secure Boot also work: see below.
 6. **Drivers.** NVMe and USB input are inbox. NetKVM (`NetKVM/w11/ARM64` from virtio-win
    0.1.302) loaded from the windowsPE `DriverPaths` and showed up as "Red Hat VirtIO Ethernet
    Adapter". virtio-win also ships ARM64 viorng, vioserial, viosock, viofs and Balloon; vioserial
@@ -110,7 +111,76 @@ qemu-system-aarch64 -machine virt,highmem=on -accel hvf -cpu host -smp 4 -m 8G
 13. **Guest clock.** The unattend's `TimeZone` of `UTC` makes the taskbar clock read UTC. The
     engine should take the host's zone instead.
 
+## vTPM and Secure Boot (hobo-f8e)
+
+**Result: both work on stock Homebrew QEMU, but the firmware has to come from elsewhere.** Run on
+2026-11-02 with swtpm 0.10.2 (Homebrew), against copy-on-write overlays of the installed disk
+above. Windows booted with Secure Boot on, the vTPM ready, and BitLocker sealed to the TPM
+(PCR 7, 11). After a cold restart of QEMU and swtpm the volume unlocked without a recovery key.
+
+```sh
+brew install swtpm
+# Firmware: UTM 5.0.8's Resources/qemu/edk2-aarch64-secure-code.fd, and its
+# edk2-arm-secure-vars.fd padded to 64 MiB (truncate -s 64m) as vars.fd. Then, with
+# virt-fw-vars from `pip install --no-deps virt-firmware cryptography pefile`:
+virt-fw-vars -i vars.fd -o vars.fd --enroll-generate "Hobo VM <name>" \
+    --microsoft-kek all --microsoft-db all --sb
+HOBO_SPIKE_TPM=1 HOBO_SPIKE_CODE=.../edk2-aarch64-secure-code.fd ./run.sh boot
+```
+
+The QEMU side is three arguments; `swtpm` runs beside QEMU:
+
+```
+swtpm_setup --tpm2 --tpmstate $WORK/tpm --create-ek-cert --create-platform-cert --lock-nvram
+swtpm socket --tpm2 --tpmstate dir=$WORK/tpm --ctrl type=unixio,path=$WORK/swtpm.sock --terminate --daemon
+qemu-system-aarch64 ... -chardev socket,id=chrtpm,path=$WORK/swtpm.sock
+    -tpmdev emulator,id=tpm0,chardev=chrtpm -device tpm-tis-device,tpmdev=tpm0,ppi=off
+```
+
+14. **`ppi=off` is required on HVF.** `tpm-tis-device` defaults to `ppi=on`, which adds a 1 KiB
+    RAM region for the Physical Presence Interface. HVF can't map less than a 16 KiB page, and
+    `hvf_set_phys_mem` then calls `hv_vm_unmap` on the unaligned, never-mapped range, which
+    fails, so QEMU aborts at start with `HV_BAD_ARGUMENT (hvf-all.c:123)`. `hvf-unaligned.patch`
+    (return early instead) fixes it: with it, `ppi=on` boots and `Get-Tpm` works. Without PPI,
+    `Get-Tpm` fails with `0x80284001`, because it asks for PPI state, and System logs TPM event 15
+    at boot. `tpmtool`, the Platform Crypto Provider (TPM-backed keys) and BitLocker all work
+    regardless. Worth sending upstream; the engine doesn't need it.
+15. **Homebrew's firmware has no Secure Boot, and BitLocker won't use the TPM without it.** QEMU's
+    `edk2-aarch64-code.fd` measures boot into the TPM (the TCG log matches the PCRs), but
+    `Confirm-SecureBootUEFI` reports the variable undefined, and `manage-bde -protectors -add C:
+    -tpm` fails with `0x80310002` ("The BIOS did not correctly communicate with the TPM"). The
+    same command on Secure Boot firmware succeeds with PCR profile 7, 11, so PPI wasn't the cause.
+16. **Debian's AAVMF doesn't boot Windows under HVF.** `qemu-efi-aarch64` 2026.08+ds-2 and
+    2025.02-8+deb13u1 (`AAVMF_CODE.secboot.fd` with `AAVMF_VARS.ms.fd`, and also the non-Secure
+    Boot `AAVMF_CODE.no-secboot.fd`) stop at "Start boot option" for 10+ minutes with no serial
+    output after the banner. Homebrew's firmware with an equally fresh NVRAM boots the same disk
+    in 25 s, so the cause is the firmware build; it wasn't pursued.
+17. **UTM's Secure Boot firmware works, but ships without keys.** `edk2-arm-secure-vars.fd` is in
+    Setup Mode, with no PK, KEK, db or dbx, so Secure Boot is off until keys are enrolled.
+    `virt-fw-vars` enrolls them offline in a second: a generated per-VM PK, plus Microsoft's
+    2011 and 2023 KEK and db certificates. Windows Boot Manager is signed by the Microsoft
+    Windows PCA, so it boots. A fresh NVRAM loses Windows' boot entry, but edk2 falls back to
+    `\EFI\BOOT\BOOTAA64.EFI` on the ESP. Arm `virt` has no SMM, so the guest kernel could
+    rewrite the Secure Boot variables: this satisfies Windows' checks rather than defending a
+    test VM. The Microsoft 2011 certificates expired during 2026 (firmware doesn't check expiry),
+    and new boot managers are signed under the 2023 CAs, so both generations are enrolled.
+18. **What the second daemon costs the process model: little.** `swtpm_setup` takes 0.4 s once
+    per VM, and the state is one ~10 KB file (`tpm2-00.permall`). `swtpm socket --daemon
+    --terminate` starts in 25 ms and exits by itself when QEMU disconnects, including when QEMU
+    crashes, so `_vm-run` starts it before QEMU as a second child, with no launchd job of its
+    own and nothing to reap. UTM links swtpm into its process as a framework instead; Hobo
+    doesn't need to. The state is part of the VM:
+    - `clone` and offline snapshots must copy `tpm/` and `vars.fd` with the disk. A BitLocker
+      volume whose TPM state is lost or rolled back separately needs its recovery key.
+    - Running snapshots (`savevm`) should carry the TPM state, since the `emulator` backend
+      migrates swtpm's state blobs, but this wasn't tested.
+    - `swtpm_localca` keeps its CA in `$(brew --prefix)/Cellar/swtpm/<version>/var/lib`, which
+      `brew upgrade` deletes. Existing VMs keep their EK certificates in TPM NVRAM, and Windows
+      reports `EkCertIsAvailable: false` for this CA anyway, so the engine can skip
+      `--create-ek-cert` or point `swtpm_setup --config` at a Hobo-owned CA.
+
 ## Not tried
 
-- vTPM/Secure Boot (hobo-f8e), suspend/snapshots via QMP, `system_powerdown` timing, display
-  resolution, and faster install media (finding 1).
+- A fresh install with vTPM + Secure Boot and no LabConfig bypasses (the runtime checks above
+  ran on the existing install), running snapshots with a vTPM, Windows Hello, suspend/snapshots
+  via QMP, `system_powerdown` timing, display resolution, and faster install media (finding 1).

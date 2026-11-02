@@ -1,0 +1,16 @@
+--- a/accel/hvf/hvf-all.c
++++ b/accel/hvf/hvf-all.c
+@@ -113,8 +113,11 @@
+ 
+     if (!QEMU_IS_ALIGNED(size, page_size) ||
+         !QEMU_IS_ALIGNED(gpa, page_size)) {
+-        /* Not page aligned, so we can not map as RAM */
+-        add = false;
++        /*
++         * Not page aligned, so we can not map as RAM. It was never mapped
++         * either, and hv_vm_unmap rejects unaligned ranges: leave it to trap.
++         */
++        return;
+     }
+ 
+     if (!add) {
