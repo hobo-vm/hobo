@@ -62,6 +62,7 @@ public struct VMSettings: Equatable, Sendable {
             guard updated.shares.contains(where: { $0.matches(target) }) else { throw VMShareError.unknown(target) }
             updated.shares.removeAll { $0.matches(target) }
         }
+        if !addShares.isEmpty { try VMShare.checkSupported(on: config.os) }
         for share in addShares { try share.checkFolder() }
         updated.shares += addShares
         try VMShare.checkNames(updated.shares)

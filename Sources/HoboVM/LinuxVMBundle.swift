@@ -54,7 +54,7 @@ public struct LinuxVMBundle: VMBundle {
     public func configuration(
         cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare]
     ) throws -> VZVirtualMachineConfiguration {
-        if !shares.isEmpty { throw VMError.sharesUnsupported(.linux) }
+        if !shares.isEmpty { try VMShare.checkSupported(on: .linux) }
         guard let identifier = VZGenericMachineIdentifier(dataRepresentation: try Data(contentsOf: machineIdentifier)) else {
             throw VMError.invalidMachineIdentifier
         }

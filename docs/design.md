@@ -127,7 +127,8 @@ global VMs on 2026-11-01.
    `/Volumes/My Shared Files/<name>` with nothing to run inside it; the host can't change that
    path, and a provision step can symlink a share somewhere nicer (decided 2026-11-02, over
    per-share tags mounted over SSH, which a reboot inside the guest would lose). Linux guests
-   don't support shares yet: the VM process refuses to boot one with shares. Both commands take
+   don't support shares yet: `set --share` and `start` refuse them up front (`--unshare` still
+   works), and the VM process refuses to boot one with shares. Both commands take
    `--share <folder>[:ro]`, named by the folder's basename; names must be unique
    case-insensitively, and a clash is refused with a hint to rename or symlink a folder.
    `set --unshare <name|folder>` runs before `--share`, so one call can make a share read-only.
