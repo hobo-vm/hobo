@@ -53,7 +53,8 @@ final class VMWindow: NSObject, NSWindowDelegate {
     /// Shows the window in front and tries to take focus. A process launchd started can't always
     /// take focus from the active app (cooperative activation), so the window may need a click.
     func show() {
-        // The guest display follows the window's size while it shows; turning this on resizes it.
+        // The guest display follows the window's size while it shows: in Retina pixels by VZ (turning
+        // this on resizes it), or in points by `followWindowInPoints`.
         view.automaticallyReconfiguresDisplay = hiDPI
         hidesAfterFullScreen = false
         // An `.accessory` app never owns the menu bar, so clicking it sent the window behind the
