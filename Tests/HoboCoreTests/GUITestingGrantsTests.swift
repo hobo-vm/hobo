@@ -94,6 +94,32 @@ import Testing
         }
     }
 
+    /// A missing TCC.db means the guest isn't laid out as expected: fail, don't create an empty one.
+    @Test func missingSystemDatabaseFailsWithoutCreatingOne() throws {
+        let volume = Volume()
+        try volume.make()
+        defer { try? FileManager.default.removeItem(at: volume.root) }
+        try FileManager.default.removeItem(at: volume.system)
+        #expect {
+            try GUITestingGrants.apply(GUITestingGrants.defaultClients, dataVolume: volume.root)
+        } throws: { error in
+            guard case .database(let path, _) = error as? GUITestingError else { return false }
+            return path == volume.system.path
+        }
+        #expect(!FileManager.default.fileExists(atPath: volume.system.path))
+    }
+
+    /// tccd's container can exist before the first login has created the database in it.
+    @Test func userContainerWithoutDatabaseCountsAsNone() throws {
+        let volume = Volume()
+        try volume.make()
+        defer { try? FileManager.default.removeItem(at: volume.root) }
+        try FileManager.default.removeItem(at: volume.user)
+        #expect(throws: GUITestingError.userDatabase(0)) {
+            try GUITestingGrants.apply(GUITestingGrants.defaultClients, dataVolume: volume.root)
+        }
+    }
+
     // MARK: - SQLite helpers
 
     static func makeDatabase(_ url: URL) throws {
