@@ -20,6 +20,12 @@ struct UsageTests {
         #expect(names == ["first", "save", "restore", "last"])
     }
 
+    @Test func readsJSONSupportFromEachCommand() {
+        let json = Usage.jsonSupport(of: JSONFixture.self)
+        #expect(json.withoutJSON == ["plain"])
+        #expect(json.events == ["streamed"])
+    }
+
     @Test func endsWithTheConventions() {
         #expect(Usage.text(columns: 100).hasSuffix(Usage.conventions.trimmingCharacters(in: .whitespacesAndNewlines)))
     }
@@ -42,5 +48,23 @@ private struct Fixture: ParsableCommand {
 
     struct Secret: ParsableCommand {
         static let configuration = CommandConfiguration(shouldDisplay: false)
+    }
+}
+
+private struct JSONFixture: ParsableCommand {
+    static let configuration = CommandConfiguration(subcommands: [Plain.self, Quick.self, Streamed.self])
+
+    struct Plain: ParsableCommand {}
+
+    struct Quick: OutputCommand {
+        var json = false
+        static let jsonStyle = Output.JSONStyle.document
+        func execute(_ output: Output) async throws -> Reply { Reply(0, text: nil) }
+    }
+
+    struct Streamed: OutputCommand {
+        var json = false
+        static let jsonStyle = Output.JSONStyle.events
+        func execute(_ output: Output) async throws -> Reply { Reply(0, text: nil) }
     }
 }

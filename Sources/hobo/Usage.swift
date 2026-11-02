@@ -31,21 +31,49 @@ struct Usage: ParsableCommand {
             .flatMap { [$0] + visibleSubcommands(of: $0) }
     }
 
-    static let conventions = """
-        CONVENTIONS:
-          VMs         Each VM is a bundle, ~/Hobo/<name>.hobovm (HOBO_VMS overrides the directory).
-                      `hobo list` shows every VM and its state.
-          Recipes     `create` builds from a \(Recipe.fileName) recipe, ./\(Recipe.fileName) by default.
-                      `hobo init` writes a starter and `hobo validate` checks one.
-          Guest user  `exec`, `cp` and `ssh` act as the \(Conventions.username) user over SSH
-                      (password \(Conventions.password), passwordless sudo).
-          JSON        Every command but `ssh` and `usage` takes --json. Quick commands print one JSON
-                      document. `create`, `start` and `stop` print JSON Lines: {"event":"log","message":…}
-                      as they go, then {"event":"result","result":…}. Sizes are bytes, dates ISO 8601.
-          Errors      A failure prints {"error":…} (or an error event) on stdout under --json, and hobo
-                      exits 1. Usage errors are text on stderr.
-          exec, cp    hobo exits with the guest command's (or scp's) status. With --json their output
-                      goes to stderr and stdout gets {"exitStatus":…}.
-          Capacity    macOS allows at most 2 running macOS guests per host.
-        """
+    /// Which visible commands lack `--json` and which stream JSON Lines, read from each command's
+    /// `OutputCommand` conformance and `jsonStyle` rather than listed by hand.
+    static func jsonSupport(of root: ParsableCommand.Type) -> (withoutJSON: [String], events: [String]) {
+        var withoutJSON: [String] = []
+        var events: [String] = []
+        for command in visibleSubcommands(of: root) {
+            guard let outputCommand = command as? any OutputCommand.Type else {
+                withoutJSON.append(command._commandName)
+                continue
+            }
+            if jsonStyle(of: outputCommand) == .events { events.append(command._commandName) }
+        }
+        return (withoutJSON, events)
+    }
+
+    private static func jsonStyle<Command: OutputCommand>(of command: Command.Type) -> Output.JSONStyle {
+        Command.jsonStyle
+    }
+
+    static var conventions: String {
+        let json = jsonSupport(of: HoboCommand.self)
+        return """
+            CONVENTIONS:
+              VMs         Each VM is a bundle, ~/Hobo/<name>.hobovm (HOBO_VMS overrides the directory).
+                          `hobo list` shows every VM and its state.
+              Recipes     `create` builds from a \(Recipe.fileName) recipe, ./\(Recipe.fileName) by default.
+                          `hobo init` writes a starter and `hobo validate` checks one.
+              Guest user  `exec`, `cp` and `ssh` act as the \(Conventions.username) user over SSH
+                          (password \(Conventions.password), passwordless sudo).
+              JSON        Every command takes --json except \(codeList(json.withoutJSON)).
+                          Quick commands print one JSON document. These print JSON Lines instead,
+                          {"event":"log","message":…} as they go, then {"event":"result","result":…}:
+                          \(codeList(json.events)).
+                          Sizes are bytes, dates ISO 8601.
+              Errors      A failure prints {"error":…} (or an error event) on stdout under --json, and hobo
+                          exits 1. Usage errors are text on stderr.
+              exec, cp    hobo exits with the guest command's (or scp's) status. With --json their output
+                          goes to stderr and stdout gets {"exitStatus":…}.
+              Capacity    macOS allows at most 2 running macOS guests per host.
+            """
+    }
+
+    private static func codeList(_ names: [String]) -> String {
+        names.map { "`\($0)`" }.joined(separator: ", ")
+    }
 }

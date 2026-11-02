@@ -43,7 +43,7 @@ struct Reply {
 }
 
 /// Where a command's output goes. Text is for people. With `--json`, a command that finishes
-/// quickly prints one JSON document, and one with progress (`create`, `start`, `stop`) prints
+/// quickly prints one JSON document, and one with progress (`jsonStyle` `.events`) prints
 /// JSON Lines: `{"event":"log","message":…}` as it goes, then `{"event":"result","result":…}`.
 /// A failure is JSON on stdout too, `{"error":…}` or `{"event":"error","error":…}`, with exit status 1.
 struct Output: Sendable {
