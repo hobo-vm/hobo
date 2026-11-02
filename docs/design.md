@@ -189,11 +189,14 @@ global VMs on 2026-11-01.
     device state and exits the VM process; `hobo list` shows suspended VMs and their state size.
 12. **Clone.** `hobo clone dev exp` APFS-clones the bundle (full copy with a warning across volumes)
     and gives the clone a new machine identifier and MAC so both can run. The source must be stopped.
-    **Open, spike before M2:** Howard Oakley reports that replacing an installed VM's machine
-    identifier freezes boot (Apple: hardware model, identifier and aux storage must keep their
-    install-time values), while two running VMs sharing an identifier get network on only one and,
-    on macOS 15+, force Apple ID re-authentication. If a clone can't take a new identifier, a clone
-    and its source can't run concurrently.
+    The clone keeps the source's aux storage and hardware model; only the identifier and MAC are
+    new. Spiked 2026-11-02 on a 27.2 guest and host (hobo-3w5): a clone with a new identifier boots
+    to SSH and a GUI login on every boot, reports a new serial number and platform UUID, and runs
+    beside its source with network on both. Howard Oakley's boot freeze after replacing the
+    identifier did not reproduce. Fresh aux storage as well never leaves firmware (no DHCP lease,
+    no disk writes), so aux must be copied. Sharing an identifier also worked, given distinct MACs
+    (Tart's way: it keeps a macOS clone's identifier), but the guest's serial is then duplicated,
+    which Apple services can notice (Apple ID re-auth, untested here), so Hobo regenerates it.
     `--ephemeral` (on `clone`, or `start dev --ephemeral`, which clones to an auto-named VM and starts
     it) deletes the clone when it stops; a suspended ephemeral clone is kept until it is stopped.
 13. **Snapshots.** `hobo snapshot save|restore|list|delete <tag>`, stored in the bundle's
@@ -438,9 +441,9 @@ in minutes, while every Hobo user downloads, installs and provisions (accepted i
 optional bundle push/pull could be added later without reviving boxes). Older hosts. Network
 isolation (Softnet) and bridged mode. A guest agent. The maturity of tools proven at scale.
 
-**To borrow.** Tart routinely runs clones of one macOS VM side by side and, as remembered, has a
-`tart set --random-serial` that regenerates macOS identity; read its `clone`/`set` code before the
-M2 identity spike (decision 12).
+**To borrow.** Tart runs clones of one macOS VM side by side. Its `clone` regenerates the MAC,
+and the machine identifier only for Linux guests; `tart set --random-serial` gives a macOS VM a new
+identifier and keeps its aux storage, which is what Hobo's `clone` does (decision 12).
 
 ## Prior art
 
