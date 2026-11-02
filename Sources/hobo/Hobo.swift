@@ -513,10 +513,10 @@ struct SetCommand: OutputCommand {
         let store = VMStore.standard()
         let config = try VMSettings(cpus: cpus, memory: memory, disk: disk).apply(to: name, store: store, log: output.log)
         let vm = try store.find(name)
-        let grow = config.diskGrowPending ? "\nThe guest grows into the larger disk at the next hobo start \(vm.name)." : ""
+        let growNote = config.diskGrowPending ? "\nThe guest grows into the larger disk at the next hobo start \(vm.name)." : ""
         return Reply(
             VMSummary(vm),
-            text: "\(vm.name): \(config.cpus) CPUs, \(fileSize(config.memory)) memory, \(fileSize(config.disk)) disk\(grow)"
+            text: "\(vm.name): \(config.cpus) CPUs, \(fileSize(config.memory)) memory, \(fileSize(config.disk)) disk\(growNote)"
         )
     }
 }

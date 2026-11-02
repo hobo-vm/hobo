@@ -9,7 +9,7 @@ public enum Provisioning {
     public static func run(_ recipe: Recipe, ssh: GuestSSH, log: @Sendable (String) -> Void) async throws {
         for (index, step) in recipe.provisioners.enumerated() {
             log("Provision step \(index + 1)/\(recipe.provisioners.count) (\(step.type.rawValue))")
-            try await run(step, index: index, recipe: recipe, ssh: ssh)
+            try await runStep(step, index: index, recipe: recipe, ssh: ssh)
         }
     }
 
@@ -28,7 +28,7 @@ public enum Provisioning {
         return ProvisionResult(name: vm.name, steps: recipe.provisioners.count)
     }
 
-    private static func run(_ step: Provisioner, index: Int, recipe: Recipe, ssh: GuestSSH) async throws {
+    private static func runStep(_ step: Provisioner, index: Int, recipe: Recipe, ssh: GuestSSH) async throws {
         switch step.type {
         case .shell:
             let remote = "/tmp/hobo-provision-\(index + 1).sh"
