@@ -57,7 +57,8 @@ public enum GUITestingGrants {
     /// is the only one (uid 501 and up are people).
     static func userDatabase(in dataVolume: URL) throws -> URL {
         let containers = dataVolume.appending(path: "private/var/containers/Data/ProtectedSystem")
-        let found = ((try? FileManager.default.contentsOfDirectory(at: containers, includingPropertiesForKeys: nil)) ?? []).filter { container in
+        let entries = (try? FileManager.default.contentsOfDirectory(at: containers, includingPropertiesForKeys: nil)) ?? []
+        let found = entries.filter { container in
             guard let metadata = NSDictionary(contentsOf: container.appending(path: ".com.apple.containermanagerd.metadata.plist")),
                   metadata["MCMMetadataIdentifier"] as? String == "com.apple.tccd",
                   let uid = (metadata["MCMMetadataOwnership"] as? [String: Any])?["uid"] as? Int
