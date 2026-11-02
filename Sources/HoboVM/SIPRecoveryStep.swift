@@ -67,7 +67,7 @@ private final class InstructionsPanel: NSObject {
             rows.append(label)
         }
         rows.append(NSTextField(wrappingLabelWithString: "In the VM window (typing there; paste doesn't reach recoveryOS):"))
-        let steps: [(String, String?)] = [
+        let steps: [(text: String, command: String?)] = [
             ("Click Options, then Continue. If it asks for a language, pick one and click the arrow; if it asks for a user, pick \(Conventions.username) (password \(Conventions.password)).", nil),
             ("From the menu bar, choose Utilities › Terminal.", nil),
             ("Type this, press Return, then answer y:", "csrutil disable"),
@@ -75,8 +75,8 @@ private final class InstructionsPanel: NSObject {
             ("When it says SIP is off, choose Apple menu › Shut Down. The build carries on by itself.", nil),
         ]
         for (index, step) in steps.enumerated() {
-            rows.append(NSTextField(wrappingLabelWithString: "\(index + 1). \(step.0)"))
-            if let command = step.1 {
+            rows.append(NSTextField(wrappingLabelWithString: "\(index + 1). \(step.text)"))
+            if let command = step.command {
                 let code = NSTextField(labelWithString: "    \(command)")
                 code.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize + 1, weight: .semibold)
                 code.isSelectable = true
