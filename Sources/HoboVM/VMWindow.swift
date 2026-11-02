@@ -55,7 +55,9 @@ final class VMWindow: NSObject, NSWindowDelegate {
         // An `.accessory` app never owns the menu bar, so clicking it sent the window behind the
         // active app, and it had no ⌘Tab entry or full-screen Space.
         NSApp.setActivationPolicy(.regular)
-        if NSApp.mainMenu == nil { NSApp.mainMenu = makeMenu() }
+        // Rebuilt on every show: its items target this window, and a process can show more than
+        // one over its life (create's recoveryOS step opens a new one on each try).
+        NSApp.mainMenu = makeMenu()
         if window.isMiniaturized { window.deminiaturize(nil) }
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
