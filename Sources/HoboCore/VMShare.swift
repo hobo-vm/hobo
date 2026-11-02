@@ -62,6 +62,16 @@ public struct VMShare: Codable, Equatable, Sendable {
         return nil
     }
 
+    /// `shares` whose folders can be shared now, logging a warning for each left out (a folder that
+    /// has gone, such as an unplugged drive's, only loses its share for this run).
+    public static func available(_ shares: [VMShare], log: (String) -> Void) -> [VMShare] {
+        shares.filter { share in
+            guard let problem = share.folderProblem else { return true }
+            log("warning: not sharing \(share.name) this run: \(share.path): \(problem)")
+            return false
+        }
+    }
+
     /// Characters virtio-fs refuses in a share's name. Finder shows `:` as `/`.
     static let forbiddenNameCharacters: Set<Character> = ["*", "/", ":", "<", ">", "?", "\\", "|"]
 

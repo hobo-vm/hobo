@@ -64,12 +64,7 @@ public final class VMRunner {
         server = try ControlServer(path: job.socket) { [weak self] request, reply in
             await self?.handle(request, reply: reply) ?? .error("the VM process is shutting down")
         }
-        // A folder that has gone (an unplugged drive, say) only loses its share for this run.
-        let shares = (config.shares + runShares).filter { share in
-            guard let problem = share.folderProblem else { return true }
-            log("warning: not sharing \(share.name) this run: \(share.path): \(problem)")
-            return false
-        }
+        let shares = VMShare.available(config.shares + runShares, log: log)
         // `hobo start` checked these, but config.json may have changed since; a bad or duplicate
         // name would otherwise trap building the share's directory map.
         try VMShare.checkNames(shares)
