@@ -22,8 +22,7 @@ extension VMSettings {
         let config: VMConfig
         switch vm.status {
         case .stopped(let stored), .crashed(let stored, _): config = stored
-        case .running: throw VMStoreError.busy(vm.name, reason: "running (hobo stop \(vm.name))")
-        case .building: throw VMStoreError.busy(vm.name, reason: "being built")
+        case .running, .building: preconditionFailure("checkNotRunning refuses a running or building VM")
         case .failed: throw VMSettingsError.notConfigurable(vm.name, "its build failed (hobo delete \(vm.name))")
         case .broken: throw VMSettingsError.notConfigurable(vm.name, "its bundle has no valid \(VMStore.configFile)")
         }
