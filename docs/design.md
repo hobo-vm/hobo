@@ -112,8 +112,9 @@ global VMs on 2026-11-01.
    release; `hobo init --os linux [<version>]` pins it, the newest supported LTS without one.
    Ubuntu publishes no desktop cloud images, so a Linux recipe gets a desktop from a step:
    `init --os linux` writes one first, by default (decided 2026-11-02), that installs
-   `ubuntu-desktop-minimal`, has GDM log `vagrant` in at boot and turns off screen blanking and
-   lock; `--server` leaves it out.
+   `ubuntu-desktop-minimal`, has GDM log `vagrant` in at boot, masks GNOME's welcome wizards
+   (`gnome-initial-setup`'s first-login and post-upgrade user services) and turns off screen
+   blanking and lock; `--server` leaves it out.
    Windows and simulator images may join `--os` later.
 9. **Runtime config.** The recipe supplies defaults; `create` copies them into the bundle's
    `config.json`, which is the truth thereafter: `engine`, `os`, `cpus`, `memory` and `disk` (bytes),
@@ -373,9 +374,10 @@ global VMs on 2026-11-01.
       console written to the bundle's `console.log`; the conventions add `console=hvc0` to the
       kernel command line. The window sizes a Linux guest's display in points, not Retina pixels
       (`VMBundle.hiDPIDisplay`), since Linux doesn't scale its UI by itself; macOS keeps Retina.
-      The text console ignores display changes and keeps its 1920×1200 boot mode, so the
-      conventions give it the kernel's built-in Terminus 16×32 font (`fbcon=font:TER16x32`, and
-      console-setup's `FONTSIZE`, which would otherwise load 8×16 back during boot). A failed create logs the console's tail, since the bundle goes with it.
+      The text console runs at its 1920×1200 boot mode or at the window's size in points, so the
+      conventions give it the kernel's built-in Terminus 10×18 font (`fbcon=font:TER10x18`, and
+      console-setup's Terminus 10×20, which would otherwise load 8×16 back during boot): 8×16 was
+      tiny at the first, 16×32 huge at the second. A failed create logs the console's tail, since the bundle goes with it.
       The disk uses `.cached` caching with `.fsync`, as Lima does, against ext4 corruption seen with
       VZ's default. TRIM works either way: `fstrim` returned 1 GB to the host about 30 s later.
     - Conventions come from a NoCloud seed, a `cidata` ISO (`hdiutil makehybrid`) attached

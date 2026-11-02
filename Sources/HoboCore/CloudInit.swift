@@ -53,15 +53,17 @@ public enum CloudInit {
               APT::Periodic::Update-Package-Lists "0";
               APT::Periodic::Unattended-Upgrade "0";
           # The kernel console on the VM's serial port too, which the host logs to console.log, and
-          # a 16x32 font from the start of boot: the text console keeps its 1920x1200 boot mode
-          # whatever the window's size, and 8x16 there is tiny.
+          # a Terminus 10x18 font from the start of boot. The text console runs at 1920x1200 or at
+          # the window's size in points (about 1440x900): 8x16 is tiny at the first, 16x32 huge at
+          # the second.
           - path: /etc/default/grub.d/99-hobo-console.cfg
             content: |
-              GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT console=hvc0 fbcon=font:TER16x32"
+              GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT console=hvc0 fbcon=font:TER10x18"
         runcmd:
           - [update-grub]
-          # setupcon would otherwise load the 8x16 font back partway through boot.
-          - [sed, -i, -e, 's/^FONTFACE=.*/FONTFACE="Terminus"/', -e, 's/^FONTSIZE=.*/FONTSIZE="16x32"/', /etc/default/console-setup]
+          # setupcon would otherwise load the 8x16 font back partway through boot. 10x20 is its
+          # Terminus size closest to the kernel's 10x18.
+          - [sed, -i, -e, 's/^FONTFACE=.*/FONTFACE="Terminus"/', -e, 's/^FONTSIZE=.*/FONTSIZE="10x20"/', /etc/default/console-setup]
 
         """
     }

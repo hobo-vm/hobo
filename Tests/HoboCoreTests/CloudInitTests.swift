@@ -29,9 +29,9 @@ import Testing
             #expect(userData.contains("    ssh_authorized_keys:\n") && userData.contains("\n      - \(key)\n"))
         }
         #expect(userData.contains("APT::Periodic::Unattended-Upgrade \"0\";"))
-        // A readable text console: the kernel's built-in 16x32 font, which setupcon then keeps.
-        #expect(userData.contains("console=hvc0 fbcon=font:TER16x32\""))
-        #expect(userData.contains(#"'s/^FONTSIZE=.*/FONTSIZE="16x32"/'"#))
+        // A readable text console: the kernel's built-in Terminus font, which setupcon then keeps.
+        #expect(userData.contains("console=hvc0 fbcon=font:TER10x18\""))
+        #expect(userData.contains(#"'s/^FONTSIZE=.*/FONTSIZE="10x20"/'"#))
     }
 
     /// bootpd records the client ID it is sent, and leases are found by MAC.

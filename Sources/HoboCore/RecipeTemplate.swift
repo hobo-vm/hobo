@@ -64,7 +64,9 @@ extension Recipe {
     }
 
     /// Installs `ubuntu-desktop-minimal` and sets it up for unattended use: GDM logs vagrant in at
-    /// boot, and the session never blanks or locks, so screenshots and UI tests see the desktop.
+    /// boot, GNOME's first-login and post-upgrade welcome wizards never run (the second ignores
+    /// `gnome-initial-setup-done`), and the session never blanks or locks, so screenshots and UI
+    /// tests see the desktop.
     static let desktopScript = """
         set -eu
         export DEBIAN_FRONTEND=noninteractive
@@ -85,6 +87,7 @@ extension Recipe {
         lock-enabled=false
         EOF
         dconf update
+        systemctl --global mask gnome-initial-setup-first-login.service gnome-initial-setup-upgrade-login.service
 
         """
 
