@@ -50,7 +50,7 @@ public struct LinuxVMBundle: VMBundle {
     }
 
     /// `shares` go on one virtio-fs tag, which the guest's fstab (from the cloud-init seed) mounts
-    /// at `CloudInit.shareMountPoint`, so each appears at `/mnt/hobo/<name>`. The device is attached even with no
+    /// at `/mnt/hobo`, so each appears at `/mnt/hobo/<name>`. The device is attached even with no
     /// shares, so the mount never fails and nothing written there lands on the guest's disk.
     public func configuration(
         cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare]

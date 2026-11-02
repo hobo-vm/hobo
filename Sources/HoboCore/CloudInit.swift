@@ -68,8 +68,8 @@ public enum CloudInit {
             content: |
               GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT console=hvc0 fbcon=font:TER10x18"
           # Shares, mounted on every boot: the device is always attached, so shares added later
-          # appear with nothing changed in the guest. Not the mounts module, which takes a bare
-          # name like this tag for a cloud device.
+          # appear with nothing changed in the guest. Written directly rather than through
+          # cloud-init's mounts module, which would read a bare name like this tag as a device.
           - path: /etc/fstab
             append: true
             content: |
