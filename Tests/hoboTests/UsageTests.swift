@@ -18,7 +18,33 @@ struct UsageTests {
         #expect(!Usage.text(columns: 100).contains("_vm-run"))
     }
 
+    /// The real tree has no hidden or nested commands yet, so a fixture tree pins the filter and order.
+    @Test func walksNestedCommandsDepthFirstSkippingHidden() {
+        let names = Usage.visibleSubcommands(of: Fixture.self).map { $0._commandName }
+        #expect(names == ["first", "save", "restore", "last"])
+    }
+
     @Test func endsWithTheConventions() {
         #expect(Usage.text(columns: 100).hasSuffix(Usage.conventions.trimmingCharacters(in: .whitespacesAndNewlines)))
+    }
+}
+
+private struct Fixture: ParsableCommand {
+    static let configuration = CommandConfiguration(subcommands: [First.self, Hidden.self, Last.self])
+
+    struct First: ParsableCommand {
+        static let configuration = CommandConfiguration(subcommands: [Save.self, Secret.self, Restore.self])
+    }
+
+    struct Save: ParsableCommand {}
+    struct Restore: ParsableCommand {}
+    struct Last: ParsableCommand {}
+
+    struct Hidden: ParsableCommand {
+        static let configuration = CommandConfiguration(shouldDisplay: false, subcommands: [Save.self])
+    }
+
+    struct Secret: ParsableCommand {
+        static let configuration = CommandConfiguration(shouldDisplay: false)
     }
 }
