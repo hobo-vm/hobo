@@ -94,6 +94,7 @@ public enum VMError: Error, CustomStringConvertible {
     case unsupportedOS(VMConfig.OS)
     case missingQEMUImg
     case diskTooSmall(wanted: UInt64, image: UInt64)
+    case unusableImage(String, String)
 
     public var description: String {
         switch self {
@@ -115,6 +116,7 @@ public enum VMError: Error, CustomStringConvertible {
         case .missingQEMUImg: "converting a Linux cloud image needs qemu-img: brew install qemu"
         case .diskTooSmall(let wanted, let image):
             "the recipe's disk (\(ByteSize(bytes: wanted))) is smaller than the image's (\(ByteSize(bytes: image)))"
+        case .unusableImage(let image, let reason): "can't use the image \(image): \(reason)"
         }
     }
 }

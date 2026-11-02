@@ -28,17 +28,18 @@ public struct LinuxVMBundle: VMBundle {
         let bundle = LinuxVMBundle(directory: directory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let qemuImg = try QEMUImg.locate()
-        let imageBytes = try QEMUImg.virtualSize(of: image, tool: qemuImg)
-        if diskBytes < imageBytes {
-            throw VMError.diskTooSmall(wanted: diskBytes, image: imageBytes)
+        let info = try QEMUImg.info(of: image, tool: qemuImg)
+        if diskBytes < info.virtualSize {
+            throw VMError.diskTooSmall(wanted: diskBytes, image: info.virtualSize)
         }
         log("Converting the image to an ASIF disk")
         let raw = directory.appending(path: "disk.raw")
         defer { try? FileManager.default.removeItem(at: raw) }
-        try run(qemuImg, ["convert", "-O", "raw", image.path, raw.path])
+        // The format as inspected, so qemu-img doesn't probe it again.
+        try run(qemuImg, ["convert", "-f", info.format, "-O", "raw", image.path, raw.path])
         // Quietly: diskutil prints a progress counter.
         try runQuietly("/usr/sbin/diskutil", ["image", "create", "from", "--format", "ASIF", raw.path, bundle.disk.path])
-        if diskBytes > imageBytes {
+        if diskBytes > info.virtualSize {
             // --image-only also moves the backup GPT to the new end; the guest's growpart does the rest.
             try runQuietly("/usr/sbin/diskutil", ["image", "resize", "--image-only", "--size", String(diskBytes), bundle.disk.path])
         }
@@ -121,13 +122,48 @@ enum QEMUImg {
         return tool
     }
 
-    /// The size of the disk the image holds, as opposed to the file's size.
-    static func virtualSize(of image: URL, tool: String) throws -> UInt64 {
-        struct Info: Decodable {
-            var virtualSize: UInt64
-            enum CodingKeys: String, CodingKey { case virtualSize = "virtual-size" }
+    /// What `qemu-img info` says about an image.
+    struct Info: Decodable, Equatable {
+        var format: String
+        /// The size of the disk the image holds, as opposed to the file's size.
+        var virtualSize: UInt64
+        var backingFilename: String?
+        var formatSpecific: FormatSpecific?
+
+        struct FormatSpecific: Decodable, Equatable {
+            var data: Fields?
+            struct Fields: Decodable, Equatable {
+                var dataFile: String?
+                enum CodingKeys: String, CodingKey { case dataFile = "data-file" }
+            }
         }
-        let json = try output(tool, ["info", "--output=json", image.path])
-        return try JSONDecoder().decode(Info.self, from: json).virtualSize
+
+        enum CodingKeys: String, CodingKey {
+            case format
+            case virtualSize = "virtual-size"
+            case backingFilename = "backing-filename"
+            case formatSpecific = "format-specific"
+        }
+    }
+
+    /// Inspects `image` without opening any file it refers to, and accepts it only as a
+    /// self-contained qcow2 or raw image: a recipe's image is someone else's file, and a qcow2
+    /// backing file or external data file would make the conversion copy host files into the disk.
+    static func info(of image: URL, tool: String) throws -> Info {
+        try parseInfo(try output(tool, ["info", "--output=json", image.path]), image: image.lastPathComponent)
+    }
+
+    static func parseInfo(_ json: Data, image: String) throws -> Info {
+        let info = try JSONDecoder().decode(Info.self, from: json)
+        guard ["qcow2", "raw"].contains(info.format) else {
+            throw VMError.unusableImage(image, "it is \(info.format), not qcow2 or raw")
+        }
+        if let backing = info.backingFilename {
+            throw VMError.unusableImage(image, "it refers to a backing file, \(backing)")
+        }
+        if let dataFile = info.formatSpecific?.data?.dataFile {
+            throw VMError.unusableImage(image, "it refers to an external data file, \(dataFile)")
+        }
+        return info
     }
 }
