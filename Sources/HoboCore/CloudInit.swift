@@ -10,10 +10,17 @@ public enum CloudInit {
     /// The seed's files, by name.
     public static func seed(hostname: String, macAddress: String) -> [String: String] {
         [
-            "meta-data": metaData(hostname: hostname),
+            "meta-data": metaData(hostname: self.hostname(for: hostname)),
             "user-data": userData,
             "network-config": networkConfig(macAddress: macAddress),
         ]
+    }
+
+    /// A VM name may hold `_` and `.`, which a hostname label can't (`hostnamectl` rejects `_`, and
+    /// a dot would split off a domain), so both become `-`.
+    static func hostname(for name: String) -> String {
+        let label = String(name.map { $0.isLetter || $0.isNumber || $0 == "-" ? $0 : "-" })
+        return String(label.reversed().drop { $0 == "-" }.reversed())
     }
 
     static func metaData(hostname: String) -> String {

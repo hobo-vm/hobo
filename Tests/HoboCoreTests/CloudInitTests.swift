@@ -11,6 +11,13 @@ import Testing
         #expect(seed["meta-data"]?.contains(/instance-id: hobo-[0-9a-f-]{36}\n/) == true)
     }
 
+    @Test func hostnameIsAValidLabel() {
+        #expect(CloudInit.hostname(for: "dev") == "dev")
+        #expect(CloudInit.hostname(for: "my_vm.2") == "my-vm-2")
+        #expect(CloudInit.hostname(for: "build-") == "build")
+        #expect(CloudInit.seed(hostname: "a_b", macAddress: "AA:BB:CC:DD:EE:0F")["meta-data"]?.contains("local-hostname: a-b\n") == true)
+    }
+
     @Test func userDataAppliesTheVagrantConventions() throws {
         let userData = try #require(seed["user-data"])
         #expect(userData.hasPrefix("#cloud-config\n"))
