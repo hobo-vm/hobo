@@ -131,10 +131,10 @@ public struct VMStore: Sendable {
         try FileManager.default.removeItem(at: bundle(for: name))
     }
 
-    /// Throws unless `vm` is stopped: being built, running, or (unless `allowSuspended`) holding
-    /// saved state. Saved state fits only the disk, configuration and identity it was saved with,
-    /// so anything that changes those must refuse a suspended VM; only what keeps the bundle whole
-    /// (delete, rename, discard) passes `allowSuspended`.
+    /// Throws if `vm` is being built, running, or (unless `allowSuspended`) holding saved state.
+    /// Saved state fits only the disk, configuration and platform identity it was saved with, so
+    /// anything that changes those must refuse a suspended VM. Only operations that move or remove
+    /// the bundle as a unit (delete, rename, discard) pass `allowSuspended`.
     public func checkStopped(_ vm: VM, allowSuspended: Bool = false) throws {
         if case .building = vm.status { throw VMStoreError.busy(vm.name, reason: "being built") }
         // The job, not the status: a running VM whose config.json has gone bad still runs.

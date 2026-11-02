@@ -245,7 +245,7 @@ import Testing
         #expect(throws: VMStoreError.busy("dev", reason: "running (hobo stop dev)")) { try store.discard("dev") }
     }
 
-    /// The default guard for anything that changes a VM's disk, configuration or identity
+    /// The default guard for anything that changes a VM's disk, configuration or platform identity
     /// (set, and later snapshot restore and clone): saved state fits only what it was saved with.
     @Test func checkStoppedRefusesASuspendedVMUnlessAllowed() throws {
         defer { try? FileManager.default.removeItem(at: store.directory) }
