@@ -212,7 +212,11 @@ public final class VMRunner {
             return .accepted
         case .suspend:
             guard status.state != .stopping else { return .error("\(name) is shutting down") }
-            guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
+            // Not while starting: a failed save would hand the VM back as starting after the boot
+            // sequence had stopped watching it, and a resumed guest may be mid clock or share fix-up.
+            guard status.state == .running, let guest else {
+                return .error("\(name) is still starting; try again once it is running")
+            }
             // Its own task, so a client that hangs up can't cancel the save halfway.
             return await Task { await suspend(guest, reply: reply) }.value
         case .view:
