@@ -125,7 +125,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try sleeperAlive())
         // The clock was set on resume: within a minute of the host's.
         let guestNow = try output(hobo, ["exec", "itest", "--", "date", "+%s"], environment: env)
-        #expect(abs((Double(guestNow.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) - Date.now.timeIntervalSince1970) < 60, "\(guestNow)")
+        #expect(abs((Double(guestNow.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) - Date.now.timeIntervalSince1970) < 5, "\(guestNow)")
         #expect(try output(hobo, ["suspend", "itest"], environment: env).contains("Suspended itest"))
         #expect(try output(hobo, ["start", "--cold", "itest"], environment: env).contains("itest is running"))
         #expect(!FileManager.default.fileExists(atPath: savedState.path))
@@ -300,14 +300,16 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         let owner = try FileManager.default.attributesOfItem(atPath: fromGuest.path)[.ownerAccountID] as? NSNumber
         #expect(owner?.uint32Value == getuid())
 
-        // suspend and resume: the clock is set with Linux's own command, and the shares keep
-        // working with no remount, both ways.
+        // suspend and resume: the clock is set with Linux's own command (it would be behind by at
+        // least the 10 s suspended, against 5 s allowed), and the shares keep working with no
+        // remount, both ways.
         #expect(try output(hobo, ["suspend", "litest"], environment: env).contains("Suspended litest"))
         try "added\n".write(to: scratch.appending(path: "while-suspended"), atomically: true, encoding: .utf8)
+        Thread.sleep(forTimeInterval: 10)
         let resumed = try output(hobo, ["start", "litest"], environment: env)
         #expect(resumed.contains("litest resumed"), "\(resumed)")
         let guestNow = try output(hobo, ["exec", "litest", "--", "date", "+%s"], environment: env)
-        #expect(abs((Double(guestNow.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) - Date.now.timeIntervalSince1970) < 60, "\(guestNow)")
+        #expect(abs((Double(guestNow.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) - Date.now.timeIntervalSince1970) < 5, "\(guestNow)")
         #expect(try output(hobo, ["exec", "litest", "--", "cat", "\(shared)/scratch/while-suspended"], environment: env) == "added\n")
         #expect(try output(hobo, ["exec", "litest", "--", "cat", "\(shared)/kept/hello.txt"], environment: env) == "kept\n")
         #expect(try run(hobo, ["exec", "litest", "--", "sh", "-c", "echo again > \(shared)/scratch/after-resume"], in: work, environment: env) == 0)
