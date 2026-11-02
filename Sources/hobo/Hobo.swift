@@ -35,7 +35,7 @@ struct HoboCommand: AsyncParsableCommand {
         version: Hobo.version,
         subcommands: [
             Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self, View.self,
-            SSH.self, Exec.self, Copy.self, IP.self, SetCommand.self, Provision.self, Rename.self, Delete.self, Usage.self,
+            SSH.self, Exec.self, Copy.self, IP.self, SetCommand.self, Provision.self, Rename.self, Delete.self, Claude.self, Usage.self,
         ]
     )
 }
@@ -731,6 +731,65 @@ struct Delete: OutputCommand {
         }
         try store.delete(vm.name)
         return Reply(["deleted": vm.name], text: "Deleted \(vm.name)")
+    }
+}
+
+/// `hobo claude install|uninstall`: the Claude Code skill (`ClaudeSkill`).
+struct Claude: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Install or remove the hobo skill for Claude Code.",
+        subcommands: [ClaudeInstall.self, ClaudeUninstall.self]
+    )
+}
+
+/// Where `hobo claude install|uninstall` acts, and the skill they act on.
+struct ClaudeSkillOptions: ParsableArguments {
+    @Flag(help: "Use the current git repository's .claude/skills instead of ~/.claude/skills.")
+    var project = false
+
+    @Flag(help: "Replace or remove a hobo skill directory that hobo didn't write.")
+    var force = false
+
+    @Flag(help: "Print the skill's path as JSON.")
+    var json = false
+
+    func skill() throws -> ClaudeSkill {
+        project ? try .project(containing: .currentDirectory()) : .global()
+    }
+}
+
+struct ClaudeInstall: OutputCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "install",
+        abstract: "Write the hobo skill to ~/.claude/skills/hobo (or the project's), replacing hobo's earlier copy."
+    )
+
+    @OptionGroup var options: ClaudeSkillOptions
+    var json: Bool { options.json }
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        let skill = try options.skill()
+        try skill.install(force: options.force)
+        return Reply(["installed": skill.file.path], text: "Installed \(skill.file.path)")
+    }
+}
+
+struct ClaudeUninstall: OutputCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "uninstall",
+        abstract: "Remove the hobo skill from ~/.claude/skills/hobo (or the project's)."
+    )
+
+    @OptionGroup var options: ClaudeSkillOptions
+    var json: Bool { options.json }
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        let skill = try options.skill()
+        let removed = try skill.uninstall(force: options.force)
+        let path = skill.directory.path
+        return Reply(["removed": removed ? path : nil], text: removed ? "Removed \(path)" : "No hobo skill at \(path)")
     }
 }
 

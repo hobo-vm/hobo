@@ -15,7 +15,7 @@ struct Usage: ParsableCommand {
     }
 
     static func text(columns: Int? = nil) -> String {
-        let commands = visibleSubcommands(of: HoboCommand.self)
+        let commands = visibleCommandPaths(of: HoboCommand.self).map(\.command)
         let sections = [HoboCommand.helpMessage(columns: columns)]
             + commands.map { HoboCommand.helpMessage(for: $0, columns: columns) }
             + [conventions]
@@ -24,24 +24,30 @@ struct Usage: ParsableCommand {
             .joined(separator: "\n\n" + String(repeating: "─", count: 40) + "\n\n")
     }
 
-    /// Depth-first, in declaration order, so nested commands (`snapshot save`) follow their parent.
-    static func visibleSubcommands(of command: ParsableCommand.Type) -> [ParsableCommand.Type] {
+    /// Each visible command with its name as typed after the root (`claude install`). Depth-first,
+    /// in declaration order, so nested commands follow their parent.
+    static func visibleCommandPaths(of command: ParsableCommand.Type, prefix: String = "")
+        -> [(path: String, command: ParsableCommand.Type)] {
         command.configuration.subcommands
             .filter { $0.configuration.shouldDisplay }
-            .flatMap { [$0] + visibleSubcommands(of: $0) }
+            .flatMap { sub in
+                let path = prefix + sub._commandName
+                return [(path, sub)] + visibleCommandPaths(of: sub, prefix: path + " ")
+            }
     }
 
     /// Which visible commands lack `--json` and which stream JSON Lines, read from each command's
-    /// `OutputCommand` conformance and `jsonStyle` rather than listed by hand.
+    /// `OutputCommand` conformance and `jsonStyle` rather than listed by hand. A group (`claude`)
+    /// only holds subcommands, so it's in neither list.
     static func jsonSupport(of root: ParsableCommand.Type) -> (withoutJSON: [String], events: [String]) {
         var withoutJSON: [String] = []
         var events: [String] = []
-        for command in visibleSubcommands(of: root) {
+        for (path, command) in visibleCommandPaths(of: root) {
             guard let outputCommand = command as? any OutputCommand.Type else {
-                withoutJSON.append(command._commandName)
+                if command.configuration.subcommands.isEmpty { withoutJSON.append(path) }
                 continue
             }
-            if outputCommand.jsonStyle == .events { events.append(command._commandName) }
+            if outputCommand.jsonStyle == .events { events.append(path) }
         }
         return (withoutJSON, events)
     }

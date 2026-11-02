@@ -14,9 +14,12 @@ build: ## Release build
 sign: build ## Release build signed with the virtualization entitlement
 	codesign --force --sign "$(HOBO_SIGN_IDENTITY)" --entitlements entitlements.plist --options runtime $(BIN)
 
+# Also refreshes hobo's global Claude skill if one is installed, so it matches the new binary.
+SKILL := $(HOME)/.claude/skills/hobo/SKILL.md
 install: sign ## Install the signed binary to $(PREFIX)/bin
 	install -d $(PREFIX)/bin
 	install -m 755 $(BIN) $(PREFIX)/bin/hobo
+	@if grep -qs '^hobo-version:' $(SKILL); then $(PREFIX)/bin/hobo claude install; fi
 
 test: ## Unit tests
 	swift test
