@@ -14,10 +14,6 @@ struct UsageTests {
         }
     }
 
-    @Test func leavesOutHiddenCommands() {
-        #expect(!Usage.text(columns: 100).contains("_vm-run"))
-    }
-
     /// The real tree has no hidden or nested commands yet, so a fixture tree pins the filter and order.
     @Test func walksNestedCommandsDepthFirstSkippingHidden() {
         let names = Usage.visibleSubcommands(of: Fixture.self).map { $0._commandName }
