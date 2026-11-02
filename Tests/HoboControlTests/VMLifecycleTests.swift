@@ -289,6 +289,8 @@ import Testing
         try suspend()
         #expect(try lifecycle.discard("dev") == .discarded)
         #expect(!isSuspended)
+        // Clears a failed resume's exit status, so the VM shows as stopped, not crashed.
+        #expect(launchctl.called("bootout"))
     }
 
     @Test func runSharesGoToTheVMProcess() {

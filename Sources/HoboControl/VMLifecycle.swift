@@ -188,7 +188,11 @@ public struct VMLifecycle: Sendable {
 
     /// `hobo discard`: throws a suspended VM's saved state away, leaving it stopped.
     public func discard(_ name: String) throws -> DiscardResult {
-        try store.discard(name) ? .discarded : .notSuspended
+        let vm = try store.find(name)
+        guard try store.discard(vm.name) else { return .notSuspended }
+        // A resume that failed leaves its job's exit status, which would show the VM as crashed.
+        store.launchd.bootout(store.job(for: vm.name).label)
+        return .discarded
     }
 
     /// Waits for a VM process told to exit to do so, logging what it reports doing, then unloads
