@@ -1,6 +1,7 @@
 # TODO
 
-Only 2 macOS guests can run per host, so a `create` plus a boot test fill both slots.
+Only 2 macOS guests can run per host, so a `create` plus a boot test fill both slots. `[parallel]` items boot no
+macOS guests, so they can run in a worktree alongside one that does.
 
 - M1: `hobo set` (cpus, memory, disk grow, persistent virtio-fs shares), `start --share`, `hobo provision <name> [recipe]`
 - M1 [parallel]: Windows spike: Windows 11 on Arm on `qemu-system-aarch64 -accel hvf`, unattended install via `autounattend.xml`, headless boot, OpenSSH, screenshot from the interactive session
@@ -12,9 +13,9 @@ Only 2 macOS guests can run per host, so a `create` plus a boot test fill both s
 - M3: ephemeral idle-timeout leases renewed by control-socket calls; `hobo mcp` stops its ephemeral VMs on exit
 - M3: `exec --gui` (Aqua session via `launchctl asuser`), `hobo screenshot`
 - M3: `hobo mcp` stdio server (lifecycle, exec, copy_in/out, screenshot, view, clone, snapshot, set, provision, list)
-- M3: agent guidance text in `HoboCore` (ephemeral session pattern, test in the guest never the host UI, `exec --gui`, 2-macOS-guest limit, "run `hobo usage`"), used as the Claude skill body and the MCP server's `instructions`
-- M3: `hobo claude install|uninstall [--project] [--force]`: write/remove `hobo/SKILL.md` with a `hobo-version` ownership marker; `make install` refreshes an existing global copy
-- M4: Linux guests (cloud image + cloud-init recipes); optional Rosetta (virtio-fs Rosetta share + binfmt)
+- M3 [parallel]: agent guidance text in `HoboCore` (ephemeral session pattern, test in the guest never the host UI, `exec --gui`, 2-macOS-guest limit, "run `hobo usage`"), used as the Claude skill body and the MCP server's `instructions`
+- M3 [parallel]: `hobo claude install|uninstall [--project] [--force]`: write/remove `hobo/SKILL.md` with a `hobo-version` ownership marker; `make install` refreshes an existing global copy
+- M4 [parallel]: Linux guests (cloud image + cloud-init recipes); optional Rosetta (virtio-fs Rosetta share + binfmt)
 - M5: QEMU engine (`engine = "qemu"`) for Windows: same bundle, clone, snapshot, suspend, leases; `exec --gui` via scheduled task; UI Automation/WinAppDriver
 - Later: per-VM SSH key: generate one at the end of `create`, replace the insecure keys in `authorized_keys`, keep it in the bundle (deferred 2026-11-01)
 - Later: host-side framebuffer screenshot for wedged guests

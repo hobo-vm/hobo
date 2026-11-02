@@ -21,9 +21,12 @@ install: sign ## Install the signed binary to $(PREFIX)/bin
 test: ## Unit tests
 	swift test
 
-# The test runner can't hold the entitlement, so VM tests drive the signed binary.
+# The test runner can't hold the entitlement, so VM tests drive the signed binary. A host-wide
+# lock queues runs from different worktrees: only 2 macOS guests fit on a host.
+INTEGRATION_LOCK := $(or $(HOBO_HOME),$(HOME)/.hobo)/integration.lock
 integration-test: sign ## Tests that drive the signed binary
-	HOBO_INTEGRATION=1 HOBO_BIN=$(abspath $(BIN)) swift test --filter HoboVMTests
+	@mkdir -p $(dir $(INTEGRATION_LOCK))
+	HOBO_INTEGRATION=1 HOBO_BIN=$(abspath $(BIN)) lockf $(INTEGRATION_LOCK) swift test --filter HoboVMTests
 
 clean: ## Remove build products
 	swift package clean

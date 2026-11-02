@@ -12,6 +12,8 @@ Deferred work lives in `TODO.md`.
 - `make sign` / `make install`: the binary needs the `com.apple.security.virtualization`
   entitlement (`entitlements.plist`) to create VMs, so anything that boots a VM must use a signed build.
 - VM-booting tests live in `Tests/HoboVMTests` and run only with `HOBO_INTEGRATION=1` (`make integration-test`).
+- `make integration-test` holds a host-wide lock, so runs from different worktrees queue.
+- Manual VM testing isn't locked: only one worktree boots macOS VMs by hand at a time.
 
 ## Architecture rules
 
