@@ -189,30 +189,30 @@ struct Images: OutputCommand {
     }
 
     private func details(_ image: IPSWCatalog.Image) -> String {
-        var lines = detailLines([
+        var text = labelledFields([
             ("Name", image.name), ("Version", image.version), ("Build", image.build),
             ("Released", image.releasedDay),
             ("Size", "\(formattedSize(image.size)) (\(image.size) bytes)"), ("URL", image.url.absoluteString),
             ("SHA-256", image.sha256), ("Signed", image.signed ? "yes" : "no"),
         ])
         if image.major > IPSWCatalog.hostMajor {
-            lines += "\n\nThis Mac (macOS \(IPSWCatalog.hostMajor)) can't run it: the guest is newer than the host."
+            text += "\n\nThis Mac (macOS \(IPSWCatalog.hostMajor)) can't run it: the guest is newer than the host."
         }
-        return lines
+        return text
     }
 
     private func details(_ image: UbuntuCatalog.Image) -> String {
-        var lines = detailLines([
+        var text = labelledFields([
             ("Name", image.name), ("Version", image.version), ("Codename", image.codename), ("Release", image.serial),
             ("Support", image.supported ? "until \(image.supportEnds.map(day) ?? "unknown")" : "ended"),
             ("Size", "\(formattedSize(image.size)) (\(image.size) bytes)"), ("URL", image.url.absoluteString),
             ("SHA-256", image.sha256),
         ])
-        if !image.supported { lines += "\n\nCanonical no longer supports this version, so `hobo init` won't pin it." }
-        return lines
+        if !image.supported { text += "\n\nCanonical no longer supports this version, so `hobo init` won't pin it." }
+        return text
     }
 
-    private func detailLines(_ fields: [(String, String)]) -> String {
+    private func labelledFields(_ fields: [(String, String)]) -> String {
         fields.map { label, value in label.padding(toLength: 10, withPad: " ", startingAt: 0) + value }.joined(separator: "\n")
     }
 }
