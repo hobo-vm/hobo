@@ -35,7 +35,7 @@ struct HoboCommand: AsyncParsableCommand {
         version: Hobo.version,
         subcommands: [
             Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self, View.self,
-            SSH.self, Exec.self, Copy.self, IP.self, Rename.self, Delete.self,
+            SSH.self, Exec.self, Copy.self, IP.self, Rename.self, Delete.self, Usage.self,
         ]
     )
 }
