@@ -26,7 +26,15 @@ struct DisclaimedProcess: Sendable {
         var attributes: posix_spawnattr_t?
         posix_spawnattr_init(&attributes)
         defer { posix_spawnattr_destroy(&attributes) }
-        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT))
+        // Every signal back to its default action and unblocked, as `Process` does: a child inherits
+        // the ones this process ignores (SIGTERM while a create or the VM runs), and `terminate`
+        // would then do nothing.
+        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK))
+        var allSignals = sigset_t(), noSignals = sigset_t()
+        sigfillset(&allSignals)
+        sigemptyset(&noSignals)
+        posix_spawnattr_setsigdefault(&attributes, &allSignals)
+        posix_spawnattr_setsigmask(&attributes, &noSignals)
         if let disclaim = setDisclaim { _ = disclaim(&attributes, 1) }
 
         var actions: posix_spawn_file_actions_t?
