@@ -171,7 +171,7 @@ public final class VMRunner {
             + "sudo -n mount -t virtiofs \(VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag) \(mountPoint)"
     }()
 
-    /// Sets the guest's clock to `date`, in `date`'s `mmddHHMMccyy.ss` form.
+    /// Sets the guest's clock to `date`, passed in date(1)'s `mmddHHMMccyy.ss` form.
     nonisolated static func setDateCommand(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -286,8 +286,8 @@ public final class VMRunner {
                 try? FileManager.default.removeItem(at: partial)
                 do {
                     try await guest.resume()
-                } catch {
-                    log("error: resuming after the failed save failed: \(error)")
+                } catch let resumeError {
+                    log("error: resuming after the failed save failed: \(resumeError)")
                 }
                 throw error
             }
