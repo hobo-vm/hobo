@@ -147,9 +147,16 @@ struct Validate: OutputCommand {
         let recipe = try Recipe.load(from: URL(filePath: path))
         try recipe.checkFilesExist()
         let warning = recipe.source.isPinned ? "" : "warning: source is unpinned (ipsw = \"latest\")\n"
+        var settings = [
+            "\(recipe.cpus) CPUs", "\(recipe.memory) memory", "\(recipe.disk) disk",
+            "\(recipe.provisioners.count) provision step(s)",
+        ]
+        if recipe.guiTesting != nil { settings.append("GUI testing") }
+        if !recipe.security.sip { settings.append("SIP off") }
+        if !recipe.security.amfi { settings.append("AMFI off") }
         return Reply(
             RecipeSummary(recipe, path: path),
-            text: "\(warning)\(path): \(recipe.cpus) CPUs, \(recipe.memory) memory, \(recipe.disk) disk, \(recipe.provisioners.count) provision step(s)\(recipe.guiTesting == nil ? "" : ", GUI testing")\(recipe.security.sip ? "" : ", SIP off")\(recipe.security.amfi ? "" : ", AMFI off")"
+            text: "\(warning)\(path): \(settings.joined(separator: ", "))"
         )
     }
 }
