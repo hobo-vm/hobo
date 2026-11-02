@@ -130,14 +130,14 @@ public final class VMRunner {
             status.detail = "waiting for SSH on \(ip)"
             let guestSSH = try ssh(ip)
             try await guestSSH.waitUntilReachable(timeout: Self.bootTimeout)
+            let platform = type(of: guest.bundle)
             if resumed {
-                let platform = type(of: guest.bundle)
                 await setClock(guestSSH, platform: platform)
                 if !shares.isEmpty, let command = platform.remountSharesCommand {
                     await remountShares(guestSSH, command: command)
                 }
             }
-            await growContainerIfPending(guestSSH)
+            await growDiskIfPending(guestSSH, platform: platform)
             guard status.state == .starting else { return }
             status.state = .running
             status.detail = nil
@@ -171,25 +171,21 @@ public final class VMRunner {
     }
 
     /// Decision 9's second step: `hobo set --disk` grew the image while the VM was stopped, and
-    /// the guest's APFS container grows into the new space live. A failure leaves the flag set,
+    /// the guest's root filesystem grows into the new space live. A failure leaves the flag set,
     /// so the next boot tries again; the VM runs either way.
-    private func growContainerIfPending(_ ssh: GuestSSH) async {
+    private func growDiskIfPending(_ ssh: GuestSSH, platform: any VMBundle.Type) async {
         let file = store.bundle(for: name).appending(path: VMStore.configFile)
         guard var config = try? VMConfig.load(from: file), config.diskGrowPending else { return }
-        status.detail = "growing the guest's APFS container"
-        log("Growing the guest's APFS container into the larger disk")
+        status.detail = "growing the guest's filesystem"
+        log("Growing the guest's filesystem into the larger disk")
         do {
-            try await ssh.check(Self.growContainerCommand, what: "growing the APFS container")
+            try await ssh.check(platform.growDiskCommand, what: "growing the guest's filesystem")
             config.diskGrowPending = false
             try config.write(to: file)
         } catch {
             log("warning: \(error); the next start tries again")
         }
     }
-
-    /// Grows the boot volume's container (looked up, not assumed to be `disk0s2`) to fill its disk.
-    static let growContainerCommand =
-        #"sudo -n diskutil apfs resizeContainer "$(diskutil info / | awk '/APFS Physical Store:/ { print $NF }')" 0"#
 
     private func handle(_ request: ControlRequest, reply: ControlReply) async -> ControlResponse {
         switch request {

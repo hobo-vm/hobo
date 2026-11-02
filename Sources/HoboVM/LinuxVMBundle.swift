@@ -18,6 +18,10 @@ public struct LinuxVMBundle: VMBundle {
     /// The guest's virtio-fs mount keeps working across a restore: after a resume it sees files
     /// the host added and writes through (checked 2026-11-02 on Ubuntu 26.04).
     public static let remountSharesCommand: String? = nil
+    /// Grows the root partition to the end of the disk, then its ext4 filesystem, both live:
+    /// cloud-init's growpart did this at create but is off afterwards. growpart exits 1 when the
+    /// partition already fills the disk, as on a retry after `resize2fs` failed.
+    public static let growDiskCommand = #"root=$(findmnt -no SOURCE /) && part=$(cat "/sys/class/block/${root#/dev/}/partition") && { sudo -n growpart "/dev/$(lsblk -no PKNAME "$root")" "$part" || [ $? -eq 1 ]; } && sudo -n resize2fs "$root""#
 
     public var directory: URL
     /// The cloud-init seed ISO, attached read-only as a second disk while `create` runs.

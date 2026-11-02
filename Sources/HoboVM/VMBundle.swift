@@ -22,6 +22,9 @@ public protocol VMBundle: Sendable {
     static func setClockCommand(_ date: Date) -> String
     /// Replaces the guest's share mount after a resume, or nil if its mount survives a restore.
     static var remountSharesCommand: String? { get }
+    /// Grows the guest's root filesystem, live, into a disk `hobo set --disk` enlarged. It runs
+    /// again at the next start if it fails, so it must be safe to repeat.
+    static var growDiskCommand: String { get }
     func configuration(
         cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare]
     ) throws -> VZVirtualMachineConfiguration

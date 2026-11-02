@@ -155,7 +155,9 @@ global VMs on 2026-11-01.
    `hobo set --disk` does the host step and updates `config.json`'s `disk`, setting
    `diskGrowPending`. At the next boot the VM process runs the guest step once SSH answers, against
    the boot volume's APFS physical store (looked up with `diskutil info /`, not assumed to be
-   `disk0s2`), before `start` reports the VM running, and clears the flag. A failure is logged and
+   `disk0s2`), before `start` reports the VM running, and clears the flag. A Linux guest's host
+   step moves the backup GPT instead, and its guest step is `growpart` on the root partition then
+   `resize2fs`, both live (cloud-init's growpart, which grew it at create, is off by then). A failure is logged and
    leaves the flag set, so the next start retries. `set` only changes a stopped VM, so
    `config.json` always matches a running one. CPUs and memory are checked against the
    Virtualization framework's host limits. The disk never shrinks (decided 2026-11-02): ASIF

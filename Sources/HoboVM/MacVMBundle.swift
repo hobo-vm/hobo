@@ -31,6 +31,10 @@ public struct MacVMBundle: VMBundle {
             + "sudo -n mount -t virtiofs \(VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag) \(mountPoint)"
     }()
 
+    /// Grows the boot volume's container (looked up, not assumed to be `disk0s2`) to fill its disk.
+    public static let growDiskCommand =
+        #"sudo -n diskutil apfs resizeContainer "$(diskutil info / | awk '/APFS Physical Store:/ { print $NF }')" 0"#
+
     public var directory: URL
 
     public init(directory: URL) { self.directory = directory }

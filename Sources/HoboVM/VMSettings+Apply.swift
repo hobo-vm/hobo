@@ -14,7 +14,7 @@ extension VMSettings.Limits {
 
 extension VMSettings {
     /// `hobo set`: changes a stopped VM's `config.json`, growing its disk image first if asked.
-    /// The guest's APFS container grows into the new space at the next boot (`VMRunner`).
+    /// The guest's filesystem grows into the new space at the next boot (`VMRunner`).
     public func apply(to name: String, store: VMStore = .standard(), log: @Sendable (String) -> Void) throws -> VMConfig {
         let vm = try store.find(name)
         // Also refuses a VM process still running from a bundle whose config.json has gone bad.
@@ -30,11 +30,11 @@ extension VMSettings {
         let updated = try applied(to: config, limits: .host)
         if updated.disk > config.disk {
             log("Growing the disk image to \(ByteSize(bytes: updated.disk))")
-            // Moves the trailing Recovery container to the new end, so the free space follows the
-            // main container, which the guest then grows into.
+            // Moves what ends the disk (a macOS guest's Recovery container, a Linux guest's backup
+            // GPT) to the new end, so the free space follows the partition the guest grows.
             try run("/usr/sbin/diskutil", [
                 "image", "resize", "--image-only", "--size", String(updated.disk),
-                MacVMBundle(directory: vm.bundle).disk.path,
+                try vmBundle(at: vm.bundle, os: config.os).disk.path,
             ])
         }
         try updated.write(to: vm.bundle.appending(path: VMStore.configFile))

@@ -317,8 +317,13 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
 
         #expect(try output(hobo, ["stop", "litest"], environment: env).contains("Stopped litest"))
         // With no shares the device is still attached, so /mnt/hobo is an empty mount, not the disk.
-        #expect(try run(hobo, ["set", "litest", "--unshare", "kept"], in: work, environment: env) == 0)
+        // The disk grows too: the root filesystem follows it at the next start, and the grow is done.
+        #expect(try run(hobo, ["set", "litest", "--unshare", "kept", "--disk", "40GB"], in: work, environment: env) == 0)
         #expect(try run(hobo, ["start", "litest"], in: work, environment: env) == 0)
+        let grownBytes = try output(hobo, ["exec", "litest", "--", "df", "--output=size", "-B1", "/"], environment: env)
+        let grownSize = grownBytes.split(separator: "\n").last.flatMap { UInt64($0.trimmingCharacters(in: .whitespaces)) }
+        #expect((grownSize ?? 0) > 36 << 30, "\(grownBytes)")
+        #expect(try VMConfig.load(from: bundle.appending(path: "config.json")).diskGrowPending == false)
         #expect(try output(hobo, ["exec", "litest", "--", "findmnt", "-n", "-o", "FSTYPE", shared], environment: env) == "virtiofs\n")
         #expect(try output(hobo, ["exec", "litest", "--", "ls", "-A", shared], environment: env) == "")
         #expect(try output(hobo, ["stop", "litest"], environment: env).contains("Stopped litest"))
