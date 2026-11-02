@@ -205,23 +205,21 @@ public struct GuestSSH: Sendable {
         defer { if let askpass { try? FileManager.default.removeItem(at: askpass) } }
 
         var pipes: [(GuestStream, Pipe)] = []
-        let process: DisclaimedProcess
+        let stdout: DisclaimedProcess.Stream, stderr: DisclaimedProcess.Stream
         switch output {
         case .inherit:
-            process = try DisclaimedProcess.spawn(executable, arguments, environment: environment)
+            (stdout, stderr) = (.inherit, .inherit)
         case .discard:
-            process = try DisclaimedProcess.spawn(executable, arguments, environment: environment, stdout: .null, stderr: .null)
+            (stdout, stderr) = (.null, .null)
         case .capture:
-            let stdout = Pipe(), stderr = Pipe()
-            pipes = [(.stdout, stdout), (.stderr, stderr)]
-            process = try DisclaimedProcess.spawn(
-                executable, arguments, environment: environment,
-                stdout: .fileDescriptor(stdout.fileHandleForWriting.fileDescriptor),
-                stderr: .fileDescriptor(stderr.fileHandleForWriting.fileDescriptor)
-            )
-            // The child has its own copies; ours would keep the pipes from reaching end of file.
-            for (_, pipe) in pipes { try? pipe.fileHandleForWriting.close() }
+            let outPipe = Pipe(), errPipe = Pipe()
+            pipes = [(.stdout, outPipe), (.stderr, errPipe)]
+            stdout = .fileDescriptor(outPipe.fileHandleForWriting.fileDescriptor)
+            stderr = .fileDescriptor(errPipe.fileHandleForWriting.fileDescriptor)
         }
+        let process = try DisclaimedProcess.spawn(executable, arguments, environment: environment, stdout: stdout, stderr: stderr)
+        // The child has its own copies; ours would keep the pipes from reaching end of file.
+        for (_, pipe) in pipes { try? pipe.fileHandleForWriting.close() }
 
         return await withTaskCancellationHandler {
             // The exit status is reported once the output has been read to its end, so none is lost.
