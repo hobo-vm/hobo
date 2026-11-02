@@ -131,7 +131,7 @@ global VMs on 2026-11-01.
        (`vagrant`/`vagrant`, auto-login, Remote Login);
     3. conventions, over password SSH: passwordless sudo, Vagrant's insecure keys (ed25519 + RSA) in
        `authorized_keys`, no sleep/screensaver, no automatic updates. The insecure key stays: a
-       per-VM key is deferred (decided 2026-11-01, see `TODO.md`). The boot then waits (up to
+       per-VM key is deferred (decided 2026-11-01, Beads hobo-cip). The boot then waits (up to
        5 min) for the first auto-login to finish, signalled by the user's tccd opening its TCC.db:
        SSH answers well before then, and shutting down early left the next boot, where recipe steps
        run, with no GUI session at all (2026-11-02, macOS 27.2);
@@ -378,7 +378,7 @@ builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` ind
 - **M5:** Windows on the QEMU engine. The Windows spike (unattended install, headless boot, SSH,
   GUI-session screenshot) runs in parallel any time after M1, to prove the engine seam before M2/M3
   harden the model.
-- **Later:** see `TODO.md`.
+- **Later:** see Beads (`bd list --status deferred`).
 
 ## Comparison with Tart and Lume
 

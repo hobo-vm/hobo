@@ -4,7 +4,7 @@ First-class CLI for named VMs (macOS, Linux, later Windows) on Apple Silicon hos
 Virtualization framework: a command-line replacement for VirtualBuddy/Parallels/Fusion. Vagrant-inspired,
 not a Vagrant clone; VMs are built from `Hobo.toml` recipes, and there are no boxes. The design record is
 `docs/design.md`; read it before architectural changes, and update it when a decision changes.
-Deferred work lives in `TODO.md`.
+Deferred work is tracked in Beads (`bd ready`, or `todo` / `/todo`), not in git.
 
 ## Build and test
 
@@ -13,7 +13,8 @@ Deferred work lives in `TODO.md`.
   entitlement (`entitlements.plist`) to create VMs, so anything that boots a VM must use a signed build.
 - VM-booting tests live in `Tests/HoboVMTests` and run only with `HOBO_INTEGRATION=1` (`make integration-test`).
 - `make integration-test` holds a host-wide lock, so runs from different worktrees queue.
-- Manual VM testing isn't locked: only one worktree boots macOS VMs by hand at a time.
+- Manual VM testing isn't locked: only one worktree boots macOS VMs by hand at a time. Issues that
+  need to are labelled `slot:macos-vm`, and `todo` won't start a second one while one is in progress.
 
 ## Architecture rules
 
