@@ -53,7 +53,8 @@ struct Usage: ParsableCommand {
               VMs         Each VM is a bundle, ~/Hobo/<name>.hobovm (HOBO_VMS overrides the directory).
                           `hobo list` shows every VM and its state.
               Recipes     `create` builds from a \(Recipe.fileName) recipe, ./\(Recipe.fileName) by default.
-                          `hobo init` writes a starter and `hobo validate` checks one.
+                          `hobo init` writes a starter (macOS, or Ubuntu with --os linux) and
+                          `hobo validate` checks one. [source] ipsw makes a macOS guest, image a Linux one.
               Guest user  `exec`, `cp` and `ssh` act as the \(Conventions.username) user over SSH
                           (password \(Conventions.password), passwordless sudo).
               JSON        Every command takes --json except \(codeList(json.withoutJSON)).

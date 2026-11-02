@@ -69,10 +69,11 @@ public struct VMSummary: Codable, Equatable, Sendable {
 /// What `hobo validate --json` reports about a recipe that parsed.
 public struct RecipeSummary: Codable, Equatable, Sendable {
     public var path: String
+    public var os: VMConfig.OS
     public var cpus: Int
     public var memory: UInt64
     public var disk: UInt64
-    /// `latest`, or the pinned IPSW's URL or path.
+    /// `latest`, or the pinned IPSW's or image's URL or path.
     public var source: String
     public var pinned: Bool
     public var provisionSteps: Int
@@ -82,6 +83,7 @@ public struct RecipeSummary: Codable, Equatable, Sendable {
 
     public init(_ recipe: Recipe, path: String) {
         self.path = path
+        os = recipe.os
         cpus = recipe.cpus
         memory = recipe.memory.bytes
         disk = recipe.disk.bytes

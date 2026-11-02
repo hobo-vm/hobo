@@ -4,12 +4,9 @@ import Virtualization
 
 /// The files that make up one macOS VM: an ASIF disk plus the platform identity VZ needs to boot
 /// it.
-public struct MacVMBundle: Sendable {
+public struct MacVMBundle: VMBundle {
     public static let platformFiles = ["disk.asif", "aux.img", "hardware-model.bin", "machine-identifier.bin"]
-
-    /// The guest display's configured size. A window resizes it while showing (`VMWindow`),
-    /// and hiding the window puts it back, so headless runs always see this.
-    static let displayPixels = CGSize(width: 1920, height: 1200)
+    public static let hiDPIDisplay = true
 
     public var directory: URL
 
@@ -47,16 +44,10 @@ public struct MacVMBundle: Sendable {
         return MacVMBundle(directory: destination)
     }
 
-    /// Bytes the disk image actually occupies on the host.
-    public func allocatedDiskBytes() -> UInt64 {
-        let values = try? disk.resourceValues(forKeys: [.totalFileAllocatedSizeKey])
-        return UInt64(values?.totalFileAllocatedSize ?? 0)
-    }
-
     /// `shares` go on the macOS automount tag, so the guest mounts each at
     /// `/Volumes/My Shared Files/<name>` with nothing to run inside it.
     public func configuration(
-        cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare] = []
+        cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare]
     ) throws -> VZVirtualMachineConfiguration {
         guard let model = VZMacHardwareModel(dataRepresentation: try Data(contentsOf: hardwareModel)), model.isSupported else {
             throw VMError.unsupportedHardwareModel
@@ -71,12 +62,8 @@ public struct MacVMBundle: Sendable {
 
         let graphics = VZMacGraphicsDeviceConfiguration()
         graphics.displays = [VZMacGraphicsDisplayConfiguration(
-            widthInPixels: Int(Self.displayPixels.width), heightInPixels: Int(Self.displayPixels.height), pixelsPerInch: 80
+            widthInPixels: Int(GuestDisplay.pixels.width), heightInPixels: Int(GuestDisplay.pixels.height), pixelsPerInch: 80
         )]
-
-        let network = VZVirtioNetworkDeviceConfiguration()
-        network.attachment = VZNATNetworkDeviceAttachment()
-        network.macAddress = macAddress
 
         let config = VZVirtualMachineConfiguration()
         config.platform = platform
@@ -87,7 +74,7 @@ public struct MacVMBundle: Sendable {
         config.storageDevices = [VZVirtioBlockDeviceConfiguration(
             attachment: try VZDiskImageStorageDeviceAttachment(url: disk, readOnly: false)
         )]
-        config.networkDevices = [network]
+        config.networkDevices = [natNetwork(macAddress: macAddress)]
         config.keyboards = [VZMacKeyboardConfiguration()]
         config.pointingDevices = [VZMacTrackpadConfiguration()]
         config.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
@@ -116,6 +103,12 @@ public enum VMError: Error, CustomStringConvertible {
     case cancelled
     case securityMismatch(wanted: Recipe.Security, actual: Recipe.Security)
     case noDataVolume(String)
+    case unsupportedOS(VMConfig.OS)
+    case missingQEMUImg
+    case diskTooSmall(wanted: UInt64, image: UInt64)
+    case spawnFailed(String, String)
+    case unusableImage(String, String)
+    case sharesUnsupported(VMConfig.OS)
 
     public var description: String {
         switch self {
@@ -133,6 +126,13 @@ public enum VMError: Error, CustomStringConvertible {
         case .securityMismatch(let wanted, let actual):
             "the guest runs with SIP \(actual.sip ? "on" : "off") and AMFI \(actual.amfi ? "on" : "off"); the recipe asks for SIP \(wanted.sip ? "on" : "off") and AMFI \(wanted.amfi ? "on" : "off")"
         case .noDataVolume(let disk): "\(disk) has no single APFS Data volume"
+        case .unsupportedOS(let os): "\(os.rawValue) VMs aren't supported yet"
+        case .missingQEMUImg: "converting a Linux cloud image needs qemu-img: brew install qemu"
+        case .spawnFailed(let executable, let reason): "couldn't run \(executable): \(reason)"
+        case .sharesUnsupported(let os): "shared folders aren't supported on \(os.rawValue) VMs yet"
+        case .diskTooSmall(let wanted, let image):
+            "the recipe's disk (\(ByteSize(bytes: wanted))) is smaller than the image's (\(ByteSize(bytes: image)))"
+        case .unusableImage(let image, let reason): "can't use the image \(image): \(reason)"
         }
     }
 }
@@ -145,6 +145,24 @@ func run(_ executable: String, _ arguments: [String]) throws {
 /// Runs a host tool to completion and returns its stdout; stderr is inherited.
 func output(_ executable: String, _ arguments: [String]) throws -> Data {
     try runProcess(executable, arguments, capture: true)
+}
+
+/// Runs a host tool to completion with no output, for tools that print progress counters
+/// (`diskutil image`). Its last line of output goes in the error if it fails.
+func runQuietly(_ executable: String, _ arguments: [String]) throws {
+    let process = Process()
+    process.executableURL = URL(filePath: executable)
+    process.arguments = arguments
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    process.standardError = pipe
+    try process.run()
+    let output = pipe.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+        let last = String(decoding: output, as: UTF8.self).split(whereSeparator: \.isNewline).last.map { ": \($0)" } ?? ""
+        throw VMError.commandFailed(([executable] + arguments).joined(separator: " ") + last, process.terminationStatus)
+    }
 }
 
 private func runProcess(_ executable: String, _ arguments: [String], capture: Bool) throws -> Data {

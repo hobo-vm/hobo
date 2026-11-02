@@ -1,0 +1,48 @@
+import Foundation
+import Testing
+@testable import HoboCore
+
+@Suite struct CloudInitTests {
+    let seed = CloudInit.seed(vmName: "dev", macAddress: "AA:BB:CC:DD:EE:0F")
+
+    @Test func seedHasTheNoCloudFiles() {
+        #expect(Set(seed.keys) == ["meta-data", "user-data", "network-config"])
+        #expect(seed["meta-data"]?.contains("local-hostname: dev\n") == true)
+        #expect(seed["meta-data"]?.contains(/instance-id: hobo-[0-9a-f-]{36}\n/) == true)
+    }
+
+    @Test func hostnameIsAValidLabel() {
+        #expect(CloudInit.hostname(for: "dev") == "dev")
+        #expect(CloudInit.hostname(for: "my_vm.2") == "my-vm-2")
+        #expect(CloudInit.hostname(for: "build-") == "build")
+        #expect(CloudInit.seed(vmName: "a_b", macAddress: "AA:BB:CC:DD:EE:0F")["meta-data"]?.contains("local-hostname: a-b\n") == true)
+    }
+
+    @Test func userDataAppliesTheVagrantConventions() throws {
+        let userData = try #require(seed["user-data"])
+        #expect(userData.hasPrefix("#cloud-config\n"))
+        #expect(userData.contains("  - name: vagrant\n"))
+        #expect(userData.contains("    sudo: \"ALL=(ALL) NOPASSWD:ALL\"\n"))
+        #expect(userData.contains("    plain_text_passwd: vagrant\n"))
+        // Each key is an item of ssh_authorized_keys, indented under it.
+        for key in Conventions.insecurePublicKeys {
+            #expect(userData.contains("    ssh_authorized_keys:\n") && userData.contains("\n      - \(key)\n"))
+        }
+        #expect(userData.contains("APT::Periodic::Unattended-Upgrade \"0\";"))
+        // A readable text console: the kernel's built-in Terminus font, which setupcon then keeps.
+        #expect(userData.contains("console=hvc0 fbcon=font:TER10x18\""))
+        #expect(userData.contains(#"'s/^FONTSIZE=.*/FONTSIZE="10x20"/'"#))
+    }
+
+    /// bootpd records the client ID it is sent, and leases are found by MAC.
+    @Test func networkConfigUsesTheMACAsDHCPIdentifier() throws {
+        let config = try #require(seed["network-config"])
+        #expect(config.contains("macaddress: \"aa:bb:cc:dd:ee:0f\""))
+        #expect(config.contains("dhcp-identifier: mac"))
+    }
+
+    @Test func cleanupDisablesCloudInitAndTrims() {
+        #expect(CloudInit.cleanupScript.contains("touch /etc/cloud/cloud-init.disabled"))
+        #expect(CloudInit.cleanupScript.contains("fstrim -a"))
+    }
+}

@@ -68,3 +68,10 @@ private struct JSONFixture: ParsableCommand {
         func execute(_ output: Output) async throws -> Reply { Reply(0, text: nil) }
     }
 }
+
+struct InitOptionTests {
+    @Test func serverIsOnlyForLinux() throws {
+        #expect(throws: (any Error).self) { try Init.parse(["--server"]) }
+        _ = try Init.parse(["--os", "linux", "--server"])
+    }
+}

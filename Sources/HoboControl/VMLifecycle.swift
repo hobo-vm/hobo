@@ -23,8 +23,9 @@ public struct VMLifecycle: Sendable {
     }
 
     /// Boots `name` under launchd and waits until the guest answers SSH. A timeout leaves it booting.
-    /// With `gui`, the VM's window opens at boot, or at once if it is already running. `shares` are
-    /// for this run only, on top of the VM's own; they can't be added to a VM that's already running.
+    /// With `gui`, the VM's window opens once the guest answers SSH, or at once if it is already
+    /// running. `shares` are for this run only, on top of the VM's own; they can't be added to a VM
+    /// that's already running.
     public func start(
         _ name: String, gui: Bool = false, shares: [VMShare] = [], timeout: Duration = .seconds(10 * 60)
     ) async throws -> StartResult {

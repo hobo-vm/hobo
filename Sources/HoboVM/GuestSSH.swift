@@ -82,6 +82,16 @@ public struct GuestSSH: Sendable {
         if status != 0 { throw VMError.commandFailed(what, status) }
     }
 
+    /// Runs `command` and returns its stdout, trimmed; throws if it fails.
+    public func output(_ command: String, what: String) async throws -> String {
+        let collected = Mutex(Data())
+        let status = try await stream(command) { stream, data in
+            if stream == .stdout { collected.withLock { $0.append(data) } }
+        }
+        if status != 0 { throw VMError.commandFailed(what, status) }
+        return String(decoding: collected.withLock { $0 }, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// Copies a host file or directory into the guest.
     public func upload(_ local: URL, to remote: String) async throws {
         let status = try await launch("/usr/bin/scp", ["-r", "-q"] + options() + [local.path, "\(self.remote):\(remote)"], output: .inherit)
@@ -176,71 +186,62 @@ public struct GuestSSH: Sendable {
         case capture(@Sendable (GuestStream, Data) -> Void)
     }
 
+    /// Runs ssh or scp to completion. Spawned with responsibility disclaimed (`DisclaimedProcess`),
+    /// so connecting to the guest network doesn't need hobo's own Local Network permission.
     private func launch(_ executable: String, _ arguments: [String], output: Output) async throws -> Int32 {
-        let process = Process()
-        process.executableURL = URL(filePath: executable)
-        process.arguments = arguments
-        process.standardInput = FileHandle.nullDevice
-        var pipes: [(GuestStream, Pipe)] = []
-        switch output {
-        case .inherit:
-            break
-        case .discard:
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-        case .capture:
-            let stdout = Pipe(), stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-            pipes = [(.stdout, stdout), (.stderr, stderr)]
-        }
+        var environment: [String: String]?
         var askpass: URL?
         if case .password(let password) = auth {
             let script = FileManager.default.temporaryDirectory.appending(path: "hobo-askpass-\(UUID().uuidString)")
             try "#!/bin/sh\nprintf '%s\\n' \"$HOBO_SSH_PASSWORD\"\n".write(to: script, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
-            var environment = ProcessInfo.processInfo.environment
-            environment["SSH_ASKPASS"] = script.path
-            environment["SSH_ASKPASS_REQUIRE"] = "force"
-            environment["HOBO_SSH_PASSWORD"] = password
-            process.environment = environment
+            var env = ProcessInfo.processInfo.environment
+            env["SSH_ASKPASS"] = script.path
+            env["SSH_ASKPASS_REQUIRE"] = "force"
+            env["HOBO_SSH_PASSWORD"] = password
+            environment = env
             askpass = script
         }
         defer { if let askpass { try? FileManager.default.removeItem(at: askpass) } }
-        // The exit status is reported once the output has been read to its end, so none is lost.
-        let drained = DispatchGroup()
-        // Held until the exit status is in: a Process freed while its child runs never calls its
-        // termination handler, and nothing else here is guaranteed to keep it alive.
-        defer { withExtendedLifetime(process) {} }
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                process.terminationHandler = { process in
-                    drained.notify(queue: .global()) { continuation.resume(returning: process.terminationStatus) }
-                }
-                // Entered before launch: a command that exits at once must still wait for its output.
-                for _ in pipes { drained.enter() }
-                do {
-                    try process.run()
-                } catch {
-                    for _ in pipes { drained.leave() }
-                    continuation.resume(throwing: error)
-                    return
-                }
-                if case .capture(let onOutput) = output {
+
+        var pipes: [(GuestStream, Pipe)] = []
+        let stdout: DisclaimedProcess.Stream, stderr: DisclaimedProcess.Stream
+        switch output {
+        case .inherit:
+            (stdout, stderr) = (.inherit, .inherit)
+        case .discard:
+            (stdout, stderr) = (.null, .null)
+        case .capture:
+            let outPipe = Pipe(), errPipe = Pipe()
+            pipes = [(.stdout, outPipe), (.stderr, errPipe)]
+            stdout = .fileDescriptor(outPipe.fileHandleForWriting.fileDescriptor)
+            stderr = .fileDescriptor(errPipe.fileHandleForWriting.fileDescriptor)
+        }
+        let process = try DisclaimedProcess.spawn(executable, arguments, environment: environment, stdout: stdout, stderr: stderr)
+        // The child has its own copies; ours would keep the pipes from reaching end of file.
+        for (_, pipe) in pipes { try? pipe.fileHandleForWriting.close() }
+
+        return await withTaskCancellationHandler {
+            // The exit status is reported once the output has been read to its end, so none is lost.
+            async let status = process.waitForExit()
+            if case .capture(let onOutput) = output {
+                await withTaskGroup(of: Void.self) { group in
                     for (stream, pipe) in pipes {
-                        // The child has its own copy; ours would keep the pipe from reaching end of file.
-                        try? pipe.fileHandleForWriting.close()
-                        DispatchQueue.global().async {
-                            let handle = pipe.fileHandleForReading
-                            while case let data = handle.availableData, !data.isEmpty { onOutput(stream, data) }
-                            drained.leave()
+                        group.addTask {
+                            await withCheckedContinuation { continuation in
+                                DispatchQueue.global().async {
+                                    let handle = pipe.fileHandleForReading
+                                    while case let data = handle.availableData, !data.isEmpty { onOutput(stream, data) }
+                                    continuation.resume()
+                                }
+                            }
                         }
                     }
                 }
-                if Task.isCancelled { process.terminate() }
             }
+            return await status
         } onCancel: {
-            if process.isRunning { process.terminate() }
+            process.terminate()
         }
     }
 }

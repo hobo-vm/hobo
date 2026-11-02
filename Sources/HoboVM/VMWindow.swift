@@ -21,9 +21,13 @@ final class VMWindow: NSObject, NSWindowDelegate {
     private(set) var isShown = false
     /// A hide waiting for the window to leave full screen, so it doesn't leave an empty Space.
     private var hidesAfterFullScreen = false
+    /// Whether the guest display follows the window in Retina pixels (VZ's automatic resizing) or,
+    /// for a guest that doesn't scale its own UI, in points.
+    private let hiDPI: Bool
 
     init(guest: GuestVM, title: String, log: @escaping (String) -> Void) {
         machine = guest.machine
+        hiDPI = type(of: guest.bundle).hiDPIDisplay
         name = title
         self.log = log
         view.virtualMachine = guest.machine
@@ -37,7 +41,7 @@ final class VMWindow: NSObject, NSWindowDelegate {
         super.init()
         window.title = title
         window.contentView = view
-        window.contentAspectRatio = MacVMBundle.displayPixels
+        window.contentAspectRatio = GuestDisplay.pixels
         window.isReleasedWhenClosed = false
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.delegate = self
@@ -49,8 +53,9 @@ final class VMWindow: NSObject, NSWindowDelegate {
     /// Shows the window in front and tries to take focus. A process launchd started can't always
     /// take focus from the active app (cooperative activation), so the window may need a click.
     func show() {
-        // The guest display follows the window's size while it shows; turning this on resizes it.
-        view.automaticallyReconfiguresDisplay = true
+        // The guest display follows the window's size while it shows: in Retina pixels by VZ (turning
+        // this on resizes it), or in points by `followWindowInPoints`.
+        view.automaticallyReconfiguresDisplay = hiDPI
         hidesAfterFullScreen = false
         // An `.accessory` app never owns the menu bar, so clicking it sent the window behind the
         // active app, and it had no ⌘Tab entry or full-screen Space.
@@ -63,7 +68,25 @@ final class VMWindow: NSObject, NSWindowDelegate {
         window.orderFrontRegardless()
         NSApp.activate()
         isShown = true
+        followWindowInPoints()
     }
+
+    /// Without HiDPI, sizes the guest display to the view in points; VZ's automatic resizing would
+    /// use backing pixels. Not during a live resize, so a drag reconfigures once, at the end.
+    private func followWindowInPoints() {
+        guard !hiDPI, isShown, !window.inLiveResize else { return }
+        let size = view.bounds.size
+        guard size.width >= 1, size.height >= 1 else { return }
+        do {
+            try machine.graphicsDevices.first?.displays.first?.reconfigure(sizeInPixels: size)
+        } catch {
+            log("warning: couldn't resize the display to the window: \(error)")
+        }
+    }
+
+    func windowDidResize(_ notification: Notification) { followWindowInPoints() }
+
+    func windowDidEndLiveResize(_ notification: Notification) { followWindowInPoints() }
 
     /// Hides the window and puts the guest display back to its configured size.
     func hide() {
@@ -77,7 +100,7 @@ final class VMWindow: NSObject, NSWindowDelegate {
         NSApp.setActivationPolicy(.accessory)
         view.automaticallyReconfiguresDisplay = false
         do {
-            try machine.graphicsDevices.first?.displays.first?.reconfigure(sizeInPixels: MacVMBundle.displayPixels)
+            try machine.graphicsDevices.first?.displays.first?.reconfigure(sizeInPixels: GuestDisplay.pixels)
         } catch {
             // The guest keeps the window's size until the next resize or boot; screenshots follow it.
             log("warning: couldn't reset the display to its configured size: \(error)")

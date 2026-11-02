@@ -14,6 +14,83 @@ extension Recipe {
         template(source: image.sourceLines)
     }
 
+    /// The starter `Hobo.toml` written by `hobo init --os linux`, pinned to `image`. With `desktop`
+    /// (the default; `--server` turns it off), its first step installs Ubuntu's desktop.
+    public static func template(pinnedTo image: UbuntuCatalog.Image, desktop: Bool) -> String {
+        let desktopStep = desktop ? """
+            # The desktop, for `hobo view` and GUI testing: Ubuntu's minimal desktop, vagrant logged in at
+            # boot, and no screen blanking or lock. It starts from the next boot.
+            [[provision]]
+            type   = "shell"
+            inline = '''
+            \(desktopScript)'''
+
+
+            """ : ""
+        let desktopHint = desktop ? "" : """
+            # No desktop: this guest boots to a text console. For one, run `hobo init --os linux --force`
+            # (before adding steps here).
+            #
+
+            """
+        return """
+        # Hobo recipe: build a VM from it with `hobo create <name>`.
+        # The guest gets the Vagrant conventions (vagrant/vagrant, passwordless sudo, SSH, no automatic
+        # updates) from cloud-init on its first boot; add your own setup as [[provision]] steps.
+
+        cpus   = 4
+        memory = "4GB"
+        disk   = "32GB"
+
+        [source]
+        # A cloud image's URL or local path, with its SHA-256. Pick another from `hobo images --os linux`
+        # and run `hobo init --os linux <version> --force` (before adding steps here).
+        \(image.sourceLines)
+
+        \(desktopStep)# Steps run once each, in order, over SSH. Paths are relative to this file.
+        #
+        \(desktopHint)# [[provision]]
+        # type       = "shell"
+        # path       = "setup.sh"
+        # privileged = false        # run as vagrant instead of root
+        # env        = { GREETING = "hello" }
+        #
+        # [[provision]]
+        # type        = "file"
+        # source      = "files/bashrc"
+        # destination = "/home/vagrant/.bashrc"
+
+        """
+    }
+
+    /// Installs `ubuntu-desktop-minimal` and sets it up for unattended use: GDM logs vagrant in at
+    /// boot, GNOME's first-login and post-upgrade welcome wizards never run (the second ignores
+    /// `gnome-initial-setup-done`), and the session never blanks or locks, so screenshots and UI
+    /// tests see the desktop.
+    static let desktopScript = """
+        set -eu
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update
+        apt-get install -y -o DPkg::Lock::Timeout=300 ubuntu-desktop-minimal
+        cat > /etc/gdm3/custom.conf <<'EOF'
+        [daemon]
+        AutomaticLoginEnable=true
+        AutomaticLogin=\(Conventions.username)
+        EOF
+        mkdir -p /etc/dconf/profile /etc/dconf/db/local.d
+        printf 'user-db:user\\nsystem-db:local\\n' > /etc/dconf/profile/user
+        cat > /etc/dconf/db/local.d/00-hobo <<'EOF'
+        [org/gnome/desktop/session]
+        idle-delay=uint32 0
+
+        [org/gnome/desktop/screensaver]
+        lock-enabled=false
+        EOF
+        dconf update
+        systemctl --global mask gnome-initial-setup-first-login.service gnome-initial-setup-upgrade-login.service
+
+        """
+
     private static func template(source: String) -> String {
         """
         # Hobo recipe: build a VM from it with `hobo create <name>`.

@@ -15,7 +15,7 @@ public final class VMRunner {
 
     let store: VMStore
     let name: String
-    /// Whether to show the window as soon as the VM boots (`start --gui`).
+    /// Whether to show the window once the guest is ready (`start --gui`).
     let gui: Bool
     /// `start --share`: shares for this run only, on top of `config.json`'s.
     let runShares: [VMShare]
@@ -58,7 +58,7 @@ public final class VMRunner {
         // Every VM runs under launchd (always PID 1), whose job table is how clients see it.
         guard getppid() == 1 else { throw RunnerError.notUnderLaunchd(vm.name) }
         let config = try VMConfig.load(from: vm.bundle.appending(path: VMStore.configFile))
-        guard config.engine == .vz, config.os == .macOS else { throw RunnerError.unsupported(config.engine, config.os) }
+        guard config.engine == .vz, config.os != .windows else { throw RunnerError.unsupported(config.engine, config.os) }
         guard let mac = VZMACAddress(string: config.macAddress) else { throw RunnerError.badMACAddress(config.macAddress) }
 
         server = try ControlServer(path: job.socket) { [weak self] request, reply in
@@ -69,7 +69,8 @@ public final class VMRunner {
         // name would otherwise trap building the share's directory map.
         try VMShare.checkNames(shares)
         let guest = try GuestVM(
-            bundle: MacVMBundle(directory: vm.bundle), cpus: config.cpus, memoryBytes: config.memory, macAddress: mac, shares: shares
+            bundle: try vmBundle(at: vm.bundle, os: config.os), cpus: config.cpus, memoryBytes: config.memory,
+            macAddress: mac, shares: shares
         )
         guest.onStop = { [weak self] error in
             if let error { self?.log("error: the VM stopped: \(error)") } else { self?.log("The guest shut down") }
@@ -78,8 +79,12 @@ public final class VMRunner {
         self.guest = guest
         log("Booting \(vm.name)")
         try await guest.start()
-        if gui { showWindow(guest) }
-        Task { await waitUntilReachable(guest) }
+        Task {
+            await waitUntilReachable(guest)
+            // Only once the guest answers SSH: its login prompt or login window shows well before
+            // it is usable. After a timeout it shows anyway, so a stuck boot can be looked at.
+            if gui, status.state != .stopping { showWindow(guest) }
+        }
     }
 
     private func waitUntilReachable(_ guest: GuestVM) async {

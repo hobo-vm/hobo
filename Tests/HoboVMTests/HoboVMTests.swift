@@ -184,6 +184,71 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try FileManager.default.contentsOfDirectory(atPath: vms.path).isEmpty)
     }
 
+    /// Creates an Ubuntu VM from the recipe `init --os linux` pins (the newest LTS) and runs it
+    /// through start, the guest channel, the window and stop, then deletes it. The recipe's step
+    /// asserts the conventions cloud-init applied, from inside the guest.
+    @Test(.timeLimit(.minutes(30)))
+    func linuxLifecycle() throws {
+        let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
+        let work = FileManager.default.temporaryDirectory.appending(path: "hobo-linux-\(UUID().uuidString)")
+        let vms = work.appending(path: "vms")
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: work) }
+        let env = ["HOBO_VMS": vms.path]
+
+        // --server: installing the desktop takes many minutes.
+        #expect(try run(hobo, ["init", "--os", "linux", "--server"], in: work) == 0)
+        let recipe = work.appending(path: "Hobo.toml")
+        let pinned = try String(contentsOf: recipe, encoding: .utf8)
+        try (pinned + """
+
+        [[provision]]
+        type = "shell"
+        privileged = false
+        inline = '''
+        set -eu
+        sudo -n true
+        grep -q 'vagrant insecure public key' ~/.ssh/authorized_keys
+        test "$(hostname)" = litest
+        '''
+        """).write(to: recipe, atomically: true, encoding: .utf8)
+        #expect(try output(hobo, ["validate", recipe.path], environment: env).contains("Linux"))
+
+        try #require(try run(hobo, ["create", "litest", recipe.path], in: work, environment: env) == 0)
+        let bundle = vms.appending(path: "litest.hobovm")
+        let config = try VMConfig.load(from: bundle.appending(path: "config.json"))
+        #expect(config.engine == .vz && config.os == .linux)
+        #expect(config.guestOSVersion.hasPrefix("Ubuntu "))
+        #expect(config.disk == 32 << 30 && config.memory == 4 << 30)
+        #expect(!FileManager.default.fileExists(atPath: bundle.appending(path: "cidata.iso").path), "the seed is only for create")
+        #expect(try output(hobo, ["list"], environment: env).contains(/litest\s+stopped\s+Ubuntu\s/))
+
+        defer { _ = try? run(hobo, ["stop", "--force", "litest"], in: work, environment: env) }
+        let started = try output(hobo, ["start", "litest"], environment: env)
+        #expect(started.contains(/litest is running \(\d+\.\d+\.\d+\.\d+\)/), "\(started)")
+        let ip = try output(hobo, ["ip", "litest"], environment: env).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(started.contains("(\(ip))"))
+        #expect(try output(hobo, ["exec", "litest", "--", "uname", "-m"], environment: env) == "aarch64\n")
+        #expect(try output(hobo, ["ssh", "litest", "--", "whoami"], environment: env) == "vagrant\n")
+        // Cloud-init ran once, at create, and stays off.
+        #expect(try run(hobo, ["exec", "litest", "--", "test", "-e", "/etc/cloud/cloud-init.disabled"], in: work, environment: env) == 0)
+        // The root filesystem grew to the recipe's disk.
+        let rootBytes = try output(hobo, ["exec", "litest", "--", "df", "--output=size", "-B1", "/"], environment: env)
+        let rootSize = rootBytes.split(separator: "\n").last.flatMap { UInt64($0.trimmingCharacters(in: .whitespaces)) }
+        #expect((rootSize ?? 0) > 28 << 30, "\(rootBytes)")
+        let payload = work.appending(path: "payload.txt")
+        try "over and back\n".write(to: payload, atomically: true, encoding: .utf8)
+        #expect(try run(hobo, ["cp", payload.path, "litest:/var/tmp/payload.txt"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["cp", "litest:/var/tmp/payload.txt", "back.txt"], in: work, environment: env) == 0)
+        #expect(try String(contentsOf: work.appending(path: "back.txt"), encoding: .utf8) == "over and back\n")
+        #expect(try run(hobo, ["view", "litest"], in: work, environment: env) == 0)
+        #expect(try String(contentsOf: bundle.appending(path: "console.log"), encoding: .utf8).contains("litest login:"))
+
+        #expect(try output(hobo, ["stop", "litest"], environment: env).contains("Stopped litest"))
+        #expect(try run(hobo, ["delete", "litest", "--yes"], in: work, environment: env) == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: vms.path).isEmpty)
+    }
+
     private func run(_ executable: String, _ arguments: [String], in directory: URL, environment extra: [String: String] = [:]) throws -> Int32 {
         let process = Process()
         process.executableURL = URL(filePath: executable)

@@ -3,10 +3,12 @@ import HoboCore
 import Synchronization
 import Virtualization
 
-/// Creates a named macOS VM from a recipe, built in place in its bundle: IPSW → unattended install
-/// → Vagrant conventions → `[security]` (SIP off by hand in recoveryOS) → `[gui_testing]` grants →
-/// recipe steps → cleanup → clean shutdown. Every create is a full install. A failed or
-/// interrupted (^C) create deletes the bundle.
+/// Creates a named VM from a recipe, built in place in its bundle. Every create is a full install.
+/// A failed or interrupted (^C) create deletes the bundle.
+/// - macOS: IPSW → unattended install → Vagrant conventions → `[security]` (SIP off by hand in
+///   recoveryOS) → `[gui_testing]` grants → recipe steps → cleanup → clean shutdown.
+/// - Linux: cloud image → ASIF disk → a boot with a cloud-init seed that applies the Vagrant
+///   conventions → recipe steps → cleanup → clean shutdown.
 @MainActor
 public struct VMCreator {
     public struct Options: Sendable {
@@ -76,6 +78,50 @@ public struct VMCreator {
     }
 
     private func build(_ recipe: Recipe, recipeSHA256: String, in directory: URL) async throws -> VMConfig {
+        switch recipe.os {
+        case .macOS: try await buildMac(recipe, recipeSHA256: recipeSHA256, in: directory)
+        case .linux: try await buildLinux(recipe, recipeSHA256: recipeSHA256, in: directory)
+        case .windows: throw VMError.unsupportedOS(recipe.os)
+        }
+    }
+
+    private func buildLinux(_ recipe: Recipe, recipeSHA256: String, in directory: URL) async throws -> VMConfig {
+        let (image, sourceSHA256) = try await resolveSource(recipe.source)
+        let machine = Machine(cpus: recipe.cpus, memory: recipe.memory.bytes, macAddress: .randomLocallyAdministered())
+        var bundle = try LinuxVMBundle.create(at: directory, image: image, diskBytes: recipe.disk.bytes, log: log)
+        let seed = try bundle.writeSeed(vmName: options.name, macAddress: machine.macAddress)
+        defer { try? FileManager.default.removeItem(at: seed) }
+        bundle.seed = seed
+
+        let version: String
+        do {
+            version = try await withVM(bundle, machine: machine) { vm, ssh in
+                log("Waiting for cloud-init to apply the Vagrant conventions")
+                try await ssh.check(CloudInit.waitCommand, what: "cloud-init")
+                let version = try await ssh.output(#". /etc/os-release && echo "$NAME $VERSION_ID""#, what: "reading /etc/os-release")
+                try await provisionAndShutDown(vm, ssh: ssh, recipe: recipe, cleanupScript: CloudInit.cleanupScript)
+                return version
+            }
+        } catch {
+            // The bundle, console.log included, is about to be deleted.
+            logConsoleTail(bundle.consoleLog)
+            throw error
+        }
+        log("Disk uses \(ByteCountFormatter.string(fromByteCount: Int64(bundle.allocatedDiskBytes()), countStyle: .file))")
+        return VMConfig(
+            engine: .vz, os: .linux, cpus: machine.cpus, memory: machine.memory, disk: recipe.disk.bytes,
+            macAddress: machine.macAddress.string, guestOSVersion: version,
+            created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256
+        )
+    }
+
+    private func logConsoleTail(_ consoleLog: URL, lines: Int = 30) {
+        guard let text = try? String(contentsOf: consoleLog, encoding: .utf8), !text.isEmpty else { return }
+        let tail = text.split(separator: "\n", omittingEmptySubsequences: false).suffix(lines).joined(separator: "\n")
+        log("Last lines of the guest's console:\n\(tail)")
+    }
+
+    private func buildMac(_ recipe: Recipe, recipeSHA256: String, in directory: URL) async throws -> VMConfig {
         let (ipsw, sourceSHA256) = try await resolveSource(recipe.source)
         let image = try await VZMacOSRestoreImage.image(from: ipsw)
         guard let requirements = image.mostFeaturefulSupportedConfiguration, requirements.hardwareModel.isSupported else {
@@ -107,11 +153,7 @@ public struct VMCreator {
                 log("Checking GUI testing permissions")
                 try await ssh.check(GUITestingGrants.checkCommand, what: "GUI testing permission check")
             }
-            try await Provisioning.run(recipe, ssh: ssh, log: log)
-            log("Cleaning up")
-            try await ssh.upload(contents: Conventions.cleanupScript, to: "/tmp/hobo-cleanup.sh")
-            try await ssh.check("sudo -n /bin/bash /tmp/hobo-cleanup.sh", what: "cleanup")
-            try await shutDown(vm, ssh: ssh)
+            try await provisionAndShutDown(vm, ssh: ssh, recipe: recipe, cleanupScript: Conventions.cleanupScript)
             return security
         }
         log("Disk uses \(ByteCountFormatter.string(fromByteCount: Int64(bundle.allocatedDiskBytes()), countStyle: .file))")
@@ -122,6 +164,15 @@ public struct VMCreator {
             created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256,
             sip: security.sip, amfi: security.amfi
         )
+    }
+
+    /// The end of every create: the recipe's steps, cleanup, and a clean shutdown.
+    private func provisionAndShutDown(_ vm: GuestVM, ssh: GuestSSH, recipe: Recipe, cleanupScript: String) async throws {
+        try await Provisioning.run(recipe, ssh: ssh, log: log)
+        log("Cleaning up")
+        try await ssh.upload(contents: cleanupScript, to: "/tmp/hobo-cleanup.sh")
+        try await ssh.check("sudo -n /bin/bash /tmp/hobo-cleanup.sh", what: "cleanup")
+        try await shutDown(vm, ssh: ssh)
     }
 
     /// The hardware every boot of the VM uses: the recipe's values raised to the IPSW's minimums,
@@ -197,7 +248,7 @@ public struct VMCreator {
         while true {
             let vm = try GuestVM(bundle: bundle, machine: machine)
             log("Booting into recoveryOS to turn SIP off")
-            try await vm.start(recovery: true)
+            try await vm.start(provisioning: nil, recovery: true)
             if await SIPRecoveryStep.run(vm, name: options.name, notice: notice, log: log) == .cancelled {
                 try await vm.forceStop()
                 throw VMError.cancelled
@@ -232,7 +283,7 @@ public struct VMCreator {
     }
 
     /// Boots the bundle, logs in with its key, runs `body`, and expects it to shut the VM down.
-    private func withVM<T>(_ bundle: MacVMBundle, machine: Machine, _ body: (GuestVM, GuestSSH) async throws -> T) async throws -> T {
+    private func withVM<T>(_ bundle: any VMBundle, machine: Machine, _ body: (GuestVM, GuestSSH) async throws -> T) async throws -> T {
         let auth = try GuestSSH.Auth.forVM(bundle: bundle.directory, home: home)
         let vm = try GuestVM(bundle: bundle, machine: machine)
         log("Booting")
@@ -272,7 +323,7 @@ public struct VMCreator {
 }
 
 extension GuestVM {
-    fileprivate convenience init(bundle: MacVMBundle, machine: VMCreator.Machine) throws {
+    fileprivate convenience init(bundle: any VMBundle, machine: VMCreator.Machine) throws {
         try self.init(bundle: bundle, cpus: machine.cpus, memoryBytes: machine.memory, macAddress: machine.macAddress)
     }
 }
