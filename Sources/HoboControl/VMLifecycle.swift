@@ -23,7 +23,7 @@ public struct VMLifecycle: Sendable {
     }
 
     /// Boots `name` under launchd and waits until the guest answers SSH. A timeout leaves it booting.
-    /// With `gui`, the VM's window opens at boot, or at once if it is already running.
+    /// With `gui`, the VM's window opens once the guest answers SSH, or at once if it is already running.
     public func start(_ name: String, gui: Bool = false, timeout: Duration = .seconds(10 * 60)) async throws -> StartResult {
         let vm = try store.find(name)
         let job = store.job(for: vm.name)

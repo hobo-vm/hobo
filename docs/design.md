@@ -240,11 +240,13 @@ global VMs on 2026-11-01.
     one network shared by per-VM processes, and creating one needs an entitlement.
 17. **Display and UI testing.** VMs are headless by default; a headless VM process is an `NSApplication`
     with `.accessory` activation policy, so it never takes focus on its own. `hobo view` opens a window on
-    demand; `start --gui` opens one at boot. No VNC. Decided 2026-11-01:
+    demand; `start --gui` opens one once the guest is ready. No VNC. Decided 2026-11-01:
     - `view` is a control-socket request (no protocol bump: an older VM process just refuses it). It
       errors on a stopped VM rather than booting it, and works while the VM is booting. `start --gui`
-      passes `--gui` to `_vm-run`, which opens the window once the VM starts; on a running VM it
-      sends `view`. `status` reports whether the window is showing.
+      passes `--gui` to `_vm-run`, which opens the window once the guest answers SSH (decided
+      2026-11-02: a login prompt or login window shows well before then, so an earlier window
+      looked ready when it wasn't), or after the SSH wait times out, so a stuck boot can be looked
+      at; on a running VM it sends `view`. `status` reports whether the window is showing.
     - Showing the window brings it to the front and asks for focus, since a human asked for it;
       cooperative activation may still leave focus with the terminal. It captures system keys
       (⌘Tab, ⌘Space go to the guest). While the window shows, the process switches to `.regular`

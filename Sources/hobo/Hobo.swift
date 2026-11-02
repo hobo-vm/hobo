@@ -342,7 +342,7 @@ struct Start: OutputCommand {
     @Argument(help: "Name of the VM.")
     var name: String
 
-    @Flag(help: "Open the VM's window at boot (or now, if it is already running).")
+    @Flag(help: "Open the VM's window once the guest is ready (or now, if it is already running).")
     var gui = false
 
     @Flag(help: "Print progress and the VM's status (state, PID, IP address) as JSON Lines events.")

@@ -15,7 +15,7 @@ public final class VMRunner {
 
     let store: VMStore
     let name: String
-    /// Whether to show the window as soon as the VM boots (`start --gui`).
+    /// Whether to show the window once the guest is ready (`start --gui`).
     let gui: Bool
     let log: @Sendable (String) -> Void
 
@@ -66,8 +66,12 @@ public final class VMRunner {
         self.guest = guest
         log("Booting \(vm.name)")
         try await guest.start()
-        if gui { showWindow(guest) }
-        Task { await waitUntilReachable(guest) }
+        Task {
+            await waitUntilReachable(guest)
+            // Only once the guest answers SSH: its login prompt or login window shows well before
+            // it is usable. After a timeout it shows anyway, so a stuck boot can be looked at.
+            if gui, status.state != .stopping { showWindow(guest) }
+        }
     }
 
     private func waitUntilReachable(_ guest: GuestVM) async {
