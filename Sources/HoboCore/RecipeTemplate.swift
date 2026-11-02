@@ -27,6 +27,25 @@ extension Recipe {
         [source]
         \(source)
 
+        # After installing macOS, create applies [security], then [gui_testing], then the [[provision]]
+        # steps, wherever they are in this file.
+        #
+        # Turn off System Integrity Protection, and AMFI so ad-hoc signed binaries may use restricted
+        # entitlements (turning AMFI off needs SIP off too). SIP only turns off by hand: create
+        # stops after installing macOS and opens the VM in recoveryOS for you to type one command.
+        #
+        # [security]
+        # sip  = false
+        # amfi = false
+        #
+        # Let SSH sessions (exec, screenshot, agents) drive the guest UI: grants Accessibility,
+        # Screen Recording and System Events automation to sshd, osascript, screencapture and
+        # Terminal, plus any absolute paths or bundle IDs in allow. Works with SIP on.
+        #
+        # [gui_testing]
+        # enabled = true
+        # allow   = ["com.example.AppUITests.xctrunner"]
+        #
         # Steps run once each, in order, over SSH. Paths are relative to this file.
         #
         # [[provision]]
@@ -43,22 +62,6 @@ extension Recipe {
         # type        = "file"
         # source      = "files/zshrc"
         # destination = "/Users/vagrant/.zshrc"
-        #
-        # Let SSH sessions (exec, screenshot, agents) drive the guest UI: grants Accessibility,
-        # Screen Recording and System Events automation to sshd, osascript, screencapture and
-        # Terminal, plus any absolute paths or bundle IDs in allow. SIP stays on.
-        #
-        # [gui_testing]
-        # enabled = true
-        # allow   = ["com.example.AppUITests.xctrunner"]
-        #
-        # Turn off System Integrity Protection, and AMFI so ad-hoc signed binaries may use restricted
-        # entitlements (turning AMFI off needs SIP off too). SIP only turns off by hand: create
-        # stops after installing macOS and opens the VM in recoveryOS for you to type one command.
-        #
-        # [security]
-        # sip  = false
-        # amfi = false
 
         """
     }
