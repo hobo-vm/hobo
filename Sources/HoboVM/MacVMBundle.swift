@@ -100,6 +100,8 @@ public enum VMError: Error, CustomStringConvertible {
     case commandFailed(String, Int32)
     case timedOut(String)
     case stoppedWithError
+    case unexpectedAttachOutput(String)
+    case noDataVolume(String)
 
     public var description: String {
         switch self {
@@ -110,18 +112,33 @@ public enum VMError: Error, CustomStringConvertible {
         case .commandFailed(let command, let status): "\(command) exited with status \(status)"
         case .timedOut(let what): "timed out \(what)"
         case .stoppedWithError: "the VM stopped with an error"
+        case .unexpectedAttachOutput(let disk): "could not read diskutil's output for attaching \(disk)"
+        case .noDataVolume(let disk): "\(disk) has no single APFS Data volume"
         }
     }
 }
 
 /// Runs a host tool to completion, inheriting stdout/stderr.
 func run(_ executable: String, _ arguments: [String]) throws {
+    _ = try runProcess(executable, arguments, capture: false)
+}
+
+/// Runs a host tool to completion and returns its stdout; stderr is inherited.
+func output(_ executable: String, _ arguments: [String]) throws -> Data {
+    try runProcess(executable, arguments, capture: true)
+}
+
+private func runProcess(_ executable: String, _ arguments: [String], capture: Bool) throws -> Data {
     let process = Process()
     process.executableURL = URL(filePath: executable)
     process.arguments = arguments
+    let pipe = Pipe()
+    if capture { process.standardOutput = pipe }
     try process.run()
+    let data = capture ? pipe.fileHandleForReading.readDataToEndOfFile() : Data()
     process.waitUntilExit()
     guard process.terminationStatus == 0 else {
         throw VMError.commandFailed(([executable] + arguments).joined(separator: " "), process.terminationStatus)
     }
+    return data
 }

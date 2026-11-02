@@ -43,6 +43,14 @@ extension Recipe {
         # type        = "file"
         # source      = "files/zshrc"
         # destination = "/Users/vagrant/.zshrc"
+        #
+        # Let SSH sessions (exec, screenshot, agents) drive the guest UI: grants Accessibility,
+        # Screen Recording and System Events automation to sshd, osascript, screencapture and
+        # Terminal, plus any absolute paths or bundle IDs in allow. SIP stays on.
+        #
+        # [gui_testing]
+        # enabled = true
+        # allow   = ["com.example.AppUITests.xctrunner"]
 
         """
     }

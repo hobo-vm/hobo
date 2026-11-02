@@ -111,7 +111,7 @@ global VMs on 2026-11-01.
    end, so the free space directly follows the main container. Then in the guest, `sudo diskutil apfs
    resizeContainer disk0s2 0` grows the container live, without a reboot. Recovery is kept: its
    container is intact, the guest still boots normally, and booting with
-   `startUpFromMacOSRecovery` reaches the recoveryOS startup options, which `[gui_testing]` needs.
+   `startUpFromMacOSRecovery` reaches the recoveryOS startup options.
    `hobo set` updates `config.json`'s `disk` along with the image.
 
 ### VM lifecycle
@@ -130,7 +130,8 @@ global VMs on 2026-11-01.
     3. conventions, over password SSH: passwordless sudo, Vagrant's insecure keys (ed25519 + RSA) in
        `authorized_keys`, no sleep/screensaver, no automatic updates. The insecure key stays: a
        per-VM key is deferred (decided 2026-11-01, see `TODO.md`);
-    4. `[gui_testing]` if enabled (decision 17);
+    4. `[gui_testing]` if enabled (decision 17): TCC grants written from the host into the stopped
+       guest's Data volume, then checked over SSH on the next boot;
     5. recipe `[[provision]]` steps (shell inline/path with `privileged` and `env`, and file), run
        once each over key SSH;
     6. clean guest shutdown. The disk is ASIF, which returns blocks to the host when the guest's APFS
@@ -238,9 +239,36 @@ global VMs on 2026-11-01.
       someone is watching. `[gui_testing]` may turn resizing off if that matters.
     Agents drive the UI **inside the guest**:
     - SSH sessions run outside the GUI session and TCC blocks them from Accessibility and Screen
-      Recording, so recipe `[gui_testing]` boots to recovery to disable SIP and pre-grants those
-      services in TCC.db for `osascript`, `screencapture`, `sshd-keygen-wrapper`, the XCUITest runner
-      and a configurable list. VMs built with it have SIP off; it is opt-in per recipe.
+      Recording, so recipe `[gui_testing]` (opt-in) pre-grants them. **SIP stays on** (decided
+      2026-11-01, replacing "boot to recovery and disable SIP", which needed keystroke scripting of
+      recoveryOS): with the VM stopped after the conventions boot, create attaches the ASIF, mounts
+      the guest's Data volume (unencrypted, and a regular user's mount ignores ownership, so no root;
+      the host's SIP doesn't cover a foreign volume) and writes the rows itself. Inside the guest
+      neither database is writable, even by root with Full Disk Access. Verified on a macOS 27.2
+      guest (2026-11-01):
+      - TCC attributes everything run over SSH to `/usr/libexec/sshd-keygen-wrapper`, so its rows are
+        what count (also through `sudo launchctl asuser`); the defaults also grant `osascript`,
+        `screencapture` and Terminal. `[gui_testing] allow = [...]` adds clients: an absolute path
+        or a bundle ID (e.g. an `.xctrunner`).
+      - Each client gets Accessibility and Screen Recording (`kTCCServiceAccessibility`,
+        `kTCCServiceScreenCapture`) in the system TCC.db, and Automation of System Events
+        (`kTCCServiceAppleEvents`), which UI scripting needs, in the user's TCC.db. A row in the system
+        database doesn't satisfy Automation. On macOS 27 the user's database moved into tccd's
+        container in `/private/var/containers/Data/ProtectedSystem`, found by its metadata. tccd
+        creates it during the first auto-login, which finishes well after SSH answers, so with
+        `[gui_testing]` the conventions boot waits (up to 5 min) until the user's tccd has it open
+        before shutting down.
+      - Apple clients get their designated requirement as `csreq` (`identifier "…" and anchor
+        apple`, compiled on the host to the same blob tccd writes). Recipe clients get a NULL `csreq`,
+        which tccd honours, so they need not exist yet when the grants are written (provision steps
+        run after).
+      - MDM was ruled out: `VZMacGuestProvisioningOptions` has no enrollment option, and a PPPC profile
+        can't grant Screen Recording anyway.
+      - Create then checks over SSH, before the provision steps, that Accessibility
+        (`AXIsProcessTrusted`), Screen Recording (`CGPreflightScreenCaptureAccess`; `screencapture`
+        succeeds without the grant, leaving windows out) and System Events scripting work, and
+        fails otherwise. Whether macOS's periodic Screen Recording re-approval affects long-lived VMs
+        is unknown.
     - `exec --gui` runs the command in the `vagrant` user's Aqua session (`launchctl asuser`).
     - `screenshot` runs `screencapture` that way and returns the PNG.
     - A host-side framebuffer screenshot for wedged guests is deferred.

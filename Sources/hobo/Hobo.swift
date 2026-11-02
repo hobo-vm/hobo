@@ -143,7 +143,7 @@ struct Validate: OutputCommand {
         let warning = recipe.source.isPinned ? "" : "warning: source is unpinned (ipsw = \"latest\")\n"
         return Reply(
             RecipeSummary(recipe, path: path),
-            text: "\(warning)\(path): \(recipe.cpus) CPUs, \(recipe.memory) memory, \(recipe.disk) disk, \(recipe.provisioners.count) provision step(s)"
+            text: "\(warning)\(path): \(recipe.cpus) CPUs, \(recipe.memory) memory, \(recipe.disk) disk, \(recipe.provisioners.count) provision step(s)\(recipe.guiTesting == nil ? "" : ", GUI testing")"
         )
     }
 }

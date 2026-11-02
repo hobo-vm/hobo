@@ -76,6 +76,7 @@ public struct RecipeSummary: Codable, Equatable, Sendable {
     public var source: String
     public var pinned: Bool
     public var provisionSteps: Int
+    public var guiTesting: Bool
 
     public init(_ recipe: Recipe, path: String) {
         self.path = path
@@ -89,5 +90,6 @@ public struct RecipeSummary: Codable, Equatable, Sendable {
         }
         pinned = recipe.source.isPinned
         provisionSteps = recipe.provisioners.count
+        guiTesting = recipe.guiTesting != nil
     }
 }

@@ -75,9 +75,24 @@ import Testing
         }
     }
 
-    @Test func guiTestingIsRejectedForNow() {
-        #expect(throws: RecipeError.guiTestingNotImplemented) {
-            try Recipe.parse(minimal(source: #"ipsw = "latest""#) + "\n[gui_testing]\nenabled = true", directory: directory)
+    @Test func guiTestingIsOptInWithExtraClients() throws {
+        let latest = minimal(source: #"ipsw = "latest""#)
+        #expect(try Recipe.parse(latest, directory: directory).guiTesting == nil)
+        #expect(try Recipe.parse(latest + "\n[gui_testing]\nallow = [\"com.x\"]", directory: directory).guiTesting == nil)
+        let enabled = try Recipe.parse(latest + "\n[gui_testing]\nenabled = true", directory: directory)
+        #expect(enabled.guiTesting == Recipe.GUITesting(allow: []))
+        #expect(RecipeSummary(enabled, path: "x").guiTesting)
+        let allowed = try Recipe.parse(
+            latest + "\n[gui_testing]\nenabled = true\nallow = [\"com.example.AppUITests.xctrunner\", \"/usr/local/bin/tool\"]",
+            directory: directory
+        )
+        #expect(allowed.guiTesting?.allow == ["com.example.AppUITests.xctrunner", "/usr/local/bin/tool"])
+    }
+
+    @Test(arguments: ["", "bin/tool", "com.example app"])
+    func guiTestingClientsAreAbsolutePathsOrBundleIDs(_ client: String) {
+        #expect(throws: RecipeError.invalidGUITestingClient(client)) {
+            try Recipe.parse(minimal(source: #"ipsw = "latest""#) + "\n[gui_testing]\nenabled = true\nallow = [\"\(client)\"]", directory: directory)
         }
     }
 
@@ -138,9 +153,10 @@ import Testing
         #expect(recipe.provisioners.isEmpty)
     }
 
-    /// The template's commented-out steps are well formed once uncommented.
+    /// The template's commented-out steps and `[gui_testing]` are well formed once uncommented.
     @Test func initTemplateExampleStepsParse() throws {
         let uncommented = Recipe.template.replacingOccurrences(of: "# [[provision]]", with: "[[provision]]")
+            .replacingOccurrences(of: "# [gui_testing]", with: "[gui_testing]")
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { line in
                 line.hasPrefix("# ") && line.contains("=") && !line.contains("ipsw") ? line.dropFirst(2) : line
@@ -149,6 +165,7 @@ import Testing
         let recipe = try Recipe.parse(uncommented, directory: directory)
         #expect(recipe.provisioners.map(\.type) == [.shell, .shell, .file])
         #expect(recipe.provisioners[1].privileged == false)
+        #expect(recipe.guiTesting?.allow == ["com.example.AppUITests.xctrunner"])
     }
 
     private func minimal(source: String) -> String {

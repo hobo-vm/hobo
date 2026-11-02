@@ -25,7 +25,8 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
 
     /// Creates a VM from the latest IPSW, runs it through start and stop under launchd, then
     /// renames and deletes it. The recipe's step asserts the Vagrant conventions from inside the
-    /// guest, so a VM that builds has them. VMs go to a temp `HOBO_VMS`, whose store hash keeps
+    /// guest, so a VM that builds has them. It enables `[gui_testing]`, whose grants create checks
+    /// and the test checks again on a later boot. VMs go to a temp `HOBO_VMS`, whose store hash keeps
     /// their launchd jobs apart from real ones; the IPSW goes through the real image index, so it
     /// downloads only once.
     @Test(.timeLimit(.minutes(150)))
@@ -53,6 +54,9 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         grep -q 'vagrant insecure public key' ~/.ssh/authorized_keys
         test "$(pmset -g | awk '$1 == "sleep" { print $2 }')" = 0
         '''
+
+        [gui_testing]
+        enabled = true
         """.write(to: recipe, atomically: true, encoding: .utf8)
 
         try #require(try run(hobo, ["create", "itest", recipe.path], in: work, environment: env) == 0)
@@ -76,6 +80,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(started.contains("(\(ip))"))
         #expect(try output(hobo, ["exec", "itest", "--", "sw_vers", "-productVersion"], environment: env).hasPrefix("27."))
         #expect(try run(hobo, ["exec", "itest", "--", "sh", "-c", "exit 7"], in: work, environment: env) == 7)
+        #expect(try run(hobo, ["exec", "itest", "--", "zsh", "-c", GUITestingGrants.checkCommand], in: work, environment: env) == 0)
         #expect(try output(hobo, ["ssh", "itest", "--", "whoami"], environment: env) == "vagrant\n")
         let payload = work.appending(path: "payload.txt")
         try "over and back\n".write(to: payload, atomically: true, encoding: .utf8)

@@ -4,8 +4,8 @@ import Synchronization
 import Virtualization
 
 /// Creates a named macOS VM from a recipe, built in place in its bundle: IPSW → unattended install
-/// → Vagrant conventions → recipe steps → cleanup → clean shutdown. Every create is a full install.
-/// A failed or interrupted (^C) create deletes the bundle.
+/// → Vagrant conventions → `[gui_testing]` grants → recipe steps → cleanup → clean shutdown. Every
+/// create is a full install. A failed or interrupted (^C) create deletes the bundle.
 @MainActor
 public struct VMCreator {
     public struct Options: Sendable {
@@ -83,9 +83,20 @@ public struct VMCreator {
         let os = image.operatingSystemVersion
 
         let bundle = try MacVMBundle.create(at: directory, hardwareModel: requirements.hardwareModel, diskBytes: recipe.disk.bytes)
-        try await installAndApplyConventions(bundle, ipsw: ipsw, machine: machine)
+        try await installAndApplyConventions(bundle, ipsw: ipsw, machine: machine, guiTesting: recipe.guiTesting != nil)
+        if let guiTesting = recipe.guiTesting {
+            // The conventions boot ended in a shutdown, so the disk is free to mount.
+            log("Granting GUI testing permissions (Accessibility, Screen Recording, Automation)")
+            try GuestDataVolume.withMounted(bundle.disk) { volume in
+                try GUITestingGrants.apply(GUITestingGrants.clients(allow: guiTesting.allow), dataVolume: volume)
+            }
+        }
 
         try await withVM(bundle, machine: machine) { vm, ssh in
+            if recipe.guiTesting != nil {
+                log("Checking GUI testing permissions")
+                try await ssh.check(GUITestingGrants.checkCommand, what: "GUI testing permission check")
+            }
             for (index, step) in recipe.provisioners.enumerated() {
                 log("Provision step \(index + 1)/\(recipe.provisioners.count) (\(step.type.rawValue))")
                 try await provision(step, index: index, recipe: recipe, ssh: ssh)
@@ -130,7 +141,9 @@ public struct VMCreator {
         }
     }
 
-    private func installAndApplyConventions(_ bundle: MacVMBundle, ipsw: URL, machine: Machine) async throws {
+    /// With `guiTesting`, the boot also waits for the user's TCC database before shutting down, so
+    /// the grants written next have somewhere to go.
+    private func installAndApplyConventions(_ bundle: MacVMBundle, ipsw: URL, machine: Machine, guiTesting: Bool) async throws {
         let installer = try GuestVM(bundle: bundle, machine: machine)
         log("Installing macOS (this takes a while)")
         let progress = ProgressLine(log: log)
@@ -159,6 +172,11 @@ public struct VMCreator {
             log("Applying Vagrant conventions")
             try await ssh.upload(contents: Conventions.script, to: "/tmp/hobo-conventions.sh")
             try await ssh.check("\(passwordSudo) /bin/bash /tmp/hobo-conventions.sh && rm /tmp/hobo-conventions.sh", what: "conventions")
+            if guiTesting {
+                log("Waiting for the login session")
+                try await ssh.upload(contents: GUITestingGrants.waitForUserDatabaseCommand, to: "/tmp/hobo-wait-login.sh")
+                try await ssh.check("sudo -n /bin/bash /tmp/hobo-wait-login.sh && rm /tmp/hobo-wait-login.sh", what: "waiting for the login session")
+            }
             try await shutDown(vm, ssh: ssh, sudo: passwordSudo)
         } catch {
             try await holdForDebugging(vm, auth: auth, error: error)

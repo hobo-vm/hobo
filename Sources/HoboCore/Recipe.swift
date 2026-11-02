@@ -15,6 +15,8 @@ public struct Recipe: Equatable, Sendable {
     public var disk: ByteSize
     public var source: Source
     public var provisioners: [Provisioner]
+    /// `[gui_testing]` when enabled: TCC pre-grants so agents can drive the guest UI over SSH.
+    public var guiTesting: GUITesting?
     /// The recipe's directory; relative `path`/`source` values resolve against it.
     public var directory: URL
 
@@ -27,16 +29,20 @@ public struct Recipe: Equatable, Sendable {
         public var isPinned: Bool { self != .latest }
     }
 
+    public struct GUITesting: Equatable, Sendable {
+        /// Clients granted on top of `GUITestingGrants.defaultClients`: absolute paths or bundle IDs.
+        public var allow: [String]
+    }
+
     public static func parse(_ toml: String, directory: URL) throws -> Recipe {
         let raw = try TOMLDecoder().decode(RawRecipe.self, from: toml)
-        if raw.guiTesting?.enabled == true { throw RecipeError.guiTestingNotImplemented }
-
         let recipe = Recipe(
             cpus: raw.cpus ?? defaultCPUs,
             memory: raw.memory ?? defaultMemory,
             disk: raw.disk ?? defaultDisk,
             source: try source(from: raw.source, directory: directory),
             provisioners: raw.provision ?? [],
+            guiTesting: raw.guiTesting?.enabled == true ? GUITesting(allow: raw.guiTesting?.allow ?? []) : nil,
             directory: directory
         )
         // Caught here rather than by diskutil or VZ after the IPSW download.
@@ -45,6 +51,11 @@ public struct Recipe: Equatable, Sendable {
         if recipe.disk.bytes == 0 { throw RecipeError.invalidHardware("disk must be more than 0") }
         for (index, step) in recipe.provisioners.enumerated() {
             if let problem = step.problem { throw RecipeError.invalidProvisioner(index, problem) }
+        }
+        for client in recipe.guiTesting?.allow ?? [] {
+            if client.isEmpty || client.contains(where: \.isWhitespace) || (client.contains("/") && !client.hasPrefix("/")) {
+                throw RecipeError.invalidGUITestingClient(client)
+            }
         }
         return recipe
     }
@@ -88,7 +99,7 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
     case invalidSHA256(String)
     case invalidHardware(String)
     case invalidProvisioner(Int, String)
-    case guiTestingNotImplemented
+    case invalidGUITestingClient(String)
     case missingFiles([String])
 
     public var description: String {
@@ -100,7 +111,8 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
         case .invalidSHA256(let sha): "invalid sha256 \"\(sha)\" (expected 64 hex digits)"
         case .invalidHardware(let reason): reason
         case .invalidProvisioner(let index, let reason): "provision step \(index + 1): \(reason)"
-        case .guiTestingNotImplemented: "[gui_testing] is not implemented yet"
+        case .invalidGUITestingClient(let client):
+            "[gui_testing] allow entry \"\(client)\": expected an absolute path or a bundle ID"
         case .missingFiles(let paths): "recipe refers to missing files: \(paths.joined(separator: ", "))"
         }
     }
@@ -114,6 +126,7 @@ private struct RawRecipe: Decodable {
 
     struct GUITesting: Decodable {
         var enabled: Bool?
+        var allow: [String]?
     }
 
     var cpus: Int?
