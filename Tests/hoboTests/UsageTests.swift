@@ -5,25 +5,30 @@ import Testing
 struct UsageTests {
     @Test func listsEveryVisibleCommandOnce() {
         let usageLines = Usage.text(columns: 100).split(separator: "\n").filter { $0.hasPrefix("USAGE: hobo ") }
-        let commands = Usage.visibleSubcommands(of: HoboCommand.self)
-        #expect(commands.count == HoboCommand.configuration.subcommands.count)
-        for command in commands {
-            let prefix = "USAGE: hobo \(command._commandName)"
-            let matches = usageLines.filter { $0 == prefix || $0.hasPrefix(prefix + " ") }
+        let paths = Usage.visibleCommandPaths(of: HoboCommand.self).map(\.path)
+        #expect(paths.contains("claude install"))
+        for path in paths {
+            // A group's own line is `hobo claude <subcommand>`; its subcommands' lines are theirs.
+            let prefix = "USAGE: hobo \(path)"
+            let others = paths.filter { $0.hasPrefix(path + " ") }.map { "USAGE: hobo \($0)" }
+            let matches = usageLines.filter { line in
+                (line == prefix || line.hasPrefix(prefix + " "))
+                    && !others.contains { line == $0 || line.hasPrefix($0 + " ") }
+            }
             #expect(matches.count == 1, "\(prefix)")
         }
     }
 
-    /// The real tree has no hidden or nested commands yet, so a fixture tree pins the filter and order.
+    /// The real tree has no hidden commands, so a fixture tree pins the filter and order.
     @Test func walksNestedCommandsDepthFirstSkippingHidden() {
-        let names = Usage.visibleSubcommands(of: Fixture.self).map { $0._commandName }
-        #expect(names == ["first", "save", "restore", "last"])
+        let paths = Usage.visibleCommandPaths(of: Fixture.self).map(\.path)
+        #expect(paths == ["first", "first save", "first restore", "last"])
     }
 
     @Test func readsJSONSupportFromEachCommand() {
         let json = Usage.jsonSupport(of: JSONFixture.self)
         #expect(json.withoutJSON == ["plain"])
-        #expect(json.events == ["streamed"])
+        #expect(json.events == ["group streamed"])
     }
 
     @Test func endsWithTheConventions() {
@@ -52,7 +57,12 @@ private struct Fixture: ParsableCommand {
 }
 
 private struct JSONFixture: ParsableCommand {
-    static let configuration = CommandConfiguration(subcommands: [Plain.self, Quick.self, Streamed.self])
+    static let configuration = CommandConfiguration(subcommands: [Plain.self, Quick.self, Group.self])
+
+    /// Holds subcommands and has no `--json` of its own, so it's in neither list.
+    struct Group: ParsableCommand {
+        static let configuration = CommandConfiguration(subcommands: [Streamed.self])
+    }
 
     struct Plain: ParsableCommand {}
 
