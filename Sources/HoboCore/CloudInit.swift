@@ -7,10 +7,10 @@ import Foundation
 public enum CloudInit {
     public static let volumeName = "cidata"
 
-    /// The seed's files, by name.
-    public static func seed(hostname: String, macAddress: String) -> [String: String] {
+    /// The seed's files, by name, for the VM `vmName`.
+    public static func seed(vmName: String, macAddress: String) -> [String: String] {
         [
-            "meta-data": metaData(hostname: self.hostname(for: hostname)),
+            "meta-data": metaData(hostname: hostname(for: vmName)),
             "user-data": userData,
             "network-config": networkConfig(macAddress: macAddress),
         ]

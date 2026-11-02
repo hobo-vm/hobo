@@ -3,7 +3,7 @@ import Testing
 @testable import HoboCore
 
 @Suite struct CloudInitTests {
-    let seed = CloudInit.seed(hostname: "dev", macAddress: "AA:BB:CC:DD:EE:0F")
+    let seed = CloudInit.seed(vmName: "dev", macAddress: "AA:BB:CC:DD:EE:0F")
 
     @Test func seedHasTheNoCloudFiles() {
         #expect(Set(seed.keys) == ["meta-data", "user-data", "network-config"])
@@ -15,7 +15,7 @@ import Testing
         #expect(CloudInit.hostname(for: "dev") == "dev")
         #expect(CloudInit.hostname(for: "my_vm.2") == "my-vm-2")
         #expect(CloudInit.hostname(for: "build-") == "build")
-        #expect(CloudInit.seed(hostname: "a_b", macAddress: "AA:BB:CC:DD:EE:0F")["meta-data"]?.contains("local-hostname: a-b\n") == true)
+        #expect(CloudInit.seed(vmName: "a_b", macAddress: "AA:BB:CC:DD:EE:0F")["meta-data"]?.contains("local-hostname: a-b\n") == true)
     }
 
     @Test func userDataAppliesTheVagrantConventions() throws {

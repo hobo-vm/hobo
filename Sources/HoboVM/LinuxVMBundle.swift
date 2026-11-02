@@ -92,12 +92,12 @@ public struct LinuxVMBundle: VMBundle {
     }
 
     /// Writes the cloud-init seed for this VM as a `cidata` ISO in the bundle.
-    public func writeSeed(hostname: String, macAddress: VZMACAddress) throws -> URL {
+    public func writeSeed(vmName: String, macAddress: VZMACAddress) throws -> URL {
         let staging = directory.appending(path: "cidata")
         let iso = directory.appending(path: "cidata.iso")
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: staging) }
-        for (name, contents) in CloudInit.seed(hostname: hostname, macAddress: macAddress.string) {
+        for (name, contents) in CloudInit.seed(vmName: vmName, macAddress: macAddress.string) {
             try contents.write(to: staging.appending(path: name), atomically: true, encoding: .utf8)
         }
         try? FileManager.default.removeItem(at: iso)
