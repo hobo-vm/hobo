@@ -71,6 +71,16 @@ import Testing
         #expect(throws: UbuntuCatalogError.noLTS) { try UbuntuCatalog.newestLTS(in: images.filter { !$0.lts }) }
     }
 
+    /// `hobo init --os linux` must not pin an LTS whose support has ended, even the newest one.
+    @Test func newestLTSSkipsAnUnsupportedSeries() throws {
+        let images = try images.map { image in
+            var image = image
+            if image.version == "26.04" { image.supported = false }
+            return image
+        }
+        #expect(try UbuntuCatalog.newestLTS(in: images).version == "24.04")
+    }
+
     @Test func sourceLinesPinTheImage() throws {
         let image = try UbuntuCatalog.newestLTS(in: try images)
         let recipe = try Recipe.parse("[source]\n" + image.sourceLines, directory: URL(filePath: "/"))
