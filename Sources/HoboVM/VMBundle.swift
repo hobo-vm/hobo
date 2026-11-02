@@ -15,6 +15,16 @@ public protocol VMBundle: Sendable {
     /// its UI by itself (Linux's text console and default desktop) gets one in points instead, so
     /// its text isn't half size; the window scales it up.
     static var hiDPIDisplay: Bool { get }
+    /// Sets a resumed guest's clock over NTP, if the guest has a one-shot command for it; the VM
+    /// process falls back to `setClockCommand` when this is nil or fails.
+    static var ntpClockCommand: String? { get }
+    /// Sets the guest's clock to `date`, the host's time.
+    static func setClockCommand(_ date: Date) -> String
+    /// Replaces the guest's share mount after a resume, or nil if its mount survives a restore.
+    static var remountSharesCommand: String? { get }
+    /// Grows the guest's root filesystem, live, into a disk `hobo set --disk` enlarged. It runs
+    /// again at the next start if it fails, so it must be safe to repeat.
+    static var growDiskCommand: String { get }
     func configuration(
         cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare]
     ) throws -> VZVirtualMachineConfiguration

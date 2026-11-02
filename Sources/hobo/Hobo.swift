@@ -645,7 +645,7 @@ struct SetCommand: OutputCommand {
         commandName: "set",
         abstract: "Change a stopped VM's CPUs, memory, disk size or shared folders.",
         discussion: """
-            The disk only grows. Its image grows now, and the guest's APFS container grows into the new space \
+            The disk only grows. Its image grows now, and the guest's filesystem grows into the new space \
             at the next hobo start.
 
             A shared folder appears in the guest at /Volumes/My Shared Files/<folder name> (macOS) or \

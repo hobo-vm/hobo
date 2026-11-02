@@ -159,10 +159,12 @@ global VMs on 2026-11-01.
    `hobo set --disk` does the host step and updates `config.json`'s `disk`, setting
    `diskGrowPending`. At the next boot the VM process runs the guest step once SSH answers, against
    the boot volume's APFS physical store (looked up with `diskutil info /`, not assumed to be
-   `disk0s2`), before `start` reports the VM running, and clears the flag. A failure is logged and
-   leaves the flag set, so the next start retries. `set` only changes a stopped VM, so
-   `config.json` always matches a running one. CPUs and memory are checked against the
-   Virtualization framework's host limits. The disk never shrinks (decided 2026-11-02): ASIF
+   `disk0s2`), before `start` reports the VM running, and clears the flag. A Linux guest's host
+   step moves the backup GPT instead, and its guest step is `growpart` on the root partition then
+   `resize2fs`, both live (cloud-init's growpart, which grew it at create, is off by then). A
+   failure is logged and leaves the flag set, so the next start retries. `set` only changes a
+   stopped VM, so `config.json` always matches a running one. CPUs and memory are checked against
+   the Virtualization framework's host limits. The disk never shrinks (decided 2026-11-02): ASIF
    already returns the guest's freed blocks to the host, so a smaller virtual size saves nothing,
    and shrinking would mean shrinking APFS in the guest and moving Recovery first.
 
@@ -222,14 +224,17 @@ global VMs on 2026-11-01.
     VM off: the guest never runs past the save, so the disk stays as the state expects. A failed
     save resumes the VM and `suspend` reports it. Resuming restores the state with exactly the
     recorded shares (VZ refuses any other configuration), deletes `suspended/` before the guest
-    runs again, since the disk then moves on, and sets the guest's clock over SSH (`sntp`, else the
-    host's time; checked 2026-11-02: a resumed 27.2 guest is behind by the whole suspension). It
-    also remounts the shares over SSH: VZ's virtio-fs device restarts on the host, and the guest's
-    old handles fail lookups with ENOENT until the mount is replaced (files a guest process had
-    open in a share are lost). Resume took about 6 s and a suspend about 8 s for an 8 GB guest
-    using 1.5 GB. A resume that fails (a share folder gone, state the host's VZ can't read) keeps
-    the state and points to `start --cold`. Discarding memory is always explicit: `stop` refuses a
-    suspended VM, and `hobo discard` (or `start --cold`) throws the state away, leaving it stopped.
+    runs again, since the disk then moves on, and sets the guest's clock over SSH (checked
+    2026-11-02: a resumed guest is behind by the whole suspension). A macOS guest tries `sntp`, else
+    takes the host's time; a Linux guest takes the host's time (`date -s @<epoch>`: Ubuntu 26.04's
+    uutils `date` rejects the BSD form) and chrony refines it. A macOS guest's shares are also
+    remounted over SSH: VZ's virtio-fs device restarts on the host, and its old handles fail lookups
+    with ENOENT until the mount is replaced (files a guest process had open in a share are lost). A
+    Linux guest's mount keeps working across the restore, so it is left alone. Resume took about
+    6 s and a suspend about 8 s for an 8 GB guest using 1.5 GB. A resume that fails (a share
+    folder gone, state the host's VZ can't read) keeps the state and points to `start --cold`.
+    Discarding memory is always explicit: `stop` refuses a suspended VM, and `hobo discard` (or
+    `start --cold`) throws the state away, leaving it stopped.
     `set` and `start --share` refuse a suspended VM, whose state fits only its old configuration;
     `rename` and `delete` don't.
 12. **Clone.** `hobo clone dev exp` APFS-clones the bundle (full copy with a warning across volumes)
