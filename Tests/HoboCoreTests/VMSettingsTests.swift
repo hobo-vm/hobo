@@ -86,18 +86,6 @@ import Testing
         #expect(try VMSettings(removeShares: [src.path]).applied(to: shared, limits: Self.limits).shares.isEmpty)
     }
 
-    @Test func linuxVMsRefuseSharesButCanUnshare() throws {
-        var linux = Self.config
-        linux.os = .linux
-        let tmp = VMShare(name: "tmp", path: "/tmp", readOnly: false)
-        #expect(throws: VMShareError.unsupported(.linux)) {
-            try VMSettings(addShares: [tmp]).applied(to: linux, limits: Self.limits)
-        }
-        #expect(VMShareError.unsupported(.linux).description == "shared folders aren't supported on linux VMs yet")
-        linux.shares = [tmp]
-        #expect(try VMSettings(removeShares: ["tmp"]).applied(to: linux, limits: Self.limits).shares.isEmpty)
-    }
-
     @Test func unknownUnsharesAndMissingFoldersAreRefused() {
         #expect(throws: VMShareError.unknown("nope")) { try VMSettings(removeShares: ["nope"]).applied(to: Self.config, limits: Self.limits) }
         let missing = VMShare(name: "gone", path: "/nonexistent/gone", readOnly: false)

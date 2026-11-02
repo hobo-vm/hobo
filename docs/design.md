@@ -126,9 +126,14 @@ global VMs on 2026-11-01.
    Shares are virtio-fs on the macOS automount tag, so the guest mounts each at
    `/Volumes/My Shared Files/<name>` with nothing to run inside it; the host can't change that
    path, and a provision step can symlink a share somewhere nicer (decided 2026-11-02, over
-   per-share tags mounted over SSH, which a reboot inside the guest would lose). Linux guests
-   don't support shares yet: `set --share` and `start` refuse them up front (`--unshare` still
-   works), and the VM process refuses to boot one with shares. Both commands take
+   per-share tags mounted over SSH, which a reboot inside the guest would lose). A Linux guest
+   gets the same multiple-directory share on one fixed tag, `hobo`, which an fstab line written by
+   the cloud-init seed at create (`hobo /mnt/hobo virtiofs defaults,nofail 0 0`) mounts at
+   `/mnt/hobo`, so shares added later appear at `/mnt/hobo/<name>` with nothing changed in the
+   guest. A Linux VM always attaches the device, empty without shares, so `/mnt/hobo` is always a
+   mount and nothing written there lands on the guest's disk. The guest sees a shared file's host
+   owner, so `vagrant` is created with the host user's uid and shared files are its own; the gid
+   is left alone (host `staff`, 20, shows as `dialout` on Ubuntu). Both commands take
    `--share <folder>[:ro]`, named by the folder's basename; names must be unique
    case-insensitively, and a clash is refused with a hint to rename or symlink a folder.
    `set --unshare <name|folder>` runs before `--share`, so one call can make a share read-only.
@@ -428,6 +433,7 @@ global VMs on 2026-11-01.
     - Conventions come from a NoCloud seed, a `cidata` ISO (`hdiutil makehybrid`) attached
       read-only as a second disk for create's one boot only: `vagrant`/`vagrant` with passwordless
       sudo, both insecure keys, password SSH, no unattended upgrades, the VM's name as hostname,
+      `vagrant`'s uid matching the host user's and the fstab line for shares (decision 9),
       and DHCP with `dhcp-identifier: mac`. That last is required: Ubuntu's default DUID client ID
       leaves bootpd's lease without the MAC Hobo looks it up by. Create waits for `cloud-init status
       --wait` over key SSH, runs the recipe's steps, and cleanup touches

@@ -49,12 +49,12 @@ public struct LinuxVMBundle: VMBundle {
         return bundle
     }
 
-    /// Shares are refused: the macOS automount tag means nothing to a Linux guest, and nothing in
-    /// it mounts virtio-fs yet.
+    /// `shares` go on one virtio-fs tag, which the guest's fstab (from the cloud-init seed) mounts
+    /// at `/mnt/hobo`, so each appears at `/mnt/hobo/<name>`. The device is attached even with no
+    /// shares, so the mount never fails and nothing written there lands on the guest's disk.
     public func configuration(
         cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare]
     ) throws -> VZVirtualMachineConfiguration {
-        if !shares.isEmpty { try VMShare.checkSupported(on: .linux) }
         guard let identifier = VZGenericMachineIdentifier(dataRepresentation: try Data(contentsOf: machineIdentifier)) else {
             throw VMError.invalidMachineIdentifier
         }
@@ -94,6 +94,7 @@ public struct LinuxVMBundle: VMBundle {
         config.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
         config.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
         config.memoryBalloonDevices = [VZVirtioTraditionalMemoryBalloonDeviceConfiguration()]
+        config.directorySharingDevices = [shareDevice(tag: CloudInit.shareTag, shares: shares)]
         try config.validate()
         return config
     }
@@ -104,7 +105,7 @@ public struct LinuxVMBundle: VMBundle {
         let iso = directory.appending(path: "cidata.iso")
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: staging) }
-        for (name, contents) in CloudInit.seed(vmName: vmName, macAddress: macAddress.string) {
+        for (name, contents) in CloudInit.seed(vmName: vmName, macAddress: macAddress.string, uid: getuid()) {
             try contents.write(to: staging.appending(path: name), atomically: true, encoding: .utf8)
         }
         try? FileManager.default.removeItem(at: iso)

@@ -188,24 +188,6 @@ import Testing
         await #expect(throws: LifecycleError.sharesNeedStop("dev")) { try await lifecycle.start("dev", shares: [share]) }
     }
 
-    /// Refused before booting, since a Linux VM's configuration would refuse them in the VM process.
-    @Test func linuxVMsRefuseShares() async throws {
-        defer { cleanUp() }
-        let tmp = VMShare(name: "tmp", path: "/tmp", readOnly: false)
-        for (name, persistent) in [("box", [VMShare]()), ("shared", [tmp])] {
-            var config = VMConfig(
-                engine: .vz, os: .linux, cpus: 2, memory: 4 << 30, disk: 20 << 30, macAddress: "5a:00:00:00:00:02",
-                guestOSVersion: "Ubuntu 26.04", created: Date(timeIntervalSince1970: 1_800_000_000),
-                recipeSHA256: String(repeating: "a", count: 64), sourceSHA256: String(repeating: "b", count: 64)
-            )
-            config.shares = persistent
-            _ = try store.beginCreate(name)
-            try store.finishCreate(name, config: config, recipe: Data())
-        }
-        await #expect(throws: VMShareError.unsupported(.linux)) { try await lifecycle.start("box", shares: [tmp]) }
-        await #expect(throws: VMShareError.unsupported(.linux)) { try await lifecycle.start("shared") }
-    }
-
     @Test func runSharesGoToTheVMProcess() {
         let shares = [VMShare(name: "a", path: "/x/a", readOnly: false), VMShare(name: "b", path: "/x/b", readOnly: true)]
         let arguments = VMLifecycle.runArguments(executable: URL(filePath: "/bin/hobo"), name: "dev", gui: false, shares: shares)
