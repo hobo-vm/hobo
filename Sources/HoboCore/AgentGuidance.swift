@@ -20,8 +20,8 @@ public enum AgentGuidance {
         # Hobo
 
         Hobo runs named macOS and Linux VMs on this Mac. The commands below are `hobo` subcommands. \
-        This is how to work; for every command's flags, its `--json` output and its errors, run \
-        `hobo usage` once and read it.
+        This skill covers how to work with them; for every command's flags, `--json` output and \
+        errors, run `hobo usage` once and read it.
 
         \(rules)
         """
@@ -49,9 +49,9 @@ public enum AgentGuidance {
         reports for everything after.
         3. Work with as many `exec`, `cp` and `screenshot` calls as you need. There is no one-shot \
         `run`: a session is start, work, stop.
-        4. `stop <clone>` when done. Stopping an ephemeral clone deletes it. One you forget stops \
-        (and deletes) itself after its idle timeout, 30 minutes unless `start --idle-timeout` says \
-        otherwise; every command on the VM renews it.
+        4. `stop <clone>` when done, which deletes it. A clone you forget stops and deletes itself \
+        after 30 idle minutes (`start --idle-timeout` changes that); every command on it resets the \
+        clock.
 
         ## Test inside the guest, never through the host
 
