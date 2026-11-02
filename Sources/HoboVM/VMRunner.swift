@@ -70,6 +70,9 @@ public final class VMRunner {
             log("warning: not sharing \(share.name) this run: \(share.path): \(problem)")
             return false
         }
+        // `hobo start` checked these, but config.json may have changed since; a duplicate name
+        // would otherwise trap building the share's directory map.
+        try VMShare.checkUnique(shares)
         let guest = try GuestVM(
             bundle: MacVMBundle(directory: vm.bundle), cpus: config.cpus, memoryBytes: config.memory, macAddress: mac, shares: shares
         )
