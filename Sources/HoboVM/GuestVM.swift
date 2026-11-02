@@ -5,12 +5,12 @@ import Virtualization
 /// One running `VZVirtualMachine`, driven from the main actor (VZ's default queue).
 @MainActor
 public final class GuestVM {
-    public let bundle: MacVMBundle
+    public let bundle: any VMBundle
     public let macAddress: VZMACAddress
     let machine: VZVirtualMachine
     private let observer = StopObserver()
 
-    public init(bundle: MacVMBundle, cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress) throws {
+    public init(bundle: any VMBundle, cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress) throws {
         self.bundle = bundle
         self.macAddress = macAddress
         machine = VZVirtualMachine(configuration: try bundle.configuration(cpus: cpus, memoryBytes: memoryBytes, macAddress: macAddress))
@@ -34,9 +34,14 @@ public final class GuestVM {
         try await installer.install()
     }
 
-    /// Boots the guest, into recoveryOS with `recovery`. `provisioning` only takes effect on the
-    /// first boot after restore.
-    public func start(provisioning: VZMacGuestProvisioningOptions? = nil, recovery: Bool = false) async throws {
+    /// Boots the guest.
+    public func start() async throws {
+        try await machine.start()
+    }
+
+    /// Boots a macOS guest, into recoveryOS with `recovery`. `provisioning` only takes effect on
+    /// the first boot after restore.
+    public func start(provisioning: VZMacGuestProvisioningOptions?, recovery: Bool = false) async throws {
         let options = VZMacOSVirtualMachineStartOptions()
         options.startUpFromMacOSRecovery = recovery
         if let provisioning { try options.setGuestProvisioning(provisioning) }

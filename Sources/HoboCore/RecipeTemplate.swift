@@ -14,6 +14,43 @@ extension Recipe {
         template(source: image.sourceLines)
     }
 
+    /// The starter `Hobo.toml` written by `hobo init --os linux`, pinned to `image`.
+    public static func template(pinnedTo image: UbuntuCatalog.Image) -> String {
+        """
+        # Hobo recipe: build a VM from it with `hobo create <name>`.
+        # The guest gets the Vagrant conventions (vagrant/vagrant, passwordless sudo, SSH, no automatic
+        # updates) from cloud-init on its first boot; add your own setup as [[provision]] steps.
+
+        cpus   = 4
+        memory = "4GB"
+        disk   = "32GB"
+
+        [source]
+        # A cloud image's URL or local path, with its SHA-256. Pick another from `hobo images --os linux`
+        # and run `hobo init --os linux <version> --force` (before adding steps here).
+        \(image.sourceLines)
+
+        # Steps run once each, in order, over SSH. Paths are relative to this file.
+        #
+        # A desktop, for `hobo view` (the server image boots to a text console). It starts from the next boot.
+        # [[provision]]
+        # type   = "shell"
+        # inline = "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-desktop-minimal"
+        #
+        # [[provision]]
+        # type       = "shell"
+        # path       = "setup.sh"
+        # privileged = false        # run as vagrant instead of root
+        # env        = { GREETING = "hello" }
+        #
+        # [[provision]]
+        # type        = "file"
+        # source      = "files/bashrc"
+        # destination = "/home/vagrant/.bashrc"
+
+        """
+    }
+
     private static func template(source: String) -> String {
         """
         # Hobo recipe: build a VM from it with `hobo create <name>`.

@@ -40,12 +40,23 @@ struct HoboCommand: AsyncParsableCommand {
     )
 }
 
+/// The guest OS a catalog command is about.
+enum GuestOSOption: String, ExpressibleByArgument, CaseIterable {
+    case macos, linux
+}
+
 struct Init: OutputCommand {
     static let configuration = CommandConfiguration(abstract: "Write a starter \(Recipe.fileName) in the current directory.")
 
+    @Option(help: "The guest OS: macos (an IPSW) or linux (an Ubuntu cloud image).")
+    var os: GuestOSOption = .macos
+
     @Argument(help: ArgumentHelp(
-        "A macOS build from `hobo images` (e.g. 26B123) to pin the source to. Without one, the source is \"latest\".",
-        valueName: "build"
+        """
+        What to pin the source to: a macOS build from `hobo images` (e.g. 26B123), or with --os linux an Ubuntu \
+        version from `hobo images --os linux` (e.g. 26.04). Without one, macOS uses "latest" and Linux the newest LTS.
+        """,
+        valueName: "build-or-version"
     ))
     var build: String?
 
@@ -57,7 +68,7 @@ struct Init: OutputCommand {
 
     private struct Result: Encodable {
         var path: String
-        var image: IPSWCatalog.Image?
+        var image: CatalogImage?
     }
 
     static let jsonStyle = Output.JSONStyle.document
@@ -67,68 +78,142 @@ struct Init: OutputCommand {
         if FileManager.default.fileExists(atPath: url.path) && !force {
             throw ValidationError("\(Recipe.fileName) already exists (use --force to overwrite)")
         }
-        var image: IPSWCatalog.Image?
-        if let build {
-            image = try IPSWCatalog.image(build: build, in: try await IPSWCatalog.fetch(), hostMajor: IPSWCatalog.hostMajor)
+        let image: CatalogImage?
+        switch os {
+        case .macos:
+            if let build {
+                image = .macOS(try IPSWCatalog.image(build: build, in: try await IPSWCatalog.fetch(), hostMajor: IPSWCatalog.hostMajor))
+            } else {
+                image = nil
+            }
+        case .linux:
+            let catalog = try await UbuntuCatalog.fetch()
+            let pinned = try build.map { try UbuntuCatalog.image(version: $0, in: catalog) } ?? UbuntuCatalog.newestLTS(in: catalog)
+            if !pinned.supported { throw UbuntuCatalogError.unsupportedVersion(pinned.version) }
+            image = .linux(pinned)
         }
-        let template = image.map(Recipe.template(pinnedTo:)) ?? Recipe.template
+        let template = switch image {
+        case .macOS(let image): Recipe.template(pinnedTo: image)
+        case .linux(let image): Recipe.template(pinnedTo: image)
+        case nil: Recipe.template
+        }
         try template.write(to: url, atomically: true, encoding: .utf8)
-        let pinned = image.map { " pinned to \($0.name) \($0.version) (\($0.build))" } ?? ""
+        let pinned = switch image {
+        case .macOS(let image): " pinned to \(image.name) \(image.version) (\(image.build))"
+        case .linux(let image): " pinned to \(image.name), release \(image.serial)"
+        case nil: ""
+        }
         return Reply(Result(path: url.path, image: image), text: "Wrote \(Recipe.fileName)\(pinned)")
+    }
+}
+
+/// An image from either catalog, encoded as the catalog's own record.
+enum CatalogImage: Encodable {
+    case macOS(IPSWCatalog.Image)
+    case linux(UbuntuCatalog.Image)
+
+    func encode(to encoder: Encoder) throws {
+        switch self {
+        case .macOS(let image): try image.encode(to: encoder)
+        case .linux(let image): try image.encode(to: encoder)
+        }
     }
 }
 
 struct Images: OutputCommand {
     static let configuration = CommandConfiguration(
-        abstract: "List the macOS IPSWs this Mac can build VMs from.",
-        discussion: "Pass a BUILD to `hobo init <build>` to start a recipe pinned to it. The list comes from ipsw.me."
+        abstract: "List the images this Mac can build VMs from: macOS IPSWs, or Ubuntu cloud images.",
+        discussion: """
+            By default only the newest build of each macOS version, or the newest release of each supported Ubuntu \
+            version, is listed. Pass a build or version to `hobo init` to start a recipe pinned to it. macOS IPSWs \
+            come from ipsw.me, Ubuntu images from cloud-images.ubuntu.com.
+            """
     )
 
-    @Argument(help: ArgumentHelp("Show the details of this build (e.g. 26B123) instead of the list.", valueName: "build"))
+    @Option(help: "The guest OS: macos (IPSWs) or linux (Ubuntu cloud images).")
+    var os: GuestOSOption = .macos
+
+    @Argument(help: ArgumentHelp(
+        "Show the details of this macOS build (e.g. 26B123), or Ubuntu version (e.g. 26.04), instead of the list.",
+        valueName: "build-or-version"
+    ))
     var build: String?
 
-    @Flag(help: "Show only the newest build of each major version.")
-    var latest = false
+    @Flag(help: "List every macOS build, or every release of each Ubuntu version, not only the newest.")
+    var all = false
 
-    @Flag(help: "Print the full records (URL, SHA-256, size in bytes, signed) as JSON.")
+    @Flag(help: "Print the full records (URL, SHA-256, size in bytes, …) as JSON.")
     var json = false
 
     func validate() throws {
-        if build != nil && latest { throw ValidationError("--latest lists builds; it can't be combined with a build") }
+        if build != nil && all { throw ValidationError("--all lists images; it can't be combined with a build or version") }
     }
 
     static let jsonStyle = Output.JSONStyle.document
 
     func execute(_ output: Output) async throws -> Reply {
-        let catalog = try await IPSWCatalog.fetch()
-        if let build {
-            let image = try IPSWCatalog.image(build: build, in: catalog)
-            return Reply(image, text: details(image))
+        switch os {
+        case .macos:
+            let catalog = try await IPSWCatalog.fetch()
+            if let build {
+                let image = try IPSWCatalog.image(build: build, in: catalog)
+                return Reply(image, text: details(image))
+            }
+            var images = IPSWCatalog.runnable(catalog, hostMajor: IPSWCatalog.hostMajor)
+            if !all { images = IPSWCatalog.latestPerMajor(images) }
+            return Reply(images, text: table(images))
+        case .linux:
+            let catalog = try await UbuntuCatalog.fetch()
+            if let build {
+                let image = try UbuntuCatalog.image(version: build, in: catalog)
+                return Reply(image, text: details(image))
+            }
+            var images = UbuntuCatalog.supported(catalog)
+            if !all { images = UbuntuCatalog.latestPerSeries(images) }
+            return Reply(images, text: table(images))
         }
-        var images = IPSWCatalog.runnable(catalog, hostMajor: IPSWCatalog.hostMajor)
-        if latest { images = IPSWCatalog.latestPerMajor(images) }
-        return Reply(images, text: table(images))
     }
 
     private func table(_ images: [IPSWCatalog.Image]) -> String {
         let rows = [["NAME", "VERSION", "BUILD", "RELEASED", "SIZE"]] + images.map { image in
-            [image.name, image.version, image.build, image.releasedDay, image.formattedSize]
+            [image.name, image.version, image.build, image.releasedDay, formattedSize(image.size)]
+        }
+        return formatTable(rows)
+    }
+
+    private func table(_ images: [UbuntuCatalog.Image]) -> String {
+        let rows = [["NAME", "VERSION", "CODENAME", "RELEASE", "SUPPORT ENDS", "SIZE"]] + images.map { image in
+            [image.name, image.version, image.codename, image.serial, image.supportEnds.map(day) ?? "—", formattedSize(image.size)]
         }
         return formatTable(rows)
     }
 
     private func details(_ image: IPSWCatalog.Image) -> String {
-        let fields = [
+        var lines = detailLines([
             ("Name", image.name), ("Version", image.version), ("Build", image.build),
             ("Released", image.releasedDay),
-            ("Size", "\(image.formattedSize) (\(image.size) bytes)"), ("URL", image.url.absoluteString),
+            ("Size", "\(formattedSize(image.size)) (\(image.size) bytes)"), ("URL", image.url.absoluteString),
             ("SHA-256", image.sha256), ("Signed", image.signed ? "yes" : "no"),
-        ]
-        var lines = fields.map { label, value in label.padding(toLength: 10, withPad: " ", startingAt: 0) + value }
+        ])
         if image.major > IPSWCatalog.hostMajor {
-            lines.append("\nThis Mac (macOS \(IPSWCatalog.hostMajor)) can't run it: the guest is newer than the host.")
+            lines += "\n\nThis Mac (macOS \(IPSWCatalog.hostMajor)) can't run it: the guest is newer than the host."
         }
-        return lines.joined(separator: "\n")
+        return lines
+    }
+
+    private func details(_ image: UbuntuCatalog.Image) -> String {
+        var lines = detailLines([
+            ("Name", image.name), ("Version", image.version), ("Codename", image.codename), ("Release", image.serial),
+            ("Support", image.supported ? "until \(image.supportEnds.map(day) ?? "unknown")" : "ended"),
+            ("Size", "\(formattedSize(image.size)) (\(image.size) bytes)"), ("URL", image.url.absoluteString),
+            ("SHA-256", image.sha256),
+        ])
+        if !image.supported { lines += "\n\nCanonical no longer supports this version, so `hobo init` won't pin it." }
+        return lines
+    }
+
+    private func detailLines(_ fields: [(String, String)]) -> String {
+        fields.map { label, value in label.padding(toLength: 10, withPad: " ", startingAt: 0) + value }.joined(separator: "\n")
     }
 }
 
@@ -148,6 +233,7 @@ struct Validate: OutputCommand {
         try recipe.checkFilesExist()
         let warning = recipe.source.isPinned ? "" : "warning: source is unpinned (ipsw = \"latest\")\n"
         var settings = [
+            recipe.os == .macOS ? "macOS" : "Linux",
             "\(recipe.cpus) CPUs", "\(recipe.memory) memory", "\(recipe.disk) disk",
             "\(recipe.provisioners.count) provision step(s)",
         ]
@@ -162,9 +248,12 @@ struct Validate: OutputCommand {
 }
 
 private extension IPSWCatalog.Image {
-    var releasedDay: String { released.formatted(.iso8601.year().month().day()) }
-    var formattedSize: String { ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file) }
+    var releasedDay: String { day(released) }
 }
+
+private func day(_ date: Date) -> String { date.formatted(.iso8601.year().month().day()) }
+
+private func formattedSize(_ bytes: UInt64) -> String { ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file) }
 
 struct Create: OutputCommand {
     static let configuration = CommandConfiguration(abstract: "Build a new VM from a recipe.")
@@ -191,7 +280,7 @@ struct Create: OutputCommand {
         let config = try await Self.create(options, output: output)
         return Reply(
             VMSummary(try VMStore.standard().find(name)),
-            text: "Created \(name): macOS \(config.guestOSVersion), \(config.cpus) CPUs, \(ByteSize(bytes: config.memory)) memory"
+            text: "Created \(name): \(config.osDescription), \(config.cpus) CPUs, \(ByteSize(bytes: config.memory)) memory"
         )
     }
 
@@ -240,7 +329,7 @@ struct List: OutputCommand {
     }
 
     private func columns(_ config: VMConfig, used: String) -> [String] {
-        ["\(config.os.rawValue) \(config.guestOSVersion)", String(config.cpus), fileSize(config.memory), "\(used) / \(fileSize(config.disk))"]
+        [config.osDescription, String(config.cpus), fileSize(config.memory), "\(used) / \(fileSize(config.disk))"]
     }
 }
 

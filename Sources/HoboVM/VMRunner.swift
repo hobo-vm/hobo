@@ -52,13 +52,13 @@ public final class VMRunner {
         // Every VM runs under launchd (always PID 1), whose job table is how clients see it.
         guard getppid() == 1 else { throw RunnerError.notUnderLaunchd(vm.name) }
         let config = try VMConfig.load(from: vm.bundle.appending(path: VMStore.configFile))
-        guard config.engine == .vz, config.os == .macOS else { throw RunnerError.unsupported(config.engine, config.os) }
+        guard config.engine == .vz, config.os != .windows else { throw RunnerError.unsupported(config.engine, config.os) }
         guard let mac = VZMACAddress(string: config.macAddress) else { throw RunnerError.badMACAddress(config.macAddress) }
 
         server = try ControlServer(path: job.socket) { [weak self] request, reply in
             await self?.handle(request, reply: reply) ?? .error("the VM process is shutting down")
         }
-        let guest = try GuestVM(bundle: MacVMBundle(directory: vm.bundle), cpus: config.cpus, memoryBytes: config.memory, macAddress: mac)
+        let guest = try GuestVM(bundle: try vmBundle(at: vm.bundle, os: config.os), cpus: config.cpus, memoryBytes: config.memory, macAddress: mac)
         guest.onStop = { [weak self] error in
             if let error { self?.log("error: the VM stopped: \(error)") } else { self?.log("The guest shut down") }
             self?.finish(error == nil ? 0 : 1)

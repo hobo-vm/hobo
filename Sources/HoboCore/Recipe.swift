@@ -3,13 +3,24 @@ import TOMLKit
 
 /// A VM recipe, conventionally `Hobo.toml`: the source, default hardware and `[[provision]]` steps
 /// to build a VM from. It holds no host-specific state, so it can be handed to someone else.
+/// `[source] ipsw` builds a macOS guest and `[source] image` a Linux one (a cloud image).
 public struct Recipe: Equatable, Sendable {
     /// The file `hobo init` writes and `hobo validate` reads by default.
     public static let fileName = "Hobo.toml"
     public static let defaultCPUs = 4
-    public static let defaultMemory = ByteSize(bytes: 8 << 30)
-    public static let defaultDisk = ByteSize(bytes: 80 << 30)
 
+    /// Memory when the recipe gives none: enough for macOS, or for a Linux desktop.
+    public static func defaultMemory(for os: VMConfig.OS) -> ByteSize {
+        ByteSize(bytes: os == .macOS ? 8 << 30 : 4 << 30)
+    }
+
+    /// Disk when the recipe gives none. macOS updates can fail under about 50 GB.
+    public static func defaultDisk(for os: VMConfig.OS) -> ByteSize {
+        ByteSize(bytes: os == .macOS ? 80 << 30 : 32 << 30)
+    }
+
+    /// `.macOS` for `[source] ipsw`, `.linux` for `[source] image`.
+    public var os: VMConfig.OS
     public var cpus: Int
     public var memory: ByteSize
     public var disk: ByteSize
@@ -22,8 +33,9 @@ public struct Recipe: Equatable, Sendable {
     /// The recipe's directory; relative `path`/`source` values resolve against it.
     public var directory: URL
 
+    /// Where the install image (an IPSW, or a Linux cloud image) comes from.
     public enum Source: Equatable, Sendable {
-        /// The newest IPSW this host supports. Unpinned, so builds warn.
+        /// The newest IPSW this host supports. Unpinned, so builds warn. macOS only.
         case latest
         case remote(URL, sha256: String)
         case local(URL, sha256: String)
@@ -51,11 +63,18 @@ public struct Recipe: Equatable, Sendable {
 
     public static func parse(_ toml: String, directory: URL) throws -> Recipe {
         let raw = try TOMLDecoder().decode(RawRecipe.self, from: toml)
+        let (os, source) = try source(from: raw.source, directory: directory)
+        if os != .macOS {
+            // Both are TCC, SIP and AMFI: macOS mechanisms with no Linux counterpart here yet.
+            if raw.security != nil { throw RecipeError.macOSOnly("[security]") }
+            if raw.guiTesting != nil { throw RecipeError.macOSOnly("[gui_testing]") }
+        }
         let recipe = Recipe(
+            os: os,
             cpus: raw.cpus ?? defaultCPUs,
-            memory: raw.memory ?? defaultMemory,
-            disk: raw.disk ?? defaultDisk,
-            source: try source(from: raw.source, directory: directory),
+            memory: raw.memory ?? defaultMemory(for: os),
+            disk: raw.disk ?? defaultDisk(for: os),
+            source: source,
             provisioners: raw.provision ?? [],
             guiTesting: raw.guiTesting?.enabled == true ? GUITesting(allow: raw.guiTesting?.allow ?? []) : nil,
             security: Security(sip: raw.security?.sip ?? true, amfi: raw.security?.amfi ?? true),
@@ -97,14 +116,20 @@ public struct Recipe: Equatable, Sendable {
         if !missing.isEmpty { throw RecipeError.missingFiles(missing) }
     }
 
-    private static func source(from raw: RawRecipe.RawSource, directory: URL) throws -> Source {
-        if raw.ipsw == "latest" { return .latest }
-        guard let sha = raw.sha256?.lowercased() else { throw RecipeError.missingSHA256(raw.ipsw) }
-        guard sha.count == 64, sha.allSatisfy(\.isHexDigit) else { throw RecipeError.invalidSHA256(sha) }
-        if let url = URL(string: raw.ipsw), url.scheme == "https" || url.scheme == "http" {
-            return .remote(url, sha256: sha)
+    private static func source(from raw: RawRecipe.RawSource, directory: URL) throws -> (VMConfig.OS, Source) {
+        let (os, location): (VMConfig.OS, String) = switch (raw.ipsw, raw.image) {
+        case (let ipsw?, nil): (.macOS, ipsw)
+        case (nil, let image?): (.linux, image)
+        default: throw RecipeError.sourceKind
         }
-        return .local(resolveHostPath(raw.ipsw, relativeTo: directory), sha256: sha)
+        // Only Apple's API resolves a "latest"; there is none for Linux images.
+        if os == .macOS && location == "latest" { return (os, .latest) }
+        guard let sha = raw.sha256?.lowercased() else { throw RecipeError.missingSHA256(location) }
+        guard sha.count == 64, sha.allSatisfy(\.isHexDigit) else { throw RecipeError.invalidSHA256(sha) }
+        if let url = URL(string: location), url.scheme == "https" || url.scheme == "http" {
+            return (os, .remote(url, sha256: sha))
+        }
+        return (os, .local(resolveHostPath(location, relativeTo: directory), sha256: sha))
     }
 }
 
@@ -112,6 +137,8 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
     /// The path as given, so the message echoes what the user typed.
     case notFound(String)
     case invalidSize(String)
+    case sourceKind
+    case macOSOnly(String)
     case missingSHA256(String)
     case invalidSHA256(String)
     case invalidHardware(String)
@@ -125,7 +152,9 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
         case .notFound(let path):
             "no recipe at \(path)" + (path == Recipe.fileName ? " (run hobo init, or pass a recipe path)" : "")
         case .invalidSize(let value): "invalid size \"\(value)\" (expected e.g. \"512MB\" or \"8GB\")"
-        case .missingSHA256(let ipsw): "source \"\(ipsw)\" needs a sha256 (only ipsw = \"latest\" may omit it)"
+        case .sourceKind: "[source] needs exactly one of ipsw (a macOS guest) or image (a Linux cloud image)"
+        case .macOSOnly(let table): "\(table) is for macOS guests only; this recipe's [source] is a Linux image"
+        case .missingSHA256(let source): "source \"\(source)\" needs a sha256 (only ipsw = \"latest\" may omit it)"
         case .invalidSHA256(let sha): "invalid sha256 \"\(sha)\" (expected 64 hex digits)"
         case .invalidHardware(let reason): reason
         case .invalidProvisioner(let index, let reason): "provision step \(index + 1): \(reason)"
@@ -139,7 +168,8 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
 
 private struct RawRecipe: Decodable {
     struct RawSource: Decodable {
-        var ipsw: String
+        var ipsw: String?
+        var image: String?
         var sha256: String?
     }
 

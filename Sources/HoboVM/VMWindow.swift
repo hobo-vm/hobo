@@ -37,7 +37,7 @@ final class VMWindow: NSObject, NSWindowDelegate {
         super.init()
         window.title = title
         window.contentView = view
-        window.contentAspectRatio = MacVMBundle.displayPixels
+        window.contentAspectRatio = GuestDisplay.pixels
         window.isReleasedWhenClosed = false
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.delegate = self
@@ -77,7 +77,7 @@ final class VMWindow: NSObject, NSWindowDelegate {
         NSApp.setActivationPolicy(.accessory)
         view.automaticallyReconfiguresDisplay = false
         do {
-            try machine.graphicsDevices.first?.displays.first?.reconfigure(sizeInPixels: MacVMBundle.displayPixels)
+            try machine.graphicsDevices.first?.displays.first?.reconfigure(sizeInPixels: GuestDisplay.pixels)
         } catch {
             // The guest keeps the window's size until the next resize or boot; screenshots follow it.
             log("warning: couldn't reset the display to its configured size: \(error)")

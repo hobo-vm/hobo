@@ -37,8 +37,13 @@ global VMs on 2026-11-01.
    warn. A bare `hobo init` writes `ipsw = "latest"` and says to paste in the pin the first
    `create` prints (decided 2026-11-01: Apple publishes no SHA-256, so pinning there would mean a
    20 GB download); `hobo init <build>` pins a build from `hobo images` (decision 8).
+   `[source]` holds exactly one of `ipsw` (a macOS guest) or `image` (a Linux cloud image,
+   decision 21), so the key is the guest OS; an `image` is always pinned, since there is no
+   "latest" to resolve. Defaults follow the OS: 4 CPUs, 8 GB and 80 GB for macOS, 4 CPUs, 4 GB
+   and 32 GB for Linux (enough for a desktop added by a step).
 4. **Commands.** VM-centric verbs, no Vagrant aliases:
-   `init [<build>] [--force]`, `images [<build>] [--latest]`, `validate [recipe]`,
+   `init [--os macos|linux] [<build-or-version>] [--force]`,
+   `images [--os macos|linux] [<build-or-version>] [--all]`, `validate [recipe]`,
    `create <name> [recipe] [--hold-on-failure]`, `list`,
    `start [--ephemeral] [--gui] [--cold] [--share path] [--idle-timeout d]`, `stop [--force]`,
    `suspend`, `ssh <name> [--print] [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp [-r] <src>... <dst>`, `ip <name>`, `view`, `screenshot`,
@@ -90,24 +95,32 @@ global VMs on 2026-11-01.
    unsupported. A local path in `[source]` is used in place, never copied.
    `ipsw = "latest"` uses `VZMacOSRestoreImage.latestSupported`, warns as unpinned and prints the pin.
    Choosing a version replaces Mist (decided 2026-11-01): `hobo images` lists the macOS IPSWs
-   (name, version, build, release date, size; `--latest` keeps the newest of each major;
+   (name, version, build, release date, size; the newest build of each major by default, every
+   build with `--all` (decided 2026-11-02, replacing `--latest`);
    `images <build>` shows one build's details, URL and SHA-256 included) from
    ipsw.me's `v4/device/VirtualMac2,1?type=ipsw`, fetched live with no cache, hiding guests newer
    than the host's macOS. Apple publishes only the newest IPSW (what `latestSupported` reads), and
    `softwareupdate --list-full-installers` lists installer apps, not IPSWs, so ipsw.me is the only
    source of the history; it includes each file's SHA-256. `hobo init <build>` looks the build up
    there and writes `[source]` pinned to its URL and SHA-256. Only `images` and `init` read the
-   catalog; recipes always hold a URL, so builds never depend on it. Later, `images --os` adds
-   Linux, Windows and simulator images.
+   catalog; recipes always hold a URL, so builds never depend on it.
+   `images --os linux` (decided 2026-11-02) lists Ubuntu's arm64 server cloud images from Canonical's
+   simplestreams index (`cloud-images.ubuntu.com/releases/streams/v1/com.ubuntu.cloud:released:download.json`,
+   one fetch with every release's URL, size and SHA-256): the newest release (dated serial, e.g.
+   `20261016`, at a URL that never changes) of each supported series by default, every release
+   with `--all`, and unsupported series hidden. `images --os linux 26.04` shows one series' newest
+   release; `hobo init --os linux [<version>]` pins it, the newest supported LTS without one.
+   Windows and simulator images may join `--os` later.
 9. **Runtime config.** The recipe supplies defaults; `create` copies them into the bundle's
    `config.json`, which is the truth thereafter: `engine`, `os`, `cpus`, `memory` and `disk` (bytes),
    `macAddress` (fixed at create, so the DHCP lease and `hobo ip` are stable), `guestOSVersion`,
-   `created`, `recipeSHA256` and `sourceSHA256`. `hobo set` changes CPUs, memory, disk (grow only) and
+   `created`, `recipeSHA256` and `sourceSHA256` (`guestOSVersion` is `27.2.0 (26B123)` for
+   macOS, and names the distribution for Linux, e.g. `Ubuntu 26.04` from `/etc/os-release`). `hobo set` changes CPUs, memory, disk (grow only) and
    persistent shares (virtio-fs; macOS default mount `/Volumes/My Shared Files/<tag>`, `readonly`
    supported). `start --share` adds a share for that run only. Clones inherit `config.json`.
    Shares must be folders: virtio-fs rejects volume roots, so Hobo refuses them up front. Guests
    don't Spotlight-index shares, and some guests have shown shared files' creation dates as
-   2001-01-01. Disk grow is two steps, verified end to end on a macOS 27.2 guest (2026-11-01, 80 →
+   2001-01-01. A macOS guest's disk grow is two steps, verified end to end on a macOS 27.2 guest (2026-11-01, 80 →
    100 GB). On the host, with the VM stopped, `diskutil image resize --image-only --size <n>
    disk.asif` grows the image and moves the trailing `Apple_APFS_Recovery` container to the new
    end, so the free space directly follows the main container. Then in the guest, `sudo diskutil apfs
@@ -335,7 +348,35 @@ global VMs on 2026-11-01.
     **Licensing:** Microsoft's authorized way to virtualize Windows 11 on Arm on Apple Silicon is
     Parallels; check this before relying on the QEMU engine for work use.
 21. **Linux guests.** Recipe `[source] image` + `sha256` (cloud image), set up by cloud-init on VZ;
-    all lifecycle commands work the same.
+    all lifecycle commands work the same. Decided 2026-11-02 and verified with Ubuntu 26.04:
+    - Ubuntu LTS arm64 server cloud images are the verified distro. Nothing is Ubuntu-specific
+      beyond `apt` in the conventions and cleanup, so other cloud-init images may work unverified.
+    - The disk: Ubuntu ships compressed qcow2, which VZ can't attach. `qemu-img convert` (Homebrew
+      `qemu`, which M5 needs anyway; `create` names it if missing) makes a raw image, `diskutil
+      image create from --format ASIF` converts that (it stores the zeros too, so a 940 MB image
+      becomes 3.6 GB until the guest TRIMs), and `diskutil image resize --image-only` grows it to the
+      recipe's `disk`, moving the backup GPT; cloud-init's growpart grows the root filesystem on
+      first boot. Each step takes seconds.
+    - The bundle holds `disk.asif`, `efi-vars.fd` (`VZEFIVariableStore`) and
+      `machine-identifier.bin` (`VZGenericMachineIdentifier`). The VM boots with `VZEFIBootLoader`,
+      virtio-gpu at the same 1920×1200 (so `view` works), USB keyboard and pointer, and a virtio
+      console written to the bundle's `console.log`; the conventions add `console=hvc0` to the
+      kernel command line. A failed create logs the console's tail, since the bundle goes with it.
+      The disk uses `.cached` caching with `.fsync`, as Lima does, against ext4 corruption seen with
+      VZ's default. TRIM works either way: `fstrim` returned 1 GB to the host about 30 s later.
+    - Conventions come from a NoCloud seed, a `cidata` ISO (`hdiutil makehybrid`) attached
+      read-only as a second disk for create's one boot only: `vagrant`/`vagrant` with passwordless
+      sudo, both insecure keys, password SSH, no unattended upgrades, the VM's name as hostname,
+      and DHCP with `dhcp-identifier: mac`. That last is required: Ubuntu's default DUID client ID
+      leaves bootpd's lease without the MAC Hobo looks it up by. Create waits for `cloud-init status
+      --wait` over key SSH, runs the recipe's steps, and cleanup touches
+      `/etc/cloud/cloud-init.disabled` and runs `fstrim`, so later boots and clones never re-run
+      cloud-init. Recipe-supplied cloud-init user-data was rejected: `[[provision]]` is the one
+      provisioning language. Boot to SSH takes about 10 s; a create, about a minute.
+    - `[security]` and `[gui_testing]` are macOS-only and fail validation on a Linux recipe. Linux
+      GUI testing (a desktop session, `exec --gui`, `screenshot`) waits for the macOS design
+      (Beads hobo-938). Rosetta for Linux (the `VZLinuxRosettaDirectoryShare` + binfmt) is
+      deferred (hobo-zdb): Apple has said general Rosetta winds down after macOS 27.
 
 ### Engineering
 
@@ -348,7 +389,9 @@ global VMs on 2026-11-01.
 23. **Layout.** One Swift package, one `hobo` executable:
     - `HoboCore`: recipes, the VM store (`VMStore`: bundle paths, names, list, rename, delete) and
       `config.json` (`VMConfig`), image index, provisioners
-    - `HoboVM`: engines (Virtualization framework, later QEMU), VM creation, the VM process (`VMRunner`), display
+    - `HoboVM`: engines (Virtualization framework, later QEMU), VM bundles (`VMBundle`:
+      `MacVMBundle`, `LinuxVMBundle`, each building its VZ configuration), VM creation, the VM
+      process (`VMRunner`), display
     - `HoboControl`: client ↔ VM-process socket protocol, and the client side of `start`/`stop` (`VMLifecycle`)
     - `HoboMCP`: MCP tools
     - `hobo`: CLI plus hidden `_vm-run` and `mcp` subcommands
@@ -374,7 +417,7 @@ builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` ind
   `df` (it reports snapshot and saved-state sizes, so it follows them).
 - **M3, agents:** leases, `[gui_testing]`, `exec --gui`, `screenshot`, `hobo mcp`, the Claude
   skill and `hobo claude install|uninstall`.
-- **M4:** Linux guests.
+- **M4, Linux guests:** done (2026-11-02): `[source] image`, cloud-init conventions, `images`/`init --os linux`.
 - **M5:** Windows on the QEMU engine. The Windows spike (unattended install, headless boot, SSH,
   GUI-session screenshot) runs in parallel any time after M1, to prove the engine seam before M2/M3
   harden the model.

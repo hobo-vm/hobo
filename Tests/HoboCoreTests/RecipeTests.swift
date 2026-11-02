@@ -45,7 +45,8 @@ import Testing
     @Test func summaryReportsSourceAndBytes() throws {
         let latest = RecipeSummary(try Recipe.parse(minimal(source: #"ipsw = "latest""#), directory: directory), path: "Hobo.toml")
         #expect(latest.source == "latest" && !latest.pinned)
-        #expect(latest.memory == Recipe.defaultMemory.bytes && latest.provisionSteps == 0)
+        #expect(latest.memory == Recipe.defaultMemory(for: .macOS).bytes && latest.provisionSteps == 0)
+        #expect(latest.os == .macOS)
         let local = try Recipe.parse(minimal(source: "ipsw = \"macOS.ipsw\"\nsha256 = \"\(sha)\""), directory: directory)
         #expect(RecipeSummary(local, path: "x").source == "/recipes/macOS.ipsw")
         #expect(RecipeSummary(local, path: "x").pinned)
@@ -57,8 +58,46 @@ import Testing
         let recipe = try Recipe.parse(minimal(source: #"ipsw = "latest""#), directory: directory)
         #expect(recipe.source == .latest)
         #expect(!recipe.source.isPinned)
+        #expect(recipe.os == .macOS)
         #expect(recipe.cpus == Recipe.defaultCPUs)
-        #expect(recipe.disk == Recipe.defaultDisk)
+        #expect(recipe.memory == ByteSize(bytes: 8 << 30))
+        #expect(recipe.disk == ByteSize(bytes: 80 << 30))
+    }
+
+    @Test func imageSourceIsALinuxGuestWithLinuxDefaults() throws {
+        let url = "https://cloud-images.ubuntu.com/server/releases/resolute/release-20261016/ubuntu-26.04-server-cloudimg-arm64.img"
+        let recipe = try Recipe.parse(minimal(source: "image = \"\(url)\"\nsha256 = \"\(sha)\""), directory: directory)
+        #expect(recipe.os == .linux)
+        #expect(recipe.source == .remote(URL(string: url)!, sha256: sha))
+        #expect(recipe.cpus == Recipe.defaultCPUs)
+        #expect(recipe.memory == ByteSize(bytes: 4 << 30))
+        #expect(recipe.disk == ByteSize(bytes: 32 << 30))
+        #expect(RecipeSummary(recipe, path: "x").os == .linux)
+
+        let local = try Recipe.parse(minimal(source: "image = \"img/ubuntu.img\"\nsha256 = \"\(sha)\""), directory: directory)
+        #expect(local.source == .local(URL(filePath: "/recipes/img/ubuntu.img"), sha256: sha))
+    }
+
+    @Test func imageSourceMustBePinned() {
+        #expect(throws: RecipeError.missingSHA256("latest")) {
+            try Recipe.parse(minimal(source: #"image = "latest""#), directory: directory)
+        }
+    }
+
+    @Test func sourceNeedsExactlyOneKind() {
+        #expect(throws: RecipeError.sourceKind) {
+            try Recipe.parse(minimal(source: "ipsw = \"latest\"\nimage = \"x.img\"\nsha256 = \"\(sha)\""), directory: directory)
+        }
+        #expect(throws: RecipeError.sourceKind) {
+            try Recipe.parse(minimal(source: "sha256 = \"\(sha)\""), directory: directory)
+        }
+    }
+
+    @Test(arguments: ["[security]\nsip = false", "[gui_testing]\nenabled = true"])
+    func macOSOnlyTablesAreRejectedForLinux(_ table: String) {
+        let recipe = minimal(source: "image = \"x.img\"\nsha256 = \"\(sha)\"") + "\n" + table
+        let name = String(table.prefix { $0 != "\n" })
+        #expect(throws: RecipeError.macOSOnly(name)) { try Recipe.parse(recipe, directory: directory) }
     }
 
     @Test func localPathResolvesAgainstRecipeDirectory() throws {
@@ -185,6 +224,27 @@ import Testing
         #expect(recipe.provisioners[1].privileged == false)
         #expect(recipe.guiTesting?.allow == ["com.example.AppUITests.xctrunner"])
         #expect(recipe.security == Recipe.Security(sip: false, amfi: false))
+    }
+
+    @Test func linuxInitTemplateParsesPinned() throws {
+        let image = UbuntuCatalog.Image(
+            name: "Ubuntu 26.04 LTS", version: "26.04", codename: "Resolute Raccoon", lts: true, serial: "20261016",
+            url: URL(string: "https://cloud-images.ubuntu.com/x/ubuntu-26.04-server-cloudimg-arm64.img")!, sha256: sha,
+            size: 1, supported: true, supportEnds: nil
+        )
+        let template = Recipe.template(pinnedTo: image)
+        let recipe = try Recipe.parse(template, directory: directory)
+        #expect(recipe.os == .linux)
+        #expect(recipe.source == .remote(image.url, sha256: sha))
+        #expect(recipe.memory == Recipe.defaultMemory(for: .linux) && recipe.disk == Recipe.defaultDisk(for: .linux))
+
+        let uncommented = template.replacingOccurrences(of: "# [[provision]]", with: "[[provision]]")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line in line.hasPrefix("# ") && line.contains(" = ") ? line.dropFirst(2) : line }
+            .joined(separator: "\n")
+        let steps = try Recipe.parse(uncommented, directory: directory).provisioners
+        #expect(steps.map(\.type) == [.shell, .shell, .file])
+        #expect(steps[2].destination == "/home/vagrant/.bashrc")
     }
 
     private func minimal(source: String) -> String {

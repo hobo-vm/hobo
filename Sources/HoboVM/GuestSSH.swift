@@ -82,6 +82,16 @@ public struct GuestSSH: Sendable {
         if status != 0 { throw VMError.commandFailed(what, status) }
     }
 
+    /// Runs `command` and returns its stdout, trimmed; throws if it fails.
+    public func output(_ command: String, what: String) async throws -> String {
+        let collected = Mutex(Data())
+        let status = try await stream(command) { stream, data in
+            if stream == .stdout { collected.withLock { $0.append(data) } }
+        }
+        if status != 0 { throw VMError.commandFailed(what, status) }
+        return String(decoding: collected.withLock { $0 }, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// Copies a host file or directory into the guest.
     public func upload(_ local: URL, to remote: String) async throws {
         let status = try await launch("/usr/bin/scp", ["-r", "-q"] + options() + [local.path, "\(self.remote):\(remote)"], output: .inherit)
