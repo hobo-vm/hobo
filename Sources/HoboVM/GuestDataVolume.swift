@@ -18,7 +18,8 @@ enum GuestDataVolume {
         guard data.count == 1 else { throw VMError.noDataVolume(disk.lastPathComponent) }
         let mountPoint = FileManager.default.temporaryDirectory.appending(path: "hobo-data-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: mountPoint) }
+        // rmdir, not removeItem: if the unmount below fails, a recursive delete would empty the guest.
+        defer { rmdir(mountPoint.path) }
         try run("/usr/sbin/diskutil", ["mount", "-mountOptions", "nobrowse", "-mountPoint", mountPoint.path, data[0]])
         defer { try? run("/usr/sbin/diskutil", ["unmount", mountPoint.path]) }
         return try body(mountPoint)
