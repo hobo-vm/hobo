@@ -361,10 +361,18 @@ global VMs on 2026-11-01.
     session; UI driving uses UI Automation or WinAppDriver. The spike (2026-11-02,
     `spikes/windows-qemu/README.md`) proved all of this on QEMU 11.1: `nvme` disk and USB input
     (inbox drivers), `virtio-net` with NetKVM, `ramfb` display, the Win32-OpenSSH MSI installed
-    offline, LabConfig TPM/Secure Boot bypasses (vTPM via `swtpm` is deferred), and QMP for
-    screendump and keys. It took about 50 minutes to an SSH-ready guest, mostly ISO reads over
-    emulated USB, and the guest boots to SSH in 26 s. Open for M5: install speed, the 800×600
-    `ramfb` resolution, and hostfwd versus `vmnet` networking (`hobo ip`).
+    offline, LabConfig TPM/Secure Boot bypasses, and QMP for screendump and keys. It took about
+    50 minutes to an SSH-ready guest, mostly ISO reads over emulated USB, and the guest boots to
+    SSH in 26 s. A follow-up (hobo-f8e, same README) proved a real vTPM and Secure Boot, with
+    BitLocker sealed to the TPM. A per-VM `swtpm` (Homebrew) is a second child of `_vm-run`,
+    started before QEMU; it exits by itself when QEMU disconnects, so it needs no launchd job.
+    Its ~10 KB state lives in the bundle, and `clone` and snapshots copy it with the disk and
+    `vars.fd`. `tpm-tis-device` needs `ppi=off` on HVF. Homebrew's edk2 has no Secure Boot, and
+    Debian's AAVMF hangs booting Windows under HVF; UTM's Secure Boot build works, with
+    Microsoft's KEK and db enrolled per VM. Open for M5: install speed, the 800×600
+    `ramfb` resolution, hostfwd versus `vmnet` networking (`hobo ip`), and where Hobo gets a
+    Secure Boot edk2 build (vendor UTM's, or build ArmVirtQemu itself) and how it enrolls keys
+    (Python `virt-fw-vars`, or Hobo writing the edk2 varstore itself).
     **Licensing:** Microsoft's authorized way to virtualize Windows 11 on Arm on Apple Silicon is
     Parallels; check this before relying on the QEMU engine for work use.
 21. **Linux guests.** Recipe `[source] image` + `sha256` (cloud image), set up by cloud-init on VZ;
