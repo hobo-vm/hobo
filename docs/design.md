@@ -367,7 +367,8 @@ global VMs on 2026-11-01.
       a clean VM; its body is workflow and rules only (the ephemeral session pattern, test inside
       the guest over SSH and never drive the host UI, `exec --gui` for Aqua, the 2-macOS-guest
       limit) and says "run `hobo usage`" for flags. MCP clients get the same guidance from the
-      server's `instructions` field, built from the same text in `HoboCore`, so there is no MCP skill.
+      server's `instructions` field, built from the same text in `HoboCore` (`AgentGuidance`), so
+      there is no MCP skill.
     - `hobo claude install [--project]` and `hobo claude uninstall [--project]` write or remove
       `~/.claude/skills/hobo/SKILL.md`, or `<git root>/.claude/skills/hobo/` with `--project` (an
       error outside a git repo). The text is embedded in the binary; the file carries a
