@@ -163,11 +163,17 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try output(hobo, ["stop", "--force", "itest"], environment: env).contains("Stopped itest"))
         #expect(try run(hobo, ["provision", "itest", again.path], in: work, environment: env) != 0, "not running")
 
-        // The run-only share is gone after a restart; the persistent one can be removed.
+        // The run-only share is gone after a restart; the persistent one can be removed. A persistent
+        // share whose folder has gone is left out of the run, not fatal, and stays in config.json.
         #expect(try run(hobo, ["set", "itest", "--unshare", "kept"], in: work, environment: env) == 0)
         #expect(try VMConfig.load(from: configFile).shares.isEmpty)
+        let gone = work.appending(path: "gone")
+        try FileManager.default.createDirectory(at: gone, withIntermediateDirectories: true)
+        #expect(try run(hobo, ["set", "itest", "--share", gone.path], in: work, environment: env) == 0)
+        try FileManager.default.removeItem(at: gone)
         #expect(try run(hobo, ["start", "itest"], in: work, environment: env) == 0)
         #expect(try run(hobo, ["exec", "itest", "--", "test", "-e", "\(shared)/scratch"], in: work, environment: env) != 0)
+        #expect(try VMConfig.load(from: configFile).shares == [VMShare(name: "gone", path: gone.path, readOnly: false)])
         #expect(try output(hobo, ["stop", "--force", "itest"], environment: env).contains("Stopped itest"))
         #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+stopped/))
 

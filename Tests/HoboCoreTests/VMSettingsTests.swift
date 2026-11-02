@@ -19,6 +19,8 @@ import Testing
 
     @Test func emptyChangeIsRefused() {
         #expect(VMSettings().isEmpty)
+        #expect(!VMSettings(addShares: [VMShare(name: "src", path: "/src", readOnly: false)]).isEmpty)
+        #expect(!VMSettings(removeShares: ["src"]).isEmpty)
         #expect(throws: VMSettingsError.nothingToChange) { try VMSettings().applied(to: Self.config, limits: Self.limits) }
     }
 
