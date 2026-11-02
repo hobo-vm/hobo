@@ -68,8 +68,10 @@ struct DisclaimedProcess: Sendable {
 
     /// `responsibility_spawnattrs_setdisclaim`, a libsystem export with no public header; looked up
     /// at run time so a system without it still spawns, just without disclaiming.
-    private static let setDisclaim: (@convention(c) (UnsafeMutablePointer<posix_spawnattr_t?>, Int32) -> Int32)? = {
-        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_spawnattrs_setdisclaim") else { return nil }
-        return unsafeBitCast(symbol, to: (@convention(c) (UnsafeMutablePointer<posix_spawnattr_t?>, Int32) -> Int32).self)
+    private static let setDisclaim: SetDisclaim? = {
+        let rtldDefault = UnsafeMutableRawPointer(bitPattern: -2)  // RTLD_DEFAULT, which Swift doesn't import
+        guard let symbol = dlsym(rtldDefault, "responsibility_spawnattrs_setdisclaim") else { return nil }
+        return unsafeBitCast(symbol, to: SetDisclaim.self)
     }()
+    private typealias SetDisclaim = @convention(c) (UnsafeMutablePointer<posix_spawnattr_t?>, Int32) -> Int32
 }
