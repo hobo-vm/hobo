@@ -76,7 +76,9 @@ public final class VMRunner {
             let ip = try await guest.waitForIPAddress(timeout: Self.bootTimeout)
             status.ipAddress = ip
             status.detail = "waiting for SSH on \(ip)"
-            try await ssh(ip).waitUntilReachable(timeout: Self.bootTimeout)
+            let guestSSH = try ssh(ip)
+            try await guestSSH.waitUntilReachable(timeout: Self.bootTimeout)
+            await growContainerIfPending(guestSSH)
             guard status.state == .starting else { return }
             status.state = .running
             status.detail = nil
@@ -87,6 +89,27 @@ public final class VMRunner {
             if status.state == .starting { status.detail = "unreachable: \(error)" }
         }
     }
+
+    /// Decision 9's second step: `hobo set --disk` grew the image while the VM was stopped, and
+    /// the guest's APFS container grows into the new space live. A failure leaves the flag set,
+    /// so the next boot tries again; the VM runs either way.
+    private func growContainerIfPending(_ ssh: GuestSSH) async {
+        let file = store.bundle(for: name).appending(path: VMStore.configFile)
+        guard var config = try? VMConfig.load(from: file), config.diskGrowPending else { return }
+        status.detail = "growing the guest's APFS container"
+        log("Growing the guest's APFS container into the larger disk")
+        do {
+            try await ssh.check(Self.growContainerCommand, what: "growing the APFS container")
+            config.diskGrowPending = false
+            try config.write(to: file)
+        } catch {
+            log("warning: \(error); the next start tries again")
+        }
+    }
+
+    /// Grows the boot volume's container (looked up, not assumed to be `disk0s2`) to fill its disk.
+    static let growContainerCommand =
+        #"sudo -n diskutil apfs resizeContainer "$(diskutil info / | awk '/APFS Physical Store:/ { print $NF }')" 0"#
 
     private func handle(_ request: ControlRequest, reply: ControlReply) async -> ControlResponse {
         switch request {

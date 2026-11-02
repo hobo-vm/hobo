@@ -24,11 +24,14 @@ public struct VMConfig: Codable, Equatable, Sendable {
     @MissingAsTrue public var sip: Bool
     /// AppleMobileFileIntegrity, as checked in the guest at the end of create (`[security]`).
     @MissingAsTrue public var amfi: Bool
+    /// Set by `hobo set --disk` once the image has grown: the guest's APFS container still has to
+    /// grow into the new space, which the VM process does at the next boot (decision 9).
+    @MissingAsFalse public var diskGrowPending: Bool
 
     public init(
         engine: Engine, os: OS, cpus: Int, memory: UInt64, disk: UInt64, macAddress: String,
         guestOSVersion: String, created: Date, recipeSHA256: String, sourceSHA256: String,
-        sip: Bool = true, amfi: Bool = true
+        sip: Bool = true, amfi: Bool = true, diskGrowPending: Bool = false
     ) {
         self.engine = engine
         self.os = os
@@ -42,6 +45,7 @@ public struct VMConfig: Codable, Equatable, Sendable {
         self.sourceSHA256 = sourceSHA256
         self.sip = sip
         self.amfi = amfi
+        self.diskGrowPending = diskGrowPending
     }
 
     static let encoder: JSONEncoder = {

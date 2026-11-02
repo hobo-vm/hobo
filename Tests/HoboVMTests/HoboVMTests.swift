@@ -23,8 +23,8 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["validate"], in: work) == 0)
     }
 
-    /// Creates a VM from the latest IPSW, runs it through start and stop under launchd, then
-    /// renames and deletes it. The recipe's step asserts the Vagrant conventions and a GUI session
+    /// Creates a VM from the latest IPSW, runs it through start and stop under launchd, changes
+    /// its hardware with set and re-runs steps with provision, then renames and deletes it. The recipe's step asserts the Vagrant conventions and a GUI session
     /// from inside the guest, so a VM that builds has them. It enables `[gui_testing]`, whose grants
     /// create checks and the test checks again on a later boot. VMs go to a temp `HOBO_VMS`, whose
     /// store hash keeps their launchd jobs apart from real ones; the IPSW goes through the real image
@@ -108,8 +108,42 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try output(hobo, ["stop", "itest"], environment: env).contains("not running"))
         #expect(try run(hobo, ["view", "itest"], in: work, environment: env) != 0, "not running")
 
+        // set: CPUs, memory and a larger disk, whose APFS container the guest grows into at the next start.
+        let configFile = vms.appending(path: "itest.hobovm/config.json")
+        #expect(try run(hobo, ["set", "itest", "--cpus", "5", "--memory", "6GB", "--disk", "72GB"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["set", "itest", "--disk", "60GB"], in: work, environment: env) != 0, "the disk only grows")
+        let updated = try VMConfig.load(from: configFile)
+        #expect(updated.cpus == 5 && updated.memory == 6 << 30 && updated.disk == 72 << 30 && updated.diskGrowPending)
+
         #expect(try run(hobo, ["start", "itest"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["set", "itest", "--cpus", "4"], in: work, environment: env) != 0, "running")
+        #expect(try !VMConfig.load(from: configFile).diskGrowPending)
+        #expect(try output(hobo, ["exec", "itest", "--", "sysctl", "-n", "hw.ncpu"], environment: env) == "5\n")
+        // The container was about 63 GB on the 64 GB disk; df reports the container's size for /.
+        let rootKB = try output(hobo, ["exec", "itest", "--", "sh", "-c", "df -k / | awk 'NR == 2 { print $2 }'"], environment: env)
+        #expect(UInt64(rootKB.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0 > 68 << 20, "\(rootKB)")
+
+        // provision: another recipe's steps, run on the running VM.
+        let again = work.appending(path: "Again.toml")
+        try """
+        [source]
+        ipsw = "latest"
+
+        [[provision]]
+        type = "file"
+        source = "payload.txt"
+        destination = "/tmp/provisioned.txt"
+
+        [[provision]]
+        type = "shell"
+        inline = "cp /tmp/provisioned.txt /var/root/provisioned.txt"
+        """.write(to: again, atomically: true, encoding: .utf8)
+        #expect(try output(hobo, ["provision", "itest", again.path], environment: env).contains("Provisioned itest (2 steps)"))
+        #expect(try output(hobo, ["exec", "itest", "--", "sudo", "-n", "cat", "/var/root/provisioned.txt"], environment: env)
+            == "over and back\n")
+
         #expect(try output(hobo, ["stop", "--force", "itest"], environment: env).contains("Stopped itest"))
+        #expect(try run(hobo, ["provision", "itest", again.path], in: work, environment: env) != 0, "not running")
         #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+stopped/))
 
         #expect(try run(hobo, ["rename", "itest", "itest2"], in: work, environment: env) == 0)

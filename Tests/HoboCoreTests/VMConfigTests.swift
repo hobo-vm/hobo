@@ -14,6 +14,15 @@ import Testing
         #expect(config.sip && config.amfi)
     }
 
+    /// Bundles from before `hobo set --disk` have no pending grow.
+    @Test func olderConfigsHaveNoPendingDiskGrow() throws {
+        let config = try VMConfig.decoder.decode(VMConfig.self, from: Data(Self.json.replacingOccurrences(of: "%@", with: "").utf8))
+        #expect(!config.diskGrowPending)
+        var pending = config
+        pending.diskGrowPending = true
+        #expect(try VMConfig.decoder.decode(VMConfig.self, from: VMConfig.encoder.encode(pending)) == pending)
+    }
+
     @Test func securityRoundTrips() throws {
         let config = try VMConfig.decoder.decode(
             VMConfig.self, from: Data(Self.json.replacingOccurrences(of: "%@", with: #","sip":false,"amfi":false"#).utf8)

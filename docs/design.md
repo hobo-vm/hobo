@@ -114,7 +114,15 @@ global VMs on 2026-11-01.
    resizeContainer disk0s2 0` grows the container live, without a reboot. Recovery is kept: its
    container is intact, the guest still boots normally, and booting with
    `startUpFromMacOSRecovery` reaches the recoveryOS startup options.
-   `hobo set` updates `config.json`'s `disk` along with the image.
+   `hobo set --disk` does the host step and updates `config.json`'s `disk`, setting
+   `diskGrowPending`. At the next boot the VM process runs the guest step once SSH answers, against
+   the boot volume's APFS physical store (looked up with `diskutil info /`, not assumed to be
+   `disk0s2`), before `start` reports the VM running, and clears the flag. A failure is logged and
+   leaves the flag set, so the next start retries. `set` only changes a stopped VM, so
+   `config.json` always matches a running one. CPUs and memory are checked against the
+   Virtualization framework's host limits. The disk never shrinks (decided 2026-11-02): ASIF
+   already returns the guest's freed blocks to the host, so a smaller virtual size saves nothing,
+   and shrinking would mean shrinking APFS in the guest and moving Recovery first.
 
 ### VM lifecycle
 
@@ -140,7 +148,11 @@ global VMs on 2026-11-01.
     5. `[gui_testing]` if enabled (decision 17): TCC grants written from the host into the stopped
        guest's Data volume, then checked over SSH on the next boot;
     6. recipe `[[provision]]` steps (shell inline/path with `privileged` and `env`, and file), run
-       once each over key SSH;
+       once each over key SSH. `hobo provision <name> [recipe]` runs a recipe's steps again, in
+       order, on a running VM, from the client over key SSH: for iterating on steps without a
+       30-minute rebuild, or bringing a VM up to date with its recipe. The rest of the recipe is
+       ignored, steps should be safe to repeat, and the bundle's `recipe.toml` and `recipeSHA256`
+       stay the record of what the VM was built from (decided 2026-11-02);
     7. clean guest shutdown. The disk is ASIF, which returns blocks to the host when the guest's APFS
        TRIMs them, so there is no zero-fill or compaction pass; the build logs the resulting disk size.
        Verified on the host (an attached ASIF shrinks from 1 GB to 14 MB after delete + unmount) and

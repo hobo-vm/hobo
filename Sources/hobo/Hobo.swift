@@ -35,7 +35,7 @@ struct HoboCommand: AsyncParsableCommand {
         version: Hobo.version,
         subcommands: [
             Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self, View.self,
-            SSH.self, Exec.self, Copy.self, IP.self, Rename.self, Delete.self, Usage.self,
+            SSH.self, Exec.self, Copy.self, IP.self, SetCommand.self, Provision.self, Rename.self, Delete.self, Usage.self,
         ]
     )
 }
@@ -474,6 +474,77 @@ private func signalSource(_ signo: Int32, _ handler: @escaping @Sendable () -> V
     source.setCancelHandler { signal(signo, SIG_DFL) }
     source.resume()
     return source
+}
+
+struct SetCommand: OutputCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "set",
+        abstract: "Change a stopped VM's CPUs, memory or disk size.",
+        discussion: """
+            The disk only grows. Its image grows now, and the guest's APFS container grows into the new space \
+            at the next hobo start.
+            """
+    )
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    @Option(help: "Number of virtual CPUs.")
+    var cpus: Int?
+
+    @Option(help: ArgumentHelp("Memory, e.g. 16GB.", valueName: "size"), transform: { try ByteSize(parsing: $0) })
+    var memory: ByteSize?
+
+    @Option(help: ArgumentHelp("Disk size, e.g. 120GB. It can only grow.", valueName: "size"), transform: { try ByteSize(parsing: $0) })
+    var disk: ByteSize?
+
+    @Flag(help: "Print the updated VM as JSON.")
+    var json = false
+
+    static let jsonStyle = Output.JSONStyle.document
+
+    func validate() throws {
+        if VMSettings(cpus: cpus, memory: memory, disk: disk).isEmpty {
+            throw ValidationError("give at least one of --cpus, --memory or --disk")
+        }
+    }
+
+    func execute(_ output: Output) async throws -> Reply {
+        let store = VMStore.standard()
+        let config = try VMSettings(cpus: cpus, memory: memory, disk: disk).apply(to: name, store: store, log: output.log)
+        let vm = try store.find(name)
+        let grow = config.diskGrowPending ? "\nThe guest grows into the larger disk at the next hobo start \(vm.name)." : ""
+        return Reply(
+            VMSummary(vm),
+            text: "\(vm.name): \(config.cpus) CPUs, \(fileSize(config.memory)) memory, \(fileSize(config.disk)) disk\(grow)"
+        )
+    }
+}
+
+struct Provision: OutputCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Run a recipe's [[provision]] steps again on a running VM.",
+        discussion: """
+            Runs every step in order without rebuilding, for trying out a recipe's steps or bringing a VM up to date \
+            with its recipe. The rest of the recipe is ignored. Steps run again in full, so they should be safe to repeat.
+            """
+    )
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    @Argument(help: ArgumentHelp("Recipe file.", valueName: "recipe"))
+    var path: String = Recipe.fileName
+
+    @Flag(help: "Print progress and the outcome as JSON Lines events.")
+    var json = false
+
+    static let jsonStyle = Output.JSONStyle.events
+
+    func execute(_ output: Output) async throws -> Reply {
+        let result = try await Provisioning.provision(name, recipeFile: URL(filePath: path), log: output.log)
+        return Reply(result, text: "Provisioned \(result.name) (\(result.steps) step\(result.steps == 1 ? "" : "s"))")
+    }
 }
 
 struct Rename: OutputCommand {

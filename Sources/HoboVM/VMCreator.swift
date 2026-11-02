@@ -107,10 +107,7 @@ public struct VMCreator {
                 log("Checking GUI testing permissions")
                 try await ssh.check(GUITestingGrants.checkCommand, what: "GUI testing permission check")
             }
-            for (index, step) in recipe.provisioners.enumerated() {
-                log("Provision step \(index + 1)/\(recipe.provisioners.count) (\(step.type.rawValue))")
-                try await provision(step, index: index, recipe: recipe, ssh: ssh)
-            }
+            try await Provisioning.run(recipe, ssh: ssh, log: log)
             log("Cleaning up")
             try await ssh.upload(contents: Conventions.cleanupScript, to: "/tmp/hobo-cleanup.sh")
             try await ssh.check("sudo -n /bin/bash /tmp/hobo-cleanup.sh", what: "cleanup")
@@ -248,22 +245,6 @@ public struct VMCreator {
         } catch {
             try await holdForDebugging(vm, auth: auth, error: error)
             throw error
-        }
-    }
-
-    private func provision(_ step: Provisioner, index: Int, recipe: Recipe, ssh: GuestSSH) async throws {
-        switch step.type {
-        case .shell:
-            let remote = "/tmp/hobo-provision-\(index + 1).sh"
-            if let inline = step.inline {
-                try await ssh.upload(contents: inline + "\n", to: remote)
-            } else if let path = step.path {
-                try await ssh.upload(recipe.resolve(path), to: remote)
-            }
-            try await ssh.check(step.shellCommand(running: remote), what: "provision step \(index + 1)")
-        case .file:
-            guard let source = step.source, let destination = step.destination else { return }
-            try await ssh.upload(recipe.resolve(source), to: destination)
         }
     }
 
