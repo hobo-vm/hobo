@@ -300,6 +300,19 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         let owner = try FileManager.default.attributesOfItem(atPath: fromGuest.path)[.ownerAccountID] as? NSNumber
         #expect(owner?.uint32Value == getuid())
 
+        // suspend and resume: the clock is set with Linux's own command, and the shares keep
+        // working with no remount, both ways.
+        #expect(try output(hobo, ["suspend", "litest"], environment: env).contains("Suspended litest"))
+        try "added\n".write(to: scratch.appending(path: "while-suspended"), atomically: true, encoding: .utf8)
+        let resumed = try output(hobo, ["start", "litest"], environment: env)
+        #expect(resumed.contains("litest resumed"), "\(resumed)")
+        let guestNow = try output(hobo, ["exec", "litest", "--", "date", "+%s"], environment: env)
+        #expect(abs((Double(guestNow.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) - Date.now.timeIntervalSince1970) < 60, "\(guestNow)")
+        #expect(try output(hobo, ["exec", "litest", "--", "cat", "\(shared)/scratch/while-suspended"], environment: env) == "added\n")
+        #expect(try output(hobo, ["exec", "litest", "--", "cat", "\(shared)/kept/hello.txt"], environment: env) == "kept\n")
+        #expect(try run(hobo, ["exec", "litest", "--", "sh", "-c", "echo again > \(shared)/scratch/after-resume"], in: work, environment: env) == 0)
+        #expect(try String(contentsOf: scratch.appending(path: "after-resume"), encoding: .utf8) == "again\n")
+
         #expect(try output(hobo, ["stop", "litest"], environment: env).contains("Stopped litest"))
         // With no shares the device is still attached, so /mnt/hobo is an empty mount, not the disk.
         #expect(try run(hobo, ["set", "litest", "--unshare", "kept"], in: work, environment: env) == 0)
