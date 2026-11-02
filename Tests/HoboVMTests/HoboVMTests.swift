@@ -119,9 +119,10 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["set", "itest", "--cpus", "4"], in: work, environment: env) != 0, "running")
         #expect(try !VMConfig.load(from: configFile).diskGrowPending)
         #expect(try output(hobo, ["exec", "itest", "--", "sysctl", "-n", "hw.ncpu"], environment: env) == "5\n")
-        // The container was about 63 GB on the 64 GB disk; df reports the container's size for /.
+        // df reports the main container's size for /. Larger than the whole original 64 GB disk means it
+        // grew (the Recovery container keeps about 5 GB of the 72).
         let rootKB = try output(hobo, ["exec", "itest", "--", "sh", "-c", "df -k / | awk 'NR == 2 { print $2 }'"], environment: env)
-        #expect(UInt64(rootKB.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0 > 68 << 20, "\(rootKB)")
+        #expect(UInt64(rootKB.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0 > 64 << 20, "\(rootKB)")
 
         // provision: another recipe's steps, run on the running VM.
         let again = work.appending(path: "Again.toml")
