@@ -7,14 +7,20 @@ public struct VMSettings: Equatable, Sendable {
     public var cpus: Int?
     public var memory: ByteSize?
     public var disk: ByteSize?
+    /// Shares to add, after `unshare` has removed any.
+    public var share: [VMShare]
+    /// Shares to remove, each a name or an absolute path (`VMShare.unshareTarget`).
+    public var unshare: [String]
 
-    public init(cpus: Int? = nil, memory: ByteSize? = nil, disk: ByteSize? = nil) {
+    public init(cpus: Int? = nil, memory: ByteSize? = nil, disk: ByteSize? = nil, share: [VMShare] = [], unshare: [String] = []) {
         self.cpus = cpus
         self.memory = memory
         self.disk = disk
+        self.share = share
+        self.unshare = unshare
     }
 
-    public var isEmpty: Bool { cpus == nil && memory == nil && disk == nil }
+    public var isEmpty: Bool { cpus == nil && memory == nil && disk == nil && share.isEmpty && unshare.isEmpty }
 
     /// What the host allows a VM, passed in so validation doesn't need the Virtualization framework.
     public struct Limits: Equatable, Sendable {
@@ -31,7 +37,8 @@ public struct VMSettings: Equatable, Sendable {
     static let memoryGranularity: UInt64 = 1 << 20
 
     /// `config` with these settings applied. A larger disk marks the guest's container to grow at
-    /// the next boot; the image itself is the caller's to resize.
+    /// the next boot; the image itself is the caller's to resize. Unshares apply before shares, so
+    /// one call can replace a share (e.g. to make it read-only); each new share's folder must exist.
     public func applied(to config: VMConfig, limits: Limits) throws -> VMConfig {
         if isEmpty { throw VMSettingsError.nothingToChange }
         var updated = config
@@ -51,6 +58,13 @@ public struct VMSettings: Equatable, Sendable {
                 updated.diskGrowPending = true
             }
         }
+        for target in unshare {
+            guard updated.shares.contains(where: { $0.matches(target) }) else { throw VMShareError.unknown(target) }
+            updated.shares.removeAll { $0.matches(target) }
+        }
+        for new in share { try new.checkFolder() }
+        updated.shares += share
+        try VMShare.checkUnique(updated.shares)
         return updated
     }
 }
@@ -65,7 +79,7 @@ public enum VMSettingsError: Error, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .nothingToChange: "nothing to change: give at least one of --cpus, --memory or --disk"
+        case .nothingToChange: "nothing to change: give at least one of --cpus, --memory, --disk, --share or --unshare"
         case .cpusOutOfRange(let cpus, let range):
             "\(cpus) CPUs is outside what this host allows (\(range.lowerBound)–\(range.upperBound))"
         case .memoryOutOfRange(let memory, let range):

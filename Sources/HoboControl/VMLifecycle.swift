@@ -23,16 +23,21 @@ public struct VMLifecycle: Sendable {
     }
 
     /// Boots `name` under launchd and waits until the guest answers SSH. A timeout leaves it booting.
-    /// With `gui`, the VM's window opens at boot, or at once if it is already running.
-    public func start(_ name: String, gui: Bool = false, timeout: Duration = .seconds(10 * 60)) async throws -> StartResult {
+    /// With `gui`, the VM's window opens at boot, or at once if it is already running. `shares` are
+    /// for this run only, on top of the VM's own; they can't be added to a VM that's already running.
+    public func start(
+        _ name: String, gui: Bool = false, shares: [VMShare] = [], timeout: Duration = .seconds(10 * 60)
+    ) async throws -> StartResult {
         let vm = try store.find(name)
         let job = store.job(for: vm.name)
+        let config: VMConfig
         switch vm.status {
         case .running:
+            if !shares.isEmpty { throw LifecycleError.sharesNeedStop(vm.name) }
             if gui { try await view(vm.name) }
             return .alreadyRunning(try? await ControlClient.status(at: job.socket))
-        case .stopped, .crashed:
-            break
+        case .stopped(let stored), .crashed(let stored, _):
+            config = stored
         case .building:
             throw VMStoreError.busy(vm.name, reason: "being built")
         case .failed:
@@ -43,6 +48,13 @@ public struct VMLifecycle: Sendable {
         // Checked here, not left to the VM process, whose failure would only reach its log.
         guard Entitlements.has(Entitlements.virtualization) else { throw LifecycleError.unsigned(executable.path) }
         try ControlSocket.checkPath(job.socket.path)
+        // Run-only shares were just typed, so a bad one fails here; a persistent share whose folder
+        // has gone only warns, and the VM process leaves it out.
+        for share in shares { try share.checkFolder() }
+        try VMShare.checkUnique(config.shares + shares)
+        for share in config.shares {
+            if let problem = share.folderProblem { log("warning: not sharing \(share.name) this run: \(share.path): \(problem)") }
+        }
 
         // A job left loaded by the last run (exited, maybe crashed) blocks bootstrapping a new one.
         store.launchd.bootout(job.label)
@@ -50,7 +62,7 @@ public struct VMLifecycle: Sendable {
         try? FileManager.default.removeItem(at: job.log)
         let plist = try Launchd.plist(
             label: job.label,
-            arguments: Self.runArguments(executable: executable, name: vm.name, gui: gui),
+            arguments: Self.runArguments(executable: executable, name: vm.name, gui: gui, shares: shares),
             environment: ["HOBO_VMS": store.directory.path, "HOBO_HOME": store.home.root.path],
             log: job.log
         )
@@ -61,8 +73,8 @@ public struct VMLifecycle: Sendable {
     }
 
     /// The VM process's command line, as launchd runs it.
-    static func runArguments(executable: URL, name: String, gui: Bool) -> [String] {
-        [executable.path, "_vm-run", name] + (gui ? ["--gui"] : [])
+    static func runArguments(executable: URL, name: String, gui: Bool, shares: [VMShare] = []) -> [String] {
+        [executable.path, "_vm-run", name] + (gui ? ["--gui"] : []) + shares.flatMap { ["--share", $0.argument] }
     }
 
     /// Shows the window of a running (or booting) VM and brings it to the front.
@@ -187,6 +199,7 @@ public enum LifecycleError: Error, Equatable, CustomStringConvertible {
     case unresponsive(String, String)
     case stopTimedOut(String)
     case notRunning(String)
+    case sharesNeedStop(String)
 
     public var description: String {
         switch self {
@@ -202,6 +215,8 @@ public enum LifecycleError: Error, Equatable, CustomStringConvertible {
         case .unresponsive(let name, let reason): "the VM process for \(name) isn't answering (\(reason)); hobo stop --force \(name) kills it"
         case .stopTimedOut(let name): "\(name) is still stopping (hobo stop --force \(name) powers it off)"
         case .notRunning(let name): "\(name) is not running (hobo start --gui \(name))"
+        case .sharesNeedStop(let name):
+            "\(name) is already running, and shares can't be added to a running VM (hobo stop \(name) first, or hobo set \(name) --share while it's stopped)"
         }
     }
 }

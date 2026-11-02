@@ -103,8 +103,20 @@ global VMs on 2026-11-01.
    `config.json`, which is the truth thereafter: `engine`, `os`, `cpus`, `memory` and `disk` (bytes),
    `macAddress` (fixed at create, so the DHCP lease and `hobo ip` are stable), `guestOSVersion`,
    `created`, `recipeSHA256` and `sourceSHA256`. `hobo set` changes CPUs, memory, disk (grow only) and
-   persistent shares (virtio-fs; macOS default mount `/Volumes/My Shared Files/<tag>`, `readonly`
-   supported). `start --share` adds a share for that run only. Clones inherit `config.json`.
+   persistent shares. `start --share` adds a share for that run only. Clones inherit `config.json`.
+   Shares are virtio-fs on the macOS automount tag, so the guest mounts each at
+   `/Volumes/My Shared Files/<name>` with nothing to run inside it; the host can't change that
+   path, and a provision step can symlink a share somewhere nicer (decided 2026-11-02, over
+   per-share tags mounted over SSH, which a reboot inside the guest would lose). Both commands take
+   `--share <folder>[:ro]`, named by the folder's basename; names must be unique
+   case-insensitively, and a clash is refused with a hint to rename or symlink a folder.
+   `set --unshare <name|folder>` runs before `--share`, so one call can make a share read-only.
+   `config.json` keeps `shares: [{name, path, readOnly}]` with absolute paths. Shares change only
+   on a stopped VM, like the rest of `set`, and `start --share` refuses a running one (live
+   changes are deferred, Beads hobo-z12). A persistent share whose folder has gone (an unplugged
+   drive) is left out of that run with a warning and stays in `config.json`; a missing
+   `start --share` folder is refused. Recipes declare no shares (host state, decision 3); defaults
+   with recipe-relative paths are deferred (Beads hobo-a0t).
    Shares must be folders: virtio-fs rejects volume roots, so Hobo refuses them up front. Guests
    don't Spotlight-index shares, and some guests have shown shared files' creation dates as
    2001-01-01. Disk grow is two steps, verified end to end on a macOS 27.2 guest (2026-11-01, 80 →

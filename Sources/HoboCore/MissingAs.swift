@@ -29,3 +29,26 @@ extension KeyedDecodingContainer {
         try decodeIfPresent(type, forKey: key) ?? MissingAs(wrappedValue: Default.value)
     }
 }
+
+/// An array that decodes as empty when its key is missing, for the same reason as `MissingAs`.
+@propertyWrapper
+public struct MissingAsEmpty<Element: Codable & Equatable & Sendable>: Codable, Equatable, Sendable {
+    public var wrappedValue: [Element]
+
+    public init(wrappedValue: [Element]) { self.wrappedValue = wrappedValue }
+
+    public init(from decoder: any Decoder) throws {
+        wrappedValue = try decoder.singleValueContainer().decode([Element].self)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(wrappedValue)
+    }
+}
+
+extension KeyedDecodingContainer {
+    public func decode<Element>(_ type: MissingAsEmpty<Element>.Type, forKey key: Key) throws -> MissingAsEmpty<Element> {
+        try decodeIfPresent(type, forKey: key) ?? MissingAsEmpty(wrappedValue: [])
+    }
+}

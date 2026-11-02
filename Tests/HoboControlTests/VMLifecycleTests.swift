@@ -181,6 +181,19 @@ import Testing
         #expect(requests.withLock { $0 } == (gui ? [.view, .status] : [.status]))
     }
 
+    @Test func sharesCantBeAddedToARunningVM() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let share = VMShare(name: "tmp", path: "/tmp", readOnly: false)
+        await #expect(throws: LifecycleError.sharesNeedStop("dev")) { try await lifecycle.start("dev", shares: [share]) }
+    }
+
+    @Test func runSharesGoToTheVMProcess() {
+        let shares = [VMShare(name: "a", path: "/x/a", readOnly: false), VMShare(name: "b", path: "/x/b", readOnly: true)]
+        let arguments = VMLifecycle.runArguments(executable: URL(filePath: "/bin/hobo"), name: "dev", gui: false, shares: shares)
+        #expect(arguments == ["/bin/hobo", "_vm-run", "dev", "--share", "/x/a", "--share", "/x/b:ro"])
+    }
+
     @Test(arguments: [false, true])
     func onlyGUIStartsAskTheVMProcessForAWindow(gui: Bool) {
         let arguments = VMLifecycle.runArguments(executable: URL(filePath: "/bin/hobo"), name: "dev", gui: gui)

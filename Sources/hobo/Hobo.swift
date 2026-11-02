@@ -256,6 +256,16 @@ struct Start: OutputCommand {
     @Flag(help: "Open the VM's window at boot (or now, if it is already running).")
     var gui = false
 
+    @Option(
+        name: .customLong("share"),
+        help: ArgumentHelp(
+            "Share a host folder for this run only, read-only with :ro. Repeatable; the VM must be stopped.",
+            valueName: "folder[:ro]"
+        ),
+        transform: parseShare
+    )
+    var shares: [VMShare] = []
+
     @Flag(help: "Print progress and the VM's status (state, PID, IP address) as JSON Lines events.")
     var json = false
 
@@ -268,7 +278,7 @@ struct Start: OutputCommand {
             Darwin.exit(130)
         }
         defer { interrupt.cancel() }
-        let result = try await VMLifecycle(log: output.log).start(name, gui: gui)
+        let result = try await VMLifecycle(log: output.log).start(name, gui: gui, shares: shares)
         let text = switch result {
         case .started(let status): "\(name) is running\(status.ipAddress.map { " (\($0))" } ?? "")"
         case .alreadyRunning(let status): "\(name) is already running\(status?.ipAddress.map { " (\($0))" } ?? "")"
@@ -446,17 +456,20 @@ struct VMRun: ParsableCommand {
 
     @Argument var name: String
     @Flag var gui = false
+    /// `start --share`, as `VMShare.argument` wrote them: absolute paths.
+    @Option(name: .customLong("share")) var shares: [String] = []
 
     func run() throws {
         let name = name
         let gui = gui
+        let runShares = try shares.map { try VMShare.parse($0, currentDirectory: URL(filePath: "/")) }
         // `Entry` calls this on the main thread, before anything else is running.
         MainActor.assumeIsolated {
             let app = NSApplication.shared
             // Never in the Dock, and takes focus only when `hobo view` or `--gui` shows the window.
             app.setActivationPolicy(.accessory)
             Task {
-                await VMRunner(name: name, gui: gui) { line in
+                await VMRunner(name: name, gui: gui, runShares: runShares) { line in
                     print("\(Date.now.formatted(.iso8601)) \(line)")
                     fflush(stdout)
                 }.start()
@@ -479,10 +492,13 @@ private func signalSource(_ signo: Int32, _ handler: @escaping @Sendable () -> V
 struct SetCommand: OutputCommand {
     static let configuration = CommandConfiguration(
         commandName: "set",
-        abstract: "Change a stopped VM's CPUs, memory or disk size.",
+        abstract: "Change a stopped VM's CPUs, memory, disk size or shared folders.",
         discussion: """
             The disk only grows. Its image grows now, and the guest's APFS container grows into the new space \
             at the next hobo start.
+
+            A shared folder appears in the guest at /Volumes/My Shared Files/<folder name>. --unshare runs before \
+            --share, so --unshare src --share ~/src:ro makes a share read-only.
             """
     )
 
@@ -498,26 +514,43 @@ struct SetCommand: OutputCommand {
     @Option(help: ArgumentHelp("Disk size, e.g. 120GB. It can only grow.", valueName: "size"), transform: { try ByteSize(parsing: $0) })
     var disk: ByteSize?
 
+    @Option(
+        name: .customLong("share"),
+        help: ArgumentHelp("Share a host folder, read-only with :ro. Repeatable.", valueName: "folder[:ro]"),
+        transform: parseShare
+    )
+    var shares: [VMShare] = []
+
+    @Option(
+        name: .customLong("unshare"),
+        help: ArgumentHelp("Stop sharing a folder, given by its share name or host path. Repeatable.", valueName: "name|folder")
+    )
+    var unshares: [String] = []
+
     @Flag(help: "Print the updated VM as JSON.")
     var json = false
 
     static let jsonStyle = Output.JSONStyle.document
 
+    private var settings: VMSettings {
+        VMSettings(
+            cpus: cpus, memory: memory, disk: disk, share: shares,
+            unshare: unshares.map { VMShare.unshareTarget($0, currentDirectory: .currentDirectory()) }
+        )
+    }
+
     func validate() throws {
-        if VMSettings(cpus: cpus, memory: memory, disk: disk).isEmpty {
-            throw ValidationError("give at least one of --cpus, --memory or --disk")
-        }
+        if settings.isEmpty { throw ValidationError("give at least one of --cpus, --memory, --disk, --share or --unshare") }
     }
 
     func execute(_ output: Output) async throws -> Reply {
         let store = VMStore.standard()
-        let config = try VMSettings(cpus: cpus, memory: memory, disk: disk).apply(to: name, store: store, log: output.log)
+        let config = try settings.apply(to: name, store: store, log: output.log)
         let vm = try store.find(name)
-        let growNote = config.diskGrowPending ? "\nThe guest grows into the larger disk at the next hobo start \(vm.name)." : ""
-        return Reply(
-            VMSummary(vm),
-            text: "\(vm.name): \(config.cpus) CPUs, \(fileSize(config.memory)) memory, \(fileSize(config.disk)) disk\(growNote)"
-        )
+        var lines = ["\(vm.name): \(config.cpus) CPUs, \(fileSize(config.memory)) memory, \(fileSize(config.disk)) disk"]
+        lines += config.shares.map { "Sharing \($0.path) as \($0.name)\($0.readOnly ? " (read-only)" : "")" }
+        if config.diskGrowPending { lines.append("The guest grows into the larger disk at the next hobo start \(vm.name).") }
+        return Reply(VMSummary(vm), text: lines.joined(separator: "\n"))
     }
 }
 
@@ -603,6 +636,11 @@ struct Delete: OutputCommand {
         try store.delete(vm.name)
         return Reply(["deleted": vm.name], text: "Deleted \(vm.name)")
     }
+}
+
+/// A `--share` argument, resolved against the current directory.
+private func parseShare(_ argument: String) throws -> VMShare {
+    try VMShare.parse(argument, currentDirectory: .currentDirectory())
 }
 
 /// Left-aligned columns two spaces apart, the first row a header.

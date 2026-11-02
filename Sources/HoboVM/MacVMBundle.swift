@@ -53,7 +53,11 @@ public struct MacVMBundle: Sendable {
         return UInt64(values?.totalFileAllocatedSize ?? 0)
     }
 
-    public func configuration(cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress) throws -> VZVirtualMachineConfiguration {
+    /// `shares` go on the macOS automount tag, so the guest mounts each at
+    /// `/Volumes/My Shared Files/<name>` with nothing to run inside it.
+    public func configuration(
+        cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare] = []
+    ) throws -> VZVirtualMachineConfiguration {
         guard let model = VZMacHardwareModel(dataRepresentation: try Data(contentsOf: hardwareModel)), model.isSupported else {
             throw VMError.unsupportedHardwareModel
         }
@@ -87,6 +91,13 @@ public struct MacVMBundle: Sendable {
         config.keyboards = [VZMacKeyboardConfiguration()]
         config.pointingDevices = [VZMacTrackpadConfiguration()]
         config.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
+        if !shares.isEmpty {
+            let device = VZVirtioFileSystemDeviceConfiguration(tag: VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag)
+            device.share = VZMultipleDirectoryShare(directories: Dictionary(uniqueKeysWithValues: shares.map { share in
+                (share.name, VZSharedDirectory(url: URL(filePath: share.path, directoryHint: .isDirectory), readOnly: share.readOnly))
+            }))
+            config.directorySharingDevices = [device]
+        }
         try config.validate()
         return config
     }

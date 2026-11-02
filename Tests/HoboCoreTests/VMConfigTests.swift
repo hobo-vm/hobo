@@ -18,8 +18,10 @@ import Testing
     @Test func olderConfigsHaveNoPendingDiskGrow() throws {
         let config = try VMConfig.decoder.decode(VMConfig.self, from: Data(Self.json.replacingOccurrences(of: "%@", with: "").utf8))
         #expect(!config.diskGrowPending)
+        #expect(config.shares.isEmpty)
         var pending = config
         pending.diskGrowPending = true
+        pending.shares = [VMShare(name: "src", path: "/src", readOnly: true)]
         #expect(try VMConfig.decoder.decode(VMConfig.self, from: VMConfig.encoder.encode(pending)) == pending)
     }
 

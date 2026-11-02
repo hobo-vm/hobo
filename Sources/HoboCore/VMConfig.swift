@@ -27,11 +27,14 @@ public struct VMConfig: Codable, Equatable, Sendable {
     /// Set by `hobo set --disk` once the image has grown: the guest's APFS container still has to
     /// grow into the new space, which the VM process does at the next boot (decision 9).
     @MissingAsFalse public var diskGrowPending: Bool
+    /// Persistent shares (`hobo set --share`), names unique case-insensitively.
+    @MissingAsEmpty public var shares: [VMShare]
 
     public init(
         engine: Engine, os: OS, cpus: Int, memory: UInt64, disk: UInt64, macAddress: String,
         guestOSVersion: String, created: Date, recipeSHA256: String, sourceSHA256: String,
-        sip: Bool = true, amfi: Bool = true, diskGrowPending: Bool = false
+        sip: Bool = true, amfi: Bool = true, diskGrowPending: Bool = false,
+        shares: [VMShare] = []
     ) {
         self.engine = engine
         self.os = os
@@ -46,6 +49,7 @@ public struct VMConfig: Codable, Equatable, Sendable {
         self.sip = sip
         self.amfi = amfi
         self.diskGrowPending = diskGrowPending
+        self.shares = shares
     }
 
     static let encoder: JSONEncoder = {

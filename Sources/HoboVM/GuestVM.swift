@@ -10,10 +10,12 @@ public final class GuestVM {
     let machine: VZVirtualMachine
     private let observer = StopObserver()
 
-    public init(bundle: MacVMBundle, cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress) throws {
+    public init(bundle: MacVMBundle, cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare] = []) throws {
         self.bundle = bundle
         self.macAddress = macAddress
-        machine = VZVirtualMachine(configuration: try bundle.configuration(cpus: cpus, memoryBytes: memoryBytes, macAddress: macAddress))
+        machine = VZVirtualMachine(configuration: try bundle.configuration(
+            cpus: cpus, memoryBytes: memoryBytes, macAddress: macAddress, shares: shares
+        ))
         machine.delegate = observer
     }
 

@@ -66,4 +66,29 @@ import Testing
         #expect(VMSettingsError.diskShrink(current: ByteSize(bytes: 80 << 30), requested: ByteSize(bytes: 60 << 30)).description
             == "the disk can only grow (it is 80GB, asked for 60GB); the guest's freed space already returns to the host")
     }
+
+    @Test func sharesAreAddedAfterUnsharing() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "hobo-settings-\(UUID().uuidString)")
+        let src = dir.appending(path: "src")
+        try FileManager.default.createDirectory(at: src, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let writable = VMShare(name: "src", path: src.path, readOnly: false)
+        let readOnly = VMShare(name: "src", path: src.path, readOnly: true)
+
+        let shared = try VMSettings(share: [writable]).applied(to: Self.config, limits: Self.limits)
+        #expect(shared.shares == [writable])
+        #expect(throws: VMShareError.duplicateName("src", src.path, src.path)) {
+            try VMSettings(share: [readOnly]).applied(to: shared, limits: Self.limits)
+        }
+        #expect(try VMSettings(share: [readOnly], unshare: ["src"]).applied(to: shared, limits: Self.limits).shares == [readOnly])
+        #expect(try VMSettings(unshare: [src.path]).applied(to: shared, limits: Self.limits).shares.isEmpty)
+    }
+
+    @Test func unknownUnsharesAndMissingFoldersAreRefused() {
+        #expect(throws: VMShareError.unknown("nope")) { try VMSettings(unshare: ["nope"]).applied(to: Self.config, limits: Self.limits) }
+        let missing = VMShare(name: "gone", path: "/nonexistent/gone", readOnly: false)
+        #expect(throws: VMShareError.unusable("/nonexistent/gone", "it doesn't exist")) {
+            try VMSettings(share: [missing]).applied(to: Self.config, limits: Self.limits)
+        }
+    }
 }

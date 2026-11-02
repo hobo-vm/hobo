@@ -17,6 +17,8 @@ public final class VMRunner {
     let name: String
     /// Whether to show the window as soon as the VM boots (`start --gui`).
     let gui: Bool
+    /// `start --share`: shares for this run only, on top of `config.json`'s.
+    let runShares: [VMShare]
     let log: @Sendable (String) -> Void
 
     /// The process's one runner, held here because nothing else keeps it alive between control
@@ -28,10 +30,14 @@ public final class VMRunner {
     private var server: ControlServer?
     private var status = VMRunStatus(state: .starting, pid: getpid(), detail: "booting")
 
-    public init(store: VMStore = .standard(), name: String, gui: Bool = false, log: @escaping @Sendable (String) -> Void) {
+    public init(
+        store: VMStore = .standard(), name: String, gui: Bool = false, runShares: [VMShare] = [],
+        log: @escaping @Sendable (String) -> Void
+    ) {
         self.store = store
         self.name = name
         self.gui = gui
+        self.runShares = runShares
         self.log = log
     }
 
@@ -58,7 +64,15 @@ public final class VMRunner {
         server = try ControlServer(path: job.socket) { [weak self] request, reply in
             await self?.handle(request, reply: reply) ?? .error("the VM process is shutting down")
         }
-        let guest = try GuestVM(bundle: MacVMBundle(directory: vm.bundle), cpus: config.cpus, memoryBytes: config.memory, macAddress: mac)
+        // A folder that has gone (an unplugged drive, say) only loses its share for this run.
+        let shares = (config.shares + runShares).filter { share in
+            guard let problem = share.folderProblem else { return true }
+            log("warning: not sharing \(share.name) this run: \(share.path): \(problem)")
+            return false
+        }
+        let guest = try GuestVM(
+            bundle: MacVMBundle(directory: vm.bundle), cpus: config.cpus, memoryBytes: config.memory, macAddress: mac, shares: shares
+        )
         guest.onStop = { [weak self] error in
             if let error { self?.log("error: the VM stopped: \(error)") } else { self?.log("The guest shut down") }
             self?.finish(error == nil ? 0 : 1)

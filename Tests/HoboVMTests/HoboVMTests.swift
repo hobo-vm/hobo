@@ -24,8 +24,9 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
     }
 
     /// Creates a VM from the latest IPSW, runs it through start and stop under launchd, changes
-    /// its hardware with set and re-runs steps with provision, then renames and deletes it. The recipe's step asserts the Vagrant conventions and a GUI session
-    /// from inside the guest, so a VM that builds has them. It enables `[gui_testing]`, whose grants
+    /// its hardware and shares with set, shares a folder for one run, re-runs steps with provision,
+    /// then renames and deletes it. The recipe's step asserts the Vagrant conventions and a GUI
+    /// session from inside the guest, so a VM that builds has them. It enables `[gui_testing]`, whose grants
     /// create checks and the test checks again on a later boot. VMs go to a temp `HOBO_VMS`, whose
     /// store hash keeps their launchd jobs apart from real ones; the IPSW goes through the real image
     /// index, so it downloads only once.
@@ -115,8 +116,24 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         let updated = try VMConfig.load(from: configFile)
         #expect(updated.cpus == 5 && updated.memory == 6 << 30 && updated.disk == 72 << 30 && updated.diskGrowPending)
 
-        #expect(try run(hobo, ["start", "itest"], in: work, environment: env) == 0)
+        // Shares: a persistent read-only one (set) and a writable one for this run only (start --share).
+        let kept = work.appending(path: "kept")
+        let scratch = work.appending(path: "scratch")
+        for folder in [kept, scratch] { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
+        try "kept\n".write(to: kept.appending(path: "hello.txt"), atomically: true, encoding: .utf8)
+        #expect(try run(hobo, ["set", "itest", "--share", "\(kept.path):ro"], in: work, environment: env) == 0)
+        #expect(try VMConfig.load(from: configFile).shares == [VMShare(name: "kept", path: kept.path, readOnly: true)])
+        #expect(try run(hobo, ["set", "itest", "--share", kept.path], in: work, environment: env) != 0, "already shared")
+        #expect(try run(hobo, ["start", "itest", "--share", kept.path], in: work, environment: env) != 0, "name collision")
+
+        #expect(try run(hobo, ["start", "itest", "--share", scratch.path], in: work, environment: env) == 0)
         #expect(try run(hobo, ["set", "itest", "--cpus", "4"], in: work, environment: env) != 0, "running")
+        #expect(try run(hobo, ["start", "itest", "--share", scratch.path], in: work, environment: env) != 0, "shares need a stopped VM")
+        let shared = "/Volumes/My Shared Files"
+        #expect(try output(hobo, ["exec", "itest", "--", "cat", "\(shared)/kept/hello.txt"], environment: env) == "kept\n")
+        #expect(try run(hobo, ["exec", "itest", "--", "touch", "\(shared)/kept/new"], in: work, environment: env) != 0, "read-only")
+        #expect(try run(hobo, ["exec", "itest", "--", "sh", "-c", "echo out > '\(shared)/scratch/from-guest'"], in: work, environment: env) == 0)
+        #expect(try String(contentsOf: scratch.appending(path: "from-guest"), encoding: .utf8) == "out\n")
         #expect(try !VMConfig.load(from: configFile).diskGrowPending)
         #expect(try output(hobo, ["exec", "itest", "--", "sysctl", "-n", "hw.ncpu"], environment: env) == "5\n")
         // df reports the main container's size for /. Larger than the whole original 64 GB disk means it
@@ -145,6 +162,13 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
 
         #expect(try output(hobo, ["stop", "--force", "itest"], environment: env).contains("Stopped itest"))
         #expect(try run(hobo, ["provision", "itest", again.path], in: work, environment: env) != 0, "not running")
+
+        // The run-only share is gone after a restart; the persistent one can be removed.
+        #expect(try run(hobo, ["set", "itest", "--unshare", "kept"], in: work, environment: env) == 0)
+        #expect(try VMConfig.load(from: configFile).shares.isEmpty)
+        #expect(try run(hobo, ["start", "itest"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["exec", "itest", "--", "test", "-e", "\(shared)/scratch"], in: work, environment: env) != 0)
+        #expect(try output(hobo, ["stop", "--force", "itest"], environment: env).contains("Stopped itest"))
         #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+stopped/))
 
         #expect(try run(hobo, ["rename", "itest", "itest2"], in: work, environment: env) == 0)
