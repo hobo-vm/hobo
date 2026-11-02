@@ -66,7 +66,7 @@ public struct ClaudeSkill: Sendable {
     }
 
     /// Whether SKILL.md's frontmatter carries the `hobo-version` line.
-    static func isHobos(_ text: String) -> Bool {
+    static func hasHoboMarker(_ text: String) -> Bool {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         guard lines.first == "---" else { return false }
         for line in lines.dropFirst() {
@@ -77,17 +77,17 @@ public struct ClaudeSkill: Sendable {
     }
 
     /// What is at `directory` now.
-    enum State: Equatable { case absent, hobos, foreign }
+    enum State: Equatable { case absent, writtenByHobo, foreign }
 
     func state() -> State {
         guard FileManager.default.fileExists(atPath: directory.path) else { return .absent }
         guard let text = try? String(contentsOf: file, encoding: .utf8) else { return .foreign }
-        return Self.isHobos(text) ? .hobos : .foreign
+        return Self.hasHoboMarker(text) ? .writtenByHobo : .foreign
     }
 
     /// Writes SKILL.md, replacing hobo's own copy. Another skill in the way needs `force`.
     public func install(force: Bool) throws {
-        if state() == .foreign && !force { throw ClaudeSkillError.notHobos(directory.path, forceTo: "replace") }
+        if state() == .foreign && !force { throw ClaudeSkillError.notWrittenByHobo(directory.path, forceTo: "replace") }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Self.contents().write(to: file, atomically: true, encoding: .utf8)
     }
@@ -98,8 +98,8 @@ public struct ClaudeSkill: Sendable {
     public func uninstall(force: Bool) throws -> Bool {
         switch state() {
         case .absent: return false
-        case .foreign where !force: throw ClaudeSkillError.notHobos(directory.path, forceTo: "remove")
-        case .hobos, .foreign:
+        case .foreign where !force: throw ClaudeSkillError.notWrittenByHobo(directory.path, forceTo: "remove")
+        case .writtenByHobo, .foreign:
             try FileManager.default.removeItem(at: directory)
             return true
         }
@@ -109,13 +109,13 @@ public struct ClaudeSkill: Sendable {
 public enum ClaudeSkillError: Error, CustomStringConvertible, Equatable {
     case notInGitRepository(String)
     /// The path, and what `--force` would do to it.
-    case notHobos(String, forceTo: String)
+    case notWrittenByHobo(String, forceTo: String)
 
     public var description: String {
         switch self {
         case .notInGitRepository(let path):
             "\(path) isn't in a git repository, so there's no project to install the skill into"
-        case .notHobos(let path, let action):
+        case .notWrittenByHobo(let path, let action):
             "\(path) wasn't written by hobo (it has no SKILL.md with a \(ClaudeSkill.markerKey) line); pass --force to \(action) it"
         }
     }

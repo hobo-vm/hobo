@@ -29,13 +29,13 @@ struct ClaudeSkillTests {
         #expect(lines.prefix(5) == ["---", "name: hobo", "description: \"\(AgentGuidance.skillDescription)\"",
                                     "hobo-version: 1.2.3", "---"])
         #expect(text.hasSuffix(AgentGuidance.skillBody + "\n"))
-        #expect(ClaudeSkill.isHobos(text))
+        #expect(ClaudeSkill.hasHoboMarker(text))
     }
 
     @Test func markerCountsOnlyInTheFrontmatter() {
-        #expect(!ClaudeSkill.isHobos("---\nname: hobo\n---\nhobo-version: 1\n"))
-        #expect(!ClaudeSkill.isHobos("hobo-version: 1\n"))
-        #expect(!ClaudeSkill.isHobos(""))
+        #expect(!ClaudeSkill.hasHoboMarker("---\nname: hobo\n---\nhobo-version: 1\n"))
+        #expect(!ClaudeSkill.hasHoboMarker("hobo-version: 1\n"))
+        #expect(!ClaudeSkill.hasHoboMarker(""))
     }
 
     @Test func installWritesAndRefreshesHobosCopy() throws {
@@ -48,7 +48,7 @@ struct ClaudeSkillTests {
 
     @Test func installRefusesAnotherSkillWithoutForce() throws {
         try write("---\nname: hobo\n---\nmine\n")
-        #expect(throws: ClaudeSkillError.notHobos(skill.directory.path, forceTo: "replace")) {
+        #expect(throws: ClaudeSkillError.notWrittenByHobo(skill.directory.path, forceTo: "replace")) {
             try skill.install(force: false)
         }
         #expect(try read() == "---\nname: hobo\n---\nmine\n")
@@ -66,7 +66,7 @@ struct ClaudeSkillTests {
     @Test func uninstallRefusesAnotherSkillWithoutForce() throws {
         // A directory without SKILL.md isn't hobo's either.
         try FileManager.default.createDirectory(at: skill.directory, withIntermediateDirectories: true)
-        #expect(throws: ClaudeSkillError.notHobos(skill.directory.path, forceTo: "remove")) {
+        #expect(throws: ClaudeSkillError.notWrittenByHobo(skill.directory.path, forceTo: "remove")) {
             try skill.uninstall(force: false)
         }
         #expect(FileManager.default.fileExists(atPath: skill.directory.path))
