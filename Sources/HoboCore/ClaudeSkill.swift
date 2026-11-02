@@ -85,9 +85,13 @@ public struct ClaudeSkill: Sendable {
         return Self.hasHoboMarker(text) ? .writtenByHobo : .foreign
     }
 
-    /// Writes SKILL.md, replacing hobo's own copy. Another skill in the way needs `force`.
+    /// Writes SKILL.md, replacing hobo's own copy. Another skill in the way needs `force`, which
+    /// removes it first (it may not even be a directory).
     public func install(force: Bool) throws {
-        if state() == .foreign && !force { throw ClaudeSkillError.notWrittenByHobo(directory.path, forceTo: "replace") }
+        if state() == .foreign {
+            guard force else { throw ClaudeSkillError.notWrittenByHobo(directory.path, forceTo: "replace") }
+            try FileManager.default.removeItem(at: directory)
+        }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Self.contents().write(to: file, atomically: true, encoding: .utf8)
     }

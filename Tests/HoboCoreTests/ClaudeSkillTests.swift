@@ -56,6 +56,16 @@ struct ClaudeSkillTests {
         #expect(try read() == ClaudeSkill.contents())
     }
 
+    @Test func forcedInstallReplacesAFileInTheWay() throws {
+        try FileManager.default.createDirectory(at: skill.directory.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "not a directory".write(to: skill.directory, atomically: true, encoding: .utf8)
+        #expect(throws: ClaudeSkillError.notWrittenByHobo(skill.directory.path, forceTo: "replace")) {
+            try skill.install(force: false)
+        }
+        try skill.install(force: true)
+        #expect(try read() == ClaudeSkill.contents())
+    }
+
     @Test func uninstallRemovesHobosDirectory() throws {
         try skill.install(force: false)
         #expect(try skill.uninstall(force: false))
