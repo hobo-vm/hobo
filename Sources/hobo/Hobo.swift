@@ -48,7 +48,7 @@ enum GuestOSOption: String, ExpressibleByArgument, CaseIterable {
 struct Init: OutputCommand {
     static let configuration = CommandConfiguration(abstract: "Write a starter \(Recipe.fileName) in the current directory.")
 
-    @Option(help: "The guest OS: macos (an IPSW) or linux (an Ubuntu cloud image).")
+    @Option(help: "The guest OS: macos (an IPSW) or linux (an Ubuntu cloud image, with a desktop unless --server).")
     var os: GuestOSOption = .macos
 
     @Argument(help: ArgumentHelp(
@@ -60,11 +60,18 @@ struct Init: OutputCommand {
     ))
     var build: String?
 
+    @Flag(help: "With --os linux, leave out the desktop: the guest boots to a text console.")
+    var server = false
+
     @Flag(help: "Overwrite an existing \(Recipe.fileName).")
     var force = false
 
     @Flag(help: "Print the recipe's path and the image it is pinned to as JSON.")
     var json = false
+
+    func validate() throws {
+        if server && os != .linux { throw ValidationError("--server is for --os linux") }
+    }
 
     private struct Result: Encodable {
         var path: String
@@ -94,13 +101,13 @@ struct Init: OutputCommand {
         }
         let template = switch image {
         case .macOS(let image): Recipe.template(pinnedTo: image)
-        case .linux(let image): Recipe.template(pinnedTo: image)
+        case .linux(let image): Recipe.template(pinnedTo: image, desktop: !server)
         case nil: Recipe.template
         }
         try template.write(to: url, atomically: true, encoding: .utf8)
         let pinned = switch image {
         case .macOS(let image): " pinned to \(image.name) \(image.version) (\(image.build))"
-        case .linux(let image): " pinned to \(image.name), release \(image.serial)"
+        case .linux(let image): " pinned to \(image.name), release \(image.serial)\(server ? "" : ", with a desktop")"
         case nil: ""
         }
         return Reply(Result(path: url.path, image: image), text: "Wrote \(Recipe.fileName)\(pinned)")

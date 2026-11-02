@@ -42,7 +42,7 @@ global VMs on 2026-11-01.
    "latest" to resolve. Defaults follow the OS: 4 CPUs, 8 GB and 80 GB for macOS, 4 CPUs, 4 GB
    and 32 GB for Linux (enough for a desktop added by a step).
 4. **Commands.** VM-centric verbs, no Vagrant aliases:
-   `init [--os macos|linux] [<build-or-version>] [--force]`,
+   `init [--os macos|linux] [--server] [<build-or-version>] [--force]`,
    `images [--os macos|linux] [<build-or-version>] [--all]`, `validate [recipe]`,
    `create <name> [recipe] [--hold-on-failure]`, `list`,
    `start [--ephemeral] [--gui] [--cold] [--share path] [--idle-timeout d]`, `stop [--force]`,
@@ -110,6 +110,10 @@ global VMs on 2026-11-01.
    `20261016`, at a URL that never changes) of each supported series by default, every release
    with `--all`, and unsupported series hidden. `images --os linux 26.04` shows one series' newest
    release; `hobo init --os linux [<version>]` pins it, the newest supported LTS without one.
+   Ubuntu publishes no desktop cloud images, so a Linux recipe gets a desktop from a step:
+   `init --os linux` writes one first, by default (decided 2026-11-02), that installs
+   `ubuntu-desktop-minimal`, has GDM log `vagrant` in at boot and turns off screen blanking and
+   lock; `--server` leaves it out.
    Windows and simulator images may join `--os` later.
 9. **Runtime config.** The recipe supplies defaults; `create` copies them into the bundle's
    `config.json`, which is the truth thereafter: `engine`, `os`, `cpus`, `memory` and `disk` (bytes),

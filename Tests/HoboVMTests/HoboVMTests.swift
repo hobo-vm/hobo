@@ -131,7 +131,8 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         defer { try? FileManager.default.removeItem(at: work) }
         let env = ["HOBO_VMS": vms.path]
 
-        #expect(try run(hobo, ["init", "--os", "linux"], in: work) == 0)
+        // --server: installing the desktop takes many minutes.
+        #expect(try run(hobo, ["init", "--os", "linux", "--server"], in: work) == 0)
         let recipe = work.appending(path: "Hobo.toml")
         let pinned = try String(contentsOf: recipe, encoding: .utf8)
         try (pinned + """

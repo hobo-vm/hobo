@@ -232,7 +232,7 @@ import Testing
             url: URL(string: "https://cloud-images.ubuntu.com/x/ubuntu-26.04-server-cloudimg-arm64.img")!, sha256: sha,
             size: 1, supported: true, supportEnds: nil
         )
-        let template = Recipe.template(pinnedTo: image)
+        let template = Recipe.template(pinnedTo: image, desktop: false)
         let recipe = try Recipe.parse(template, directory: directory)
         #expect(recipe.os == .linux)
         #expect(recipe.source == .remote(image.url, sha256: sha))
@@ -243,8 +243,23 @@ import Testing
             .map { line in line.hasPrefix("# ") && line.contains(" = ") ? line.dropFirst(2) : line }
             .joined(separator: "\n")
         let steps = try Recipe.parse(uncommented, directory: directory).provisioners
-        #expect(steps.map(\.type) == [.shell, .shell, .file])
-        #expect(steps[2].destination == "/home/vagrant/.bashrc")
+        #expect(steps.map(\.type) == [.shell, .file])
+        #expect(steps[1].destination == "/home/vagrant/.bashrc")
+    }
+
+    @Test func linuxDesktopTemplateStartsWithTheDesktopStep() throws {
+        let image = UbuntuCatalog.Image(
+            name: "Ubuntu 26.04 LTS", version: "26.04", codename: "Resolute Raccoon", lts: true, serial: "20261016",
+            url: URL(string: "https://cloud-images.ubuntu.com/x/ubuntu-26.04-server-cloudimg-arm64.img")!, sha256: sha,
+            size: 1, supported: true, supportEnds: nil
+        )
+        let recipe = try Recipe.parse(Recipe.template(pinnedTo: image, desktop: true), directory: directory)
+        let step = try #require(recipe.provisioners.first)
+        #expect(recipe.provisioners.count == 1)
+        #expect(step.type == .shell && step.privileged != false)
+        #expect(step.inline == Recipe.desktopScript)
+        #expect(step.inline?.contains("AutomaticLogin=vagrant") == true)
+        #expect(!Recipe.template(pinnedTo: image, desktop: false).contains("ubuntu-desktop-minimal"))
     }
 
     private func minimal(source: String) -> String {
