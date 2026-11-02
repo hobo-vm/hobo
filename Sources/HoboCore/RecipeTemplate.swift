@@ -51,6 +51,14 @@ extension Recipe {
         # [gui_testing]
         # enabled = true
         # allow   = ["com.example.AppUITests.xctrunner"]
+        #
+        # Turn off System Integrity Protection, and AMFI so ad-hoc signed binaries may use restricted
+        # entitlements (turning AMFI off needs SIP off too). SIP only turns off by hand: create
+        # stops after installing macOS and opens the VM in recoveryOS for you to type one command.
+        #
+        # [security]
+        # sip  = false
+        # amfi = false
 
         """
     }

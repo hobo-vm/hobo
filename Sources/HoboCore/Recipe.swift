@@ -17,6 +17,8 @@ public struct Recipe: Equatable, Sendable {
     public var provisioners: [Provisioner]
     /// `[gui_testing]` when enabled: TCC pre-grants so agents can drive the guest UI over SSH.
     public var guiTesting: GUITesting?
+    /// `[security]`: SIP and AMFI, on unless the recipe turns them off.
+    public var security: Security
     /// The recipe's directory; relative `path`/`source` values resolve against it.
     public var directory: URL
 
@@ -27,6 +29,19 @@ public struct Recipe: Equatable, Sendable {
         case local(URL, sha256: String)
 
         public var isPinned: Bool { self != .latest }
+    }
+
+    /// Turning SIP off needs a person: `create` boots recoveryOS and waits for `csrutil disable`.
+    /// AMFI off is the `amfi_get_out_of_my_way=1` boot-arg, set over SSH once SIP is off, so ad-hoc
+    /// signed binaries may claim restricted entitlements.
+    public struct Security: Equatable, Sendable {
+        public var sip = true
+        public var amfi = true
+
+        public init(sip: Bool = true, amfi: Bool = true) {
+            self.sip = sip
+            self.amfi = amfi
+        }
     }
 
     public struct GUITesting: Equatable, Sendable {
@@ -43,6 +58,7 @@ public struct Recipe: Equatable, Sendable {
             source: try source(from: raw.source, directory: directory),
             provisioners: raw.provision ?? [],
             guiTesting: raw.guiTesting?.enabled == true ? GUITesting(allow: raw.guiTesting?.allow ?? []) : nil,
+            security: Security(sip: raw.security?.sip ?? true, amfi: raw.security?.amfi ?? true),
             directory: directory
         )
         // Caught here rather than by diskutil or VZ after the IPSW download.
@@ -52,6 +68,7 @@ public struct Recipe: Equatable, Sendable {
         for (index, step) in recipe.provisioners.enumerated() {
             if let problem = step.problem { throw RecipeError.invalidProvisioner(index, problem) }
         }
+        if !recipe.security.amfi && recipe.security.sip { throw RecipeError.amfiNeedsSIPOff }
         for client in recipe.guiTesting?.allow ?? [] {
             if client.isEmpty || client.contains(where: \.isWhitespace) || (client.contains("/") && !client.hasPrefix("/")) {
                 throw RecipeError.invalidGUITestingClient(client)
@@ -100,6 +117,7 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
     case invalidHardware(String)
     case invalidProvisioner(Int, String)
     case invalidGUITestingClient(String)
+    case amfiNeedsSIPOff
     case missingFiles([String])
 
     public var description: String {
@@ -111,6 +129,7 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
         case .invalidSHA256(let sha): "invalid sha256 \"\(sha)\" (expected 64 hex digits)"
         case .invalidHardware(let reason): reason
         case .invalidProvisioner(let index, let reason): "provision step \(index + 1): \(reason)"
+        case .amfiNeedsSIPOff: "[security] amfi = false needs sip = false too"
         case .invalidGUITestingClient(let client):
             "[gui_testing] allow entry \"\(client)\": expected an absolute path or a bundle ID"
         case .missingFiles(let paths): "recipe refers to missing files: \(paths.joined(separator: ", "))"
@@ -129,15 +148,21 @@ private struct RawRecipe: Decodable {
         var allow: [String]?
     }
 
+    struct Security: Decodable {
+        var sip: Bool?
+        var amfi: Bool?
+    }
+
     var cpus: Int?
     var memory: ByteSize?
     var disk: ByteSize?
     var source: RawSource
     var guiTesting: GUITesting?
+    var security: Security?
     var provision: [Provisioner]?
 
     private enum CodingKeys: String, CodingKey {
-        case cpus, memory, disk, source, provision
+        case cpus, memory, disk, source, provision, security
         case guiTesting = "gui_testing"
     }
 }

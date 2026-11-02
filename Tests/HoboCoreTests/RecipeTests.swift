@@ -89,6 +89,23 @@ import Testing
         #expect(allowed.guiTesting?.allow == ["com.example.AppUITests.xctrunner", "/usr/local/bin/tool"])
     }
 
+    @Test func securityDefaultsOnAndCanBeTurnedOff() throws {
+        let latest = minimal(source: #"ipsw = "latest""#)
+        #expect(try Recipe.parse(latest, directory: directory).security == Recipe.Security())
+        let sipOff = try Recipe.parse(latest + "\n[security]\nsip = false", directory: directory)
+        #expect(sipOff.security == Recipe.Security(sip: false, amfi: true))
+        let bothOff = try Recipe.parse(latest + "\n[security]\nsip = false\namfi = false", directory: directory)
+        #expect(bothOff.security == Recipe.Security(sip: false, amfi: false))
+        let summary = RecipeSummary(bothOff, path: "x")
+        #expect(!summary.sip && !summary.amfi)
+    }
+
+    @Test func amfiOffNeedsSIPOff() {
+        #expect(throws: RecipeError.amfiNeedsSIPOff) {
+            try Recipe.parse(minimal(source: #"ipsw = "latest""#) + "\n[security]\namfi = false", directory: directory)
+        }
+    }
+
     @Test(arguments: ["", "bin/tool", "com.example app"])
     func guiTestingClientsAreAbsolutePathsOrBundleIDs(_ client: String) {
         #expect(throws: RecipeError.invalidGUITestingClient(client)) {
@@ -157,6 +174,7 @@ import Testing
     @Test func initTemplateExampleStepsParse() throws {
         let uncommented = Recipe.template.replacingOccurrences(of: "# [[provision]]", with: "[[provision]]")
             .replacingOccurrences(of: "# [gui_testing]", with: "[gui_testing]")
+            .replacingOccurrences(of: "# [security]", with: "[security]")
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { line in
                 line.hasPrefix("# ") && line.contains("=") && !line.contains("ipsw") ? line.dropFirst(2) : line
@@ -166,6 +184,7 @@ import Testing
         #expect(recipe.provisioners.map(\.type) == [.shell, .shell, .file])
         #expect(recipe.provisioners[1].privileged == false)
         #expect(recipe.guiTesting?.allow == ["com.example.AppUITests.xctrunner"])
+        #expect(recipe.security == Recipe.Security(sip: false, amfi: false))
     }
 
     private func minimal(source: String) -> String {

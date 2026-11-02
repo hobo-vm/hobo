@@ -133,11 +133,13 @@ global VMs on 2026-11-01.
        5 min) for the first auto-login to finish, signalled by the user's tccd opening its TCC.db:
        SSH answers well before then, and shutting down early left the next boot, where recipe steps
        run, with no GUI session at all (2026-11-02, macOS 27.2);
-    4. `[gui_testing]` if enabled (decision 17): TCC grants written from the host into the stopped
+    4. `[security]` if it turns SIP off (decision 17): the one step that needs a person, in
+       recoveryOS, then a boot to check it and set the AMFI boot-arg;
+    5. `[gui_testing]` if enabled (decision 17): TCC grants written from the host into the stopped
        guest's Data volume, then checked over SSH on the next boot;
-    5. recipe `[[provision]]` steps (shell inline/path with `privileged` and `env`, and file), run
+    6. recipe `[[provision]]` steps (shell inline/path with `privileged` and `env`, and file), run
        once each over key SSH;
-    6. clean guest shutdown. The disk is ASIF, which returns blocks to the host when the guest's APFS
+    7. clean guest shutdown. The disk is ASIF, which returns blocks to the host when the guest's APFS
        TRIMs them, so there is no zero-fill or compaction pass; the build logs the resulting disk size.
        Verified on the host (an attached ASIF shrinks from 1 GB to 14 MB after delete + unmount) and
        from inside a macOS 27.2 guest (2026-11-01: a 5 GB random file grew `disk.asif` by 5.25 GB
@@ -270,6 +272,25 @@ global VMs on 2026-11-01.
         succeeds without the grant, leaving windows out) and System Events scripting work, and
         fails otherwise. Whether macOS's periodic Screen Recording re-approval affects long-lived VMs
         is unknown.
+    - Recipe `[security] sip = false` (and `amfi = false`, which needs it) turns SIP and AMFI off,
+      for testing ad-hoc signed binaries that claim restricted entitlements (decided 2026-11-02;
+      `[gui_testing]` doesn't need it). Checked on a macOS 27.2 guest (2026-11-02): `csrutil disable`
+      works in a VZ guest's recoveryOS (Options → Continue → Utilities › Terminal, no user picker; it
+      asks y/n, then vagrant's password); paste from the host doesn't reach recoveryOS; once SIP is
+      off, `sudo nvram boot-args="amfi_get_out_of_my_way=1"` works over SSH, and after a reboot an
+      ad-hoc binary with `com.apple.developer.endpoint-security.client` runs instead of being killed.
+      With SIP off the system TCC.db is writable inside the guest too.
+      - It can't be unattended, so it is the one manual step of a create, and the recipe stays the
+        whole record. `create` warns before installing and fails at once outside a GUI session
+        (`create` runs under AppKit's loop only when it has one). After the conventions boot it boots
+        recoveryOS with the VM window in front (Dock bounce and terminal bell; an unbundled binary
+        can't post notifications) and a floating panel of typed steps (no Copy buttons, since paste
+        doesn't work) with Cancel Build; closing the window also offers to cancel. The person shutting
+        the guest down means done; a normal boot then checks `csrutil status` and sets the boot-arg,
+        and if SIP is still on it goes back to recoveryOS with a note on the panel.
+      - The provisioning boot checks what the guest runs with (`csrutil status`, `kern.bootargs`),
+        fails if it isn't what the recipe asked, and records it as `sip`/`amfi` in `config.json`
+        (missing means on, for older bundles). Clones inherit it as guest state.
     - `exec --gui` runs the command in the `vagrant` user's Aqua session (`launchctl asuser`).
     - `screenshot` runs `screencapture` that way and returns the PNG.
     - A host-side framebuffer screenshot for wedged guests is deferred.

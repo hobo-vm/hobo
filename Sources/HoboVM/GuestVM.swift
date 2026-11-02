@@ -34,9 +34,11 @@ public final class GuestVM {
         try await installer.install()
     }
 
-    /// Boots the guest. `provisioning` only takes effect on the first boot after restore.
-    public func start(provisioning: VZMacGuestProvisioningOptions? = nil) async throws {
+    /// Boots the guest, into recoveryOS with `recovery`. `provisioning` only takes effect on the
+    /// first boot after restore.
+    public func start(provisioning: VZMacGuestProvisioningOptions? = nil, recovery: Bool = false) async throws {
         let options = VZMacOSVirtualMachineStartOptions()
+        options.startUpFromMacOSRecovery = recovery
         if let provisioning { try options.setGuestProvisioning(provisioning) }
         try await machine.start(options: options)
     }

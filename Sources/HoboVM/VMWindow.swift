@@ -14,6 +14,9 @@ final class VMWindow: NSObject, NSWindowDelegate {
     private let log: (String) -> Void
     /// Called when the user picks Shut Down in the close dialog.
     var onShutDown: (() -> Void)?
+    /// Set while `create` waits on the window (the recoveryOS step): closing the window, or the
+    /// menu's Cancel Build, offers to cancel the build instead of Keep Running and Shut Down.
+    var onCancelBuild: (() -> Void)?
     /// Whether the window is showing, as opposed to hidden by Keep Running or a shutdown.
     private(set) var isShown = false
     /// A hide waiting for the window to leave full screen, so it doesn't leave an empty Space.
@@ -40,6 +43,8 @@ final class VMWindow: NSObject, NSWindowDelegate {
         window.delegate = self
         window.center()
     }
+
+    var frame: NSRect { window.frame }
 
     /// Shows the window in front and tries to take focus. A process launchd started can't always
     /// take focus from the active app (cooperative activation), so the window may need a click.
@@ -77,6 +82,13 @@ final class VMWindow: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Takes the window away for good once its guest has stopped (nothing left to resize).
+    func close() {
+        isShown = false
+        window.orderOut(nil)
+        NSApp.setActivationPolicy(.accessory)
+    }
+
     func windowDidExitFullScreen(_ notification: Notification) {
         guard hidesAfterFullScreen else { return }
         hidesAfterFullScreen = false
@@ -87,8 +99,12 @@ final class VMWindow: NSObject, NSWindowDelegate {
     /// close dialog already offers Keep Running and Shut Down.
     private func makeMenu() -> NSMenu {
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "Keep \(name) Running in Background", action: #selector(keepRunning), keyEquivalent: "").target = self
-        appMenu.addItem(withTitle: "Shut Down \(name)", action: #selector(shutDown), keyEquivalent: "").target = self
+        if onCancelBuild != nil {
+            appMenu.addItem(withTitle: "Cancel Building \(name)", action: #selector(confirmCancelBuild), keyEquivalent: "").target = self
+        } else {
+            appMenu.addItem(withTitle: "Keep \(name) Running in Background", action: #selector(keepRunning), keyEquivalent: "").target = self
+            appMenu.addItem(withTitle: "Shut Down \(name)", action: #selector(shutDown), keyEquivalent: "").target = self
+        }
 
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
@@ -113,7 +129,22 @@ final class VMWindow: NSObject, NSWindowDelegate {
         onShutDown?()
     }
 
+    @objc private func confirmCancelBuild() {
+        let alert = NSAlert()
+        alert.messageText = "Cancel building \(name)?"
+        alert.informativeText = "The VM is deleted."
+        alert.addButton(withTitle: "Cancel Build")
+        alert.addButton(withTitle: "Keep Building")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertFirstButtonReturn { self?.onCancelBuild?() }
+        }
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if onCancelBuild != nil {
+            confirmCancelBuild()
+            return false
+        }
         let alert = NSAlert()
         alert.messageText = "Keep \(name) running?"
         alert.informativeText = "Keep Running hides the window and leaves the VM running headless; hobo view \(name) shows it again."

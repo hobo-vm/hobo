@@ -14,10 +14,16 @@ enum Entry {
         if arguments.first == VMRun.configuration.commandName {
             VMRun.main(Array(arguments.dropFirst()))
         }
+        // `create` may need a window (a recipe's recoveryOS step), so in a GUI session it runs under
+        // AppKit's loop; `.accessory` keeps it out of the Dock until a window shows. Elsewhere (SSH,
+        // no window server) it runs like any other command, and such recipes fail before installing.
+        let appKit = arguments.first == Create._commandName && CGSessionCopyCurrentDictionary() != nil
+        if appKit { MainActor.assumeIsolated { _ = NSApplication.shared.setActivationPolicy(.accessory) } }
         Task {
             await HoboCommand.main()
             exit(0)
         }
+        if appKit { MainActor.assumeIsolated { NSApplication.shared.run() } }
         dispatchMain()
     }
 }
@@ -143,7 +149,7 @@ struct Validate: OutputCommand {
         let warning = recipe.source.isPinned ? "" : "warning: source is unpinned (ipsw = \"latest\")\n"
         return Reply(
             RecipeSummary(recipe, path: path),
-            text: "\(warning)\(path): \(recipe.cpus) CPUs, \(recipe.memory) memory, \(recipe.disk) disk, \(recipe.provisioners.count) provision step(s)\(recipe.guiTesting == nil ? "" : ", GUI testing")"
+            text: "\(warning)\(path): \(recipe.cpus) CPUs, \(recipe.memory) memory, \(recipe.disk) disk, \(recipe.provisioners.count) provision step(s)\(recipe.guiTesting == nil ? "" : ", GUI testing")\(recipe.security.sip ? "" : ", SIP off")\(recipe.security.amfi ? "" : ", AMFI off")"
         )
     }
 }

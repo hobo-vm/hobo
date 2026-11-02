@@ -20,10 +20,15 @@ public struct VMConfig: Codable, Equatable, Sendable {
     public var recipeSHA256: String
     /// SHA-256 of the install image.
     public var sourceSHA256: String
+    /// System Integrity Protection, as checked in the guest at the end of create (`[security]`).
+    @MissingAsTrue public var sip: Bool
+    /// AppleMobileFileIntegrity, as checked in the guest at the end of create (`[security]`).
+    @MissingAsTrue public var amfi: Bool
 
     public init(
         engine: Engine, os: OS, cpus: Int, memory: UInt64, disk: UInt64, macAddress: String,
-        guestOSVersion: String, created: Date, recipeSHA256: String, sourceSHA256: String
+        guestOSVersion: String, created: Date, recipeSHA256: String, sourceSHA256: String,
+        sip: Bool = true, amfi: Bool = true
     ) {
         self.engine = engine
         self.os = os
@@ -35,6 +40,8 @@ public struct VMConfig: Codable, Equatable, Sendable {
         self.created = created
         self.recipeSHA256 = recipeSHA256
         self.sourceSHA256 = sourceSHA256
+        self.sip = sip
+        self.amfi = amfi
     }
 
     static let encoder: JSONEncoder = {

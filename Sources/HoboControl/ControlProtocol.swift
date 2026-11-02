@@ -67,31 +67,6 @@ public struct VMRunStatus: Codable, Equatable, Sendable {
     }
 }
 
-/// A flag that decodes as false when its key is missing, so a field added to the protocol keeps
-/// synthesized `Codable` (one list of fields) while older peers leave it out.
-@propertyWrapper
-public struct MissingAsFalse: Codable, Equatable, Sendable {
-    public var wrappedValue: Bool
-
-    public init(wrappedValue: Bool) { self.wrappedValue = wrappedValue }
-
-    public init(from decoder: any Decoder) throws {
-        wrappedValue = try decoder.singleValueContainer().decode(Bool.self)
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(wrappedValue)
-    }
-}
-
-extension KeyedDecodingContainer {
-    /// Chosen over the generic `decode` by synthesized `init(from:)`, and tolerates a missing key.
-    public func decode(_ type: MissingAsFalse.Type, forKey key: Key) throws -> MissingAsFalse {
-        try decodeIfPresent(type, forKey: key) ?? MissingAsFalse(wrappedValue: false)
-    }
-}
-
 /// The wire form of a request, carrying the client's protocol version.
 struct ControlEnvelope: Codable, Equatable {
     var version: Int

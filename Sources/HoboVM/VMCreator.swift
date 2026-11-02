@@ -4,8 +4,9 @@ import Synchronization
 import Virtualization
 
 /// Creates a named macOS VM from a recipe, built in place in its bundle: IPSW → unattended install
-/// → Vagrant conventions → `[gui_testing]` grants → recipe steps → cleanup → clean shutdown. Every
-/// create is a full install. A failed or interrupted (^C) create deletes the bundle.
+/// → Vagrant conventions → `[security]` (SIP off by hand in recoveryOS) → `[gui_testing]` grants →
+/// recipe steps → cleanup → clean shutdown. Every create is a full install. A failed or
+/// interrupted (^C) create deletes the bundle.
 @MainActor
 public struct VMCreator {
     public struct Options: Sendable {
@@ -49,6 +50,11 @@ public struct VMCreator {
         }
         let recipe = try Recipe.parse(toml, directory: options.recipeFile.deletingLastPathComponent())
         try recipe.checkFilesExist()
+        if !recipe.security.sip {
+            // Checked before the long install rather than when the person is needed.
+            guard SIPRecoveryStep.canShowUI else { throw VMError.needsGUISession }
+            log("This recipe turns SIP off, which needs you: once macOS is installed (about 5 minutes, longer if the IPSW downloads), the VM opens in recoveryOS for you to type one command.")
+        }
 
         let bundle = try store.beginCreate(options.name)
         let interrupts = InterruptCleanup(bundle: bundle, interrupted: interrupted)
@@ -84,6 +90,9 @@ public struct VMCreator {
 
         let bundle = try MacVMBundle.create(at: directory, hardwareModel: requirements.hardwareModel, diskBytes: recipe.disk.bytes)
         try await installAndApplyConventions(bundle, ipsw: ipsw, machine: machine)
+        if !recipe.security.sip {
+            try await disableSIP(bundle, machine: machine, disableAMFI: !recipe.security.amfi)
+        }
         if let guiTesting = recipe.guiTesting {
             // The conventions boot ended in a shutdown, so the disk is free to mount.
             log("Granting GUI testing permissions (Accessibility, Screen Recording, Automation)")
@@ -92,7 +101,8 @@ public struct VMCreator {
             }
         }
 
-        try await withVM(bundle, machine: machine) { vm, ssh in
+        let security = try await withVM(bundle, machine: machine) { vm, ssh in
+            let security = try await checkSecurity(ssh, wanted: recipe.security)
             if recipe.guiTesting != nil {
                 log("Checking GUI testing permissions")
                 try await ssh.check(GUITestingGrants.checkCommand, what: "GUI testing permission check")
@@ -105,13 +115,15 @@ public struct VMCreator {
             try await ssh.upload(contents: Conventions.cleanupScript, to: "/tmp/hobo-cleanup.sh")
             try await ssh.check("sudo -n /bin/bash /tmp/hobo-cleanup.sh", what: "cleanup")
             try await shutDown(vm, ssh: ssh)
+            return security
         }
         log("Disk uses \(ByteCountFormatter.string(fromByteCount: Int64(bundle.allocatedDiskBytes()), countStyle: .file))")
         return VMConfig(
             engine: .vz, os: .macOS, cpus: machine.cpus, memory: machine.memory, disk: recipe.disk.bytes,
             macAddress: machine.macAddress.string,
             guestOSVersion: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion) (\(image.buildVersion))",
-            created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256
+            created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256,
+            sip: security.sip, amfi: security.amfi
         )
     }
 
@@ -180,8 +192,50 @@ public struct VMCreator {
         }
     }
 
+    /// Boots into recoveryOS for the person to run `csrutil disable` (`SIPRecoveryStep`), then boots
+    /// normally to check it took, going round again if not, and sets the AMFI boot-arg over SSH,
+    /// which works once SIP is off and takes effect from the next boot.
+    private func disableSIP(_ bundle: MacVMBundle, machine: Machine, disableAMFI: Bool) async throws {
+        var notice: String?
+        while true {
+            let vm = try GuestVM(bundle: bundle, machine: machine)
+            log("Booting into recoveryOS to turn SIP off")
+            try await vm.start(recovery: true)
+            if await SIPRecoveryStep.run(vm, name: options.name, notice: notice, log: log) == .cancelled {
+                try await vm.forceStop()
+                throw VMError.cancelled
+            }
+            log("Checking that SIP is off")
+            let disabled = try await withVM(bundle, machine: machine) { vm, ssh in
+                let disabled = try await ssh.run(Self.sipDisabledCommand, quiet: true) == 0
+                if disabled, disableAMFI {
+                    log("Turning AMFI off (boot-arg amfi_get_out_of_my_way=1)")
+                    try await ssh.check("sudo -n nvram boot-args=\(Self.amfiBootArg)", what: "setting the AMFI boot-arg")
+                }
+                try await shutDown(vm, ssh: ssh)
+                return disabled
+            }
+            if disabled { return }
+            log("SIP is still on; back to recoveryOS")
+            notice = "SIP is still on: csrutil disable didn't finish last time. Please go through the steps again."
+        }
+    }
+
+    static let amfiBootArg = "amfi_get_out_of_my_way=1"
+    static let sipDisabledCommand = "csrutil status | grep -q 'status: disabled'"
+
+    /// What the guest actually runs with, for `config.json`; fails if it isn't what the recipe asked.
+    private func checkSecurity(_ ssh: GuestSSH, wanted: Recipe.Security) async throws -> Recipe.Security {
+        let actual = Recipe.Security(
+            sip: try await ssh.run(Self.sipDisabledCommand, quiet: true) != 0,
+            amfi: try await ssh.run("sysctl -n kern.bootargs | grep -qw \(Self.amfiBootArg)", quiet: true) != 0
+        )
+        if actual != wanted { throw VMError.securityMismatch(wanted: wanted, actual: actual) }
+        return actual
+    }
+
     /// Boots the bundle, logs in with its key, runs `body`, and expects it to shut the VM down.
-    private func withVM(_ bundle: MacVMBundle, machine: Machine, _ body: (GuestVM, GuestSSH) async throws -> Void) async throws {
+    private func withVM<T>(_ bundle: MacVMBundle, machine: Machine, _ body: (GuestVM, GuestSSH) async throws -> T) async throws -> T {
         let auth = try GuestSSH.Auth.forVM(bundle: bundle.directory, home: home)
         let vm = try GuestVM(bundle: bundle, machine: machine)
         log("Booting")
@@ -190,7 +244,7 @@ public struct VMCreator {
             let ip = try await vm.waitForIPAddress(timeout: .seconds(10 * 60))
             let ssh = GuestSSH(host: ip, auth: auth)
             try await ssh.waitUntilReachable(timeout: .seconds(10 * 60))
-            try await body(vm, ssh)
+            return try await body(vm, ssh)
         } catch {
             try await holdForDebugging(vm, auth: auth, error: error)
             throw error
