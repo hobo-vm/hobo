@@ -115,12 +115,12 @@ public enum VMError: Error, CustomStringConvertible {
         case .commandFailed(let command, let status): "\(command) exited with status \(status)"
         case .timedOut(let what): "timed out \(what)"
         case .stoppedWithError: "the VM stopped with an error"
+        case .unexpectedAttachOutput(let disk): "could not read diskutil's output for attaching \(disk)"
         case .needsGUISession:
             "this recipe turns SIP off, which needs you at this Mac's screen partway through: run hobo create from a GUI login session"
         case .cancelled: "build cancelled"
         case .securityMismatch(let wanted, let actual):
             "the guest runs with SIP \(actual.sip ? "on" : "off") and AMFI \(actual.amfi ? "on" : "off"); the recipe asks for SIP \(wanted.sip ? "on" : "off") and AMFI \(wanted.amfi ? "on" : "off")"
-        case .unexpectedAttachOutput(let disk): "could not read diskutil's output for attaching \(disk)"
         case .noDataVolume(let disk): "\(disk) has no single APFS Data volume"
         }
     }
