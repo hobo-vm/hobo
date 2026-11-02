@@ -118,8 +118,11 @@ private final class TCCDatabase {
         path = url.path
         // No create: a missing database means the guest isn't laid out as expected.
         guard sqlite3_open_v2(path, &handle, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK else {
-            defer { sqlite3_close(handle) }
-            throw GUITestingError.database(path, String(cString: sqlite3_errmsg(handle)))
+            let message = String(cString: sqlite3_errmsg(handle))
+            // deinit still runs after this throw, so leave it nothing to close a second time.
+            sqlite3_close(handle)
+            handle = nil
+            throw GUITestingError.database(path, message)
         }
     }
 
