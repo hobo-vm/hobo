@@ -10,7 +10,6 @@ Only 2 macOS guests can run per host, so a `create` plus a boot test fill both s
 - M2: `hobo snapshot save|restore|list|delete`, live (saved state + disk clone) and stopped
 - M2: `hobo df`: sizes of bundles, snapshots, saved state and indexed images
 - M3: ephemeral idle-timeout leases renewed by control-socket calls; `hobo mcp` stops its ephemeral VMs on exit
-- M3: recipe `[gui_testing]`: SIP off via recovery boot + TCC pre-grants (Accessibility, Screen Recording)
 - M3: `exec --gui` (Aqua session via `launchctl asuser`), `hobo screenshot`
 - M3: `hobo mcp` stdio server (lifecycle, exec, copy_in/out, screenshot, view, clone, snapshot, set, provision, list)
 - M4: Linux guests (cloud image + cloud-init recipes); optional Rosetta (virtio-fs Rosetta share + binfmt)
