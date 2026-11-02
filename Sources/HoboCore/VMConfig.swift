@@ -15,11 +15,6 @@ public struct VMConfig: Codable, Equatable, Sendable {
     public var macAddress: String
     /// e.g. `27.2.0 (26B123)` for macOS; for Linux it names the distribution, e.g. `Ubuntu 26.04`.
     public var guestOSVersion: String
-
-    /// The guest OS for people, e.g. `macOS 27.2.0 (26B123)` or `Ubuntu 26.04`.
-    public var osDescription: String {
-        os == .macOS ? "macOS \(guestOSVersion)" : guestOSVersion
-    }
     public var created: Date
     /// SHA-256 of the recipe file as built (copied verbatim to the bundle's `recipe.toml`).
     public var recipeSHA256: String
@@ -47,6 +42,11 @@ public struct VMConfig: Codable, Equatable, Sendable {
         self.sourceSHA256 = sourceSHA256
         self.sip = sip
         self.amfi = amfi
+    }
+
+    /// The guest OS for people, e.g. `macOS 27.2.0 (26B123)` or `Ubuntu 26.04`.
+    public var osDescription: String {
+        os == .macOS ? "macOS \(guestOSVersion)" : guestOSVersion
     }
 
     static let encoder: JSONEncoder = {
