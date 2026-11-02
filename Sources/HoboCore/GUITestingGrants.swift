@@ -53,8 +53,8 @@ public enum GUITestingGrants {
     /// The user's TCC.db: since macOS 27 it lives in tccd's container under
     /// `/private/var/containers/Data/ProtectedSystem`, found by the container's metadata. tccd
     /// creates it at the user's first login, which the conventions boot waits for
-    /// (`Conventions.waitForLoginScript`). The grants
-    /// run before any recipe step, so the setup user is the only one (uid 501 and up are people).
+    /// (`Conventions.waitForLoginScript`). The grants run before any recipe step, so the setup user
+    /// is the only one (uid 501 and up are people).
     static func userDatabase(in dataVolume: URL) throws -> URL {
         let containers = dataVolume.appending(path: "private/var/containers/Data/ProtectedSystem")
         let found = ((try? FileManager.default.contentsOfDirectory(at: containers, includingPropertiesForKeys: nil)) ?? []).filter { container in
@@ -131,6 +131,7 @@ private final class TCCDatabase {
     /// Allows `client` the service, replacing any earlier row (such as a denial from an
     /// unanswered prompt). `controlling` is the target app, for Automation (`kTCCServiceAppleEvents`).
     func grant(_ service: String, to client: GUITestingGrants.Client, controlling target: GUITestingGrants.Client? = nil) throws {
+        // auth_value 2 is allowed, auth_reason 4 is "system set"; flags and auth_version as tccd writes them.
         let sql = """
             INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version,
               csreq, indirect_object_identifier_type, indirect_object_identifier, indirect_object_code_identity, flags)
@@ -139,12 +140,11 @@ private final class TCCDatabase {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else { throw error() }
         defer { sqlite3_finalize(statement) }
-        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-        sqlite3_bind_text(statement, 1, service, -1, transient)
-        sqlite3_bind_text(statement, 2, client.identifier, -1, transient)
+        sqlite3_bind_text(statement, 1, service, -1, Self.transient)
+        sqlite3_bind_text(statement, 2, client.identifier, -1, Self.transient)
         sqlite3_bind_int(statement, 3, client.isPath ? 1 : 0)
         try bind(requirement: client.requirement, to: statement, at: 4)
-        sqlite3_bind_text(statement, 5, target?.identifier ?? "UNUSED", -1, transient)
+        sqlite3_bind_text(statement, 5, target?.identifier ?? "UNUSED", -1, Self.transient)
         try bind(requirement: target?.requirement, to: statement, at: 6)
         guard sqlite3_step(statement) == SQLITE_DONE else { throw error() }
     }
@@ -156,9 +156,12 @@ private final class TCCDatabase {
         }
         let blob = try Self.compile(requirement)
         _ = blob.withUnsafeBytes { bytes in
-            sqlite3_bind_blob(statement, index, bytes.baseAddress, Int32(bytes.count), unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+            sqlite3_bind_blob(statement, index, bytes.baseAddress, Int32(bytes.count), Self.transient)
         }
     }
+
+    /// SQLITE_TRANSIENT, which Swift can't import: SQLite copies the bound value.
+    private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     private func error() -> GUITestingError { .database(path, String(cString: sqlite3_errmsg(handle))) }
 
