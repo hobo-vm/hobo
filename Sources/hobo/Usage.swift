@@ -41,13 +41,9 @@ struct Usage: ParsableCommand {
                 withoutJSON.append(command._commandName)
                 continue
             }
-            if jsonStyle(of: outputCommand) == .events { events.append(command._commandName) }
+            if outputCommand.jsonStyle == .events { events.append(command._commandName) }
         }
         return (withoutJSON, events)
-    }
-
-    private static func jsonStyle<Command: OutputCommand>(of command: Command.Type) -> Output.JSONStyle {
-        Command.jsonStyle
     }
 
     static var conventions: String {
