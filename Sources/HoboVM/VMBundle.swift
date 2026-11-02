@@ -11,6 +11,10 @@ public protocol VMBundle: Sendable {
     var disk: URL { get }
     /// The files a clone or snapshot copies.
     static var platformFiles: [String] { get }
+    /// Whether the window gives the guest a display in Retina pixels. A guest that doesn't scale
+    /// its UI by itself (Linux's text console and default desktop) gets one in points instead, so
+    /// its text isn't half size; the window scales it up.
+    static var hiDPIDisplay: Bool { get }
     func configuration(cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress) throws -> VZVirtualMachineConfiguration
 }
 

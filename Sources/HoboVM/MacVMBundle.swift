@@ -6,6 +6,7 @@ import Virtualization
 /// it.
 public struct MacVMBundle: VMBundle {
     public static let platformFiles = ["disk.asif", "aux.img", "hardware-model.bin", "machine-identifier.bin"]
+    public static let hiDPIDisplay = true
 
     public var directory: URL
 
@@ -94,6 +95,7 @@ public enum VMError: Error, CustomStringConvertible {
     case unsupportedOS(VMConfig.OS)
     case missingQEMUImg
     case diskTooSmall(wanted: UInt64, image: UInt64)
+    case spawnFailed(String, String)
     case unusableImage(String, String)
 
     public var description: String {
@@ -114,6 +116,7 @@ public enum VMError: Error, CustomStringConvertible {
         case .noDataVolume(let disk): "\(disk) has no single APFS Data volume"
         case .unsupportedOS(let os): "\(os.rawValue) VMs aren't supported yet"
         case .missingQEMUImg: "converting a Linux cloud image needs qemu-img: brew install qemu"
+        case .spawnFailed(let executable, let reason): "couldn't run \(executable): \(reason)"
         case .diskTooSmall(let wanted, let image):
             "the recipe's disk (\(ByteSize(bytes: wanted))) is smaller than the image's (\(ByteSize(bytes: image)))"
         case .unusableImage(let image, let reason): "can't use the image \(image): \(reason)"

@@ -52,12 +52,16 @@ public enum CloudInit {
             content: |
               APT::Periodic::Update-Package-Lists "0";
               APT::Periodic::Unattended-Upgrade "0";
-          # The kernel console on the VM's serial port too, which the host logs to console.log.
+          # The kernel console on the VM's serial port too, which the host logs to console.log, and
+          # a 16x32 font from the start of boot: the text console keeps its 1920x1200 boot mode
+          # whatever the window's size, and 8x16 there is tiny.
           - path: /etc/default/grub.d/99-hobo-console.cfg
             content: |
-              GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT console=hvc0"
+              GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT console=hvc0 fbcon=font:TER16x32"
         runcmd:
           - [update-grub]
+          # setupcon would otherwise load the 8x16 font back partway through boot.
+          - [sed, -i, -e, 's/^FONTFACE=.*/FONTFACE="Terminus"/', -e, 's/^FONTSIZE=.*/FONTSIZE="16x32"/', /etc/default/console-setup]
 
         """
     }

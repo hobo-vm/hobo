@@ -7,6 +7,7 @@ import Virtualization
 /// serial console goes to `console.log`, the only record of a boot that never reaches SSH.
 public struct LinuxVMBundle: VMBundle {
     public static let platformFiles = ["disk.asif", "efi-vars.fd", "machine-identifier.bin"]
+    public static let hiDPIDisplay = false
 
     public var directory: URL
     /// The cloud-init seed ISO, attached read-only as a second disk while `create` runs.

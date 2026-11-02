@@ -214,7 +214,11 @@ global VMs on 2026-11-01.
       from a synchronous `main`: started inside Swift's async main, the loop never services the
       main actor.
 15. **Guest channel.** SSH (`vagrant` user, Vagrant's insecure key; host keys aren't checked, since
-    IPs are reused across VMs and rebuilds). `hobo exec`/`cp`/`screenshot` go through the
+    IPs are reused across VMs and rebuilds). `ssh`/`scp` are spawned with responsibility disclaimed
+    (`responsibility_spawnattrs_setdisclaim`, as terminals do), so macOS's Local Network privacy
+    sees Apple's `ssh` rather than hobo (decided 2026-11-02): the VM process runs under launchd as
+    its own app, an ad-hoc build is a new app on every rebuild, and each one put up an Allow dialog
+    that silently failed every SSH probe until someone clicked it. `hobo exec`/`cp`/`screenshot` go through the
     control socket, which renews leases (decision 18); agents should use them rather than raw `ssh`.
     A vsock `hobo-agent` may come later. Decided 2026-11-01:
     - `hobo ip` asks the VM process, which knows the guest's lease; a stopped VM, or one without a
@@ -363,7 +367,11 @@ global VMs on 2026-11-01.
       `machine-identifier.bin` (`VZGenericMachineIdentifier`). The VM boots with `VZEFIBootLoader`,
       virtio-gpu at the same 1920×1200 (so `view` works), USB keyboard and pointer, and a virtio
       console written to the bundle's `console.log`; the conventions add `console=hvc0` to the
-      kernel command line. A failed create logs the console's tail, since the bundle goes with it.
+      kernel command line. The window sizes a Linux guest's display in points, not Retina pixels
+      (`VMBundle.hiDPIDisplay`), since Linux doesn't scale its UI by itself; macOS keeps Retina.
+      The text console ignores display changes and keeps its 1920×1200 boot mode, so the
+      conventions give it the kernel's built-in Terminus 16×32 font (`fbcon=font:TER16x32`, and
+      console-setup's `FONTSIZE`, which would otherwise load 8×16 back during boot). A failed create logs the console's tail, since the bundle goes with it.
       The disk uses `.cached` caching with `.fsync`, as Lima does, against ext4 corruption seen with
       VZ's default. TRIM works either way: `fstrim` returned 1 GB to the host about 30 s later.
     - Conventions come from a NoCloud seed, a `cidata` ISO (`hdiutil makehybrid`) attached
