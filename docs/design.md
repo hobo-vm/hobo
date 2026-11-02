@@ -355,7 +355,13 @@ global VMs on 2026-11-01.
     under the same launchd process model, and QEMU is a Homebrew dependency. Windows recipes use
     `[source] iso` + `sha256` and an `autounattend.xml` that creates the `vagrant` user and enables
     OpenSSH. SSH runs in session 0, so `exec --gui` goes through a scheduled task in the interactive
-    session; UI driving uses UI Automation or WinAppDriver. Gated by a spike (decision 24).
+    session; UI driving uses UI Automation or WinAppDriver. The spike (2026-11-02,
+    `spikes/windows-qemu/README.md`) proved all of this on QEMU 11.1: `nvme` disk and USB input
+    (inbox drivers), `virtio-net` with NetKVM, `ramfb` display, the Win32-OpenSSH MSI installed
+    offline, LabConfig TPM/Secure Boot bypasses (vTPM via `swtpm` is deferred), and QMP for
+    screendump and keys. It took about 50 minutes to an SSH-ready guest, mostly ISO reads over
+    emulated USB, and the guest boots to SSH in 26 s. Open for M5: install speed, the 800×600
+    `ramfb` resolution, and hostfwd versus `vmnet` networking (`hobo ip`).
     **Licensing:** Microsoft's authorized way to virtualize Windows 11 on Arm on Apple Silicon is
     Parallels; check this before relying on the QEMU engine for work use.
 21. **Linux guests.** Recipe `[source] image` + `sha256` (cloud image), set up by cloud-init on VZ;
@@ -400,8 +406,7 @@ builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` ind
   skill and `hobo claude install|uninstall`.
 - **M4:** Linux guests.
 - **M5:** Windows on the QEMU engine. The Windows spike (unattended install, headless boot, SSH,
-  GUI-session screenshot) runs in parallel any time after M1, to prove the engine seam before M2/M3
-  harden the model.
+  GUI-session screenshot) is done (2026-11-02, decision 20).
 - **Later:** see Beads (`bd list --status deferred`).
 
 ## Comparison with Tart and Lume
