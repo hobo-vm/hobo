@@ -62,11 +62,24 @@ public struct VMShare: Codable, Equatable, Sendable {
         return nil
     }
 
-    /// Throws if two shares would mount at the same guest path. Names compare case-insensitively,
-    /// as the guest's volume does.
-    public static func checkUnique(_ shares: [VMShare]) throws {
+    /// Characters virtio-fs refuses in a share's name. Finder shows `:` as `/`.
+    static let forbiddenNameCharacters: Set<Character> = ["*", "/", ":", "<", ">", "?", "\\", "|"]
+
+    /// Why virtio-fs would refuse this share's name (raising, not throwing, when the VM is built), or nil.
+    var nameProblem: String? {
+        if name.contains(where: Self.forbiddenNameCharacters.contains) {
+            return "its name has a character a share can't (one of * / : < > ? \\ |); rename or symlink it"
+        }
+        if name.utf8.count > Int(NAME_MAX) { return "its name is longer than \(NAME_MAX) bytes" }
+        return nil
+    }
+
+    /// Throws if a share's name can't mount in the guest, or two would mount at the same guest
+    /// path. Names compare case-insensitively, as the guest's volume does.
+    public static func checkNames(_ shares: [VMShare]) throws {
         var seen: [String: VMShare] = [:]
         for share in shares {
+            if let problem = share.nameProblem { throw VMShareError.unusable(share.path, problem) }
             if let other = seen[share.name.lowercased()] {
                 throw VMShareError.duplicateName(share.name, other.path, share.path)
             }

@@ -51,7 +51,7 @@ public struct VMLifecycle: Sendable {
         // Run-only shares were just typed, so a bad one fails here; a persistent share whose folder
         // has gone only warns, and the VM process leaves it out.
         for share in shares { try share.checkFolder() }
-        try VMShare.checkUnique(config.shares + shares)
+        try VMShare.checkNames(config.shares + shares)
         for share in config.shares {
             if let problem = share.folderProblem { log("warning: not sharing \(share.name) this run: \(share.path): \(problem)") }
         }

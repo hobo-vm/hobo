@@ -64,7 +64,7 @@ public struct VMSettings: Equatable, Sendable {
         }
         for share in addShares { try share.checkFolder() }
         updated.shares += addShares
-        try VMShare.checkUnique(updated.shares)
+        try VMShare.checkNames(updated.shares)
         return updated
     }
 }

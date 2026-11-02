@@ -34,8 +34,18 @@ import Testing
     @Test func namesMustBeUniqueIgnoringCase() {
         let a = VMShare(name: "src", path: "/a/src", readOnly: false)
         let b = VMShare(name: "Src", path: "/b/Src", readOnly: true)
-        #expect(throws: VMShareError.duplicateName("Src", "/a/src", "/b/Src")) { try VMShare.checkUnique([a, b]) }
-        #expect(throws: Never.self) { try VMShare.checkUnique([a, VMShare(name: "docs", path: "/a/docs", readOnly: false)]) }
+        #expect(throws: VMShareError.duplicateName("Src", "/a/src", "/b/Src")) { try VMShare.checkNames([a, b]) }
+        #expect(throws: Never.self) { try VMShare.checkNames([a, VMShare(name: "docs", path: "/a/docs", readOnly: false)]) }
+    }
+
+    @Test func namesMustBeOnesVirtioFSTakes() {
+        // A Finder folder named "2024/05" is "2024:05" on disk, which virtio-fs refuses.
+        for name in ["2024:05", "what?", "a*b", "a|b", "a\\b", "<a>", String(repeating: "é", count: 128)] {
+            let share = VMShare(name: name, path: "/a/\(name)", readOnly: false)
+            #expect(throws: VMShareError.unusable(share.path, share.nameProblem ?? "")) { try VMShare.checkNames([share]) }
+            #expect(share.nameProblem != nil)
+        }
+        #expect(throws: Never.self) { try VMShare.checkNames([VMShare(name: "My Files (old) é", path: "/a/x", readOnly: false)]) }
     }
 
     @Test func folderProblems() throws {
