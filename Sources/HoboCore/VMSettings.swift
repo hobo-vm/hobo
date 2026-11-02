@@ -7,20 +7,20 @@ public struct VMSettings: Equatable, Sendable {
     public var cpus: Int?
     public var memory: ByteSize?
     public var disk: ByteSize?
-    /// Shares to add, after `unshare` has removed any.
-    public var share: [VMShare]
-    /// Shares to remove, each a name or an absolute path (`VMShare.unshareTarget`).
-    public var unshare: [String]
+    /// Shares to add (`--share`), after `removeShares` are removed.
+    public var addShares: [VMShare]
+    /// Shares to remove (`--unshare`), each a name or an absolute path (`VMShare.unshareTarget`).
+    public var removeShares: [String]
 
-    public init(cpus: Int? = nil, memory: ByteSize? = nil, disk: ByteSize? = nil, share: [VMShare] = [], unshare: [String] = []) {
+    public init(cpus: Int? = nil, memory: ByteSize? = nil, disk: ByteSize? = nil, addShares: [VMShare] = [], removeShares: [String] = []) {
         self.cpus = cpus
         self.memory = memory
         self.disk = disk
-        self.share = share
-        self.unshare = unshare
+        self.addShares = addShares
+        self.removeShares = removeShares
     }
 
-    public var isEmpty: Bool { cpus == nil && memory == nil && disk == nil && share.isEmpty && unshare.isEmpty }
+    public var isEmpty: Bool { cpus == nil && memory == nil && disk == nil && addShares.isEmpty && removeShares.isEmpty }
 
     /// What the host allows a VM, passed in so validation doesn't need the Virtualization framework.
     public struct Limits: Equatable, Sendable {
@@ -58,12 +58,12 @@ public struct VMSettings: Equatable, Sendable {
                 updated.diskGrowPending = true
             }
         }
-        for target in unshare {
+        for target in removeShares {
             guard updated.shares.contains(where: { $0.matches(target) }) else { throw VMShareError.unknown(target) }
             updated.shares.removeAll { $0.matches(target) }
         }
-        for new in share { try new.checkFolder() }
-        updated.shares += share
+        for share in addShares { try share.checkFolder() }
+        updated.shares += addShares
         try VMShare.checkUnique(updated.shares)
         return updated
     }

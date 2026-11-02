@@ -75,20 +75,20 @@ import Testing
         let writable = VMShare(name: "src", path: src.path, readOnly: false)
         let readOnly = VMShare(name: "src", path: src.path, readOnly: true)
 
-        let shared = try VMSettings(share: [writable]).applied(to: Self.config, limits: Self.limits)
+        let shared = try VMSettings(addShares: [writable]).applied(to: Self.config, limits: Self.limits)
         #expect(shared.shares == [writable])
         #expect(throws: VMShareError.duplicateName("src", src.path, src.path)) {
-            try VMSettings(share: [readOnly]).applied(to: shared, limits: Self.limits)
+            try VMSettings(addShares: [readOnly]).applied(to: shared, limits: Self.limits)
         }
-        #expect(try VMSettings(share: [readOnly], unshare: ["src"]).applied(to: shared, limits: Self.limits).shares == [readOnly])
-        #expect(try VMSettings(unshare: [src.path]).applied(to: shared, limits: Self.limits).shares.isEmpty)
+        #expect(try VMSettings(addShares: [readOnly], removeShares: ["src"]).applied(to: shared, limits: Self.limits).shares == [readOnly])
+        #expect(try VMSettings(removeShares: [src.path]).applied(to: shared, limits: Self.limits).shares.isEmpty)
     }
 
     @Test func unknownUnsharesAndMissingFoldersAreRefused() {
-        #expect(throws: VMShareError.unknown("nope")) { try VMSettings(unshare: ["nope"]).applied(to: Self.config, limits: Self.limits) }
+        #expect(throws: VMShareError.unknown("nope")) { try VMSettings(removeShares: ["nope"]).applied(to: Self.config, limits: Self.limits) }
         let missing = VMShare(name: "gone", path: "/nonexistent/gone", readOnly: false)
         #expect(throws: VMShareError.unusable("/nonexistent/gone", "it doesn't exist")) {
-            try VMSettings(share: [missing]).applied(to: Self.config, limits: Self.limits)
+            try VMSettings(addShares: [missing]).applied(to: Self.config, limits: Self.limits)
         }
     }
 }

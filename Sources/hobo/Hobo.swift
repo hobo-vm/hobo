@@ -534,8 +534,8 @@ struct SetCommand: OutputCommand {
 
     private var settings: VMSettings {
         VMSettings(
-            cpus: cpus, memory: memory, disk: disk, share: shares,
-            unshare: unshares.map { VMShare.unshareTarget($0, currentDirectory: .currentDirectory()) }
+            cpus: cpus, memory: memory, disk: disk, addShares: shares,
+            removeShares: unshares.map { VMShare.unshareTarget($0, currentDirectory: .currentDirectory()) }
         )
     }
 
