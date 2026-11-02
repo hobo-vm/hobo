@@ -83,8 +83,7 @@ private final class InstructionsPanel: NSObject {
                 rows.append(code)
             }
         }
-        let cancel = NSButton(title: "Cancel Build", target: self, action: #selector(cancel))
-        rows.append(cancel)
+        rows.append(NSButton(title: "Cancel Build", target: self, action: #selector(cancel)))
 
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
