@@ -131,8 +131,9 @@ public final class VMRunner {
             let guestSSH = try ssh(ip)
             try await guestSSH.waitUntilReachable(timeout: Self.bootTimeout)
             if resumed {
-                await setClock(guestSSH)
-                if !shares.isEmpty { await remountShares(guestSSH) }
+                let os = type(of: guest.bundle)
+                await setClock(guestSSH, os: os)
+                if !shares.isEmpty, let command = os.remountSharesCommand { await remountShares(guestSSH, command: command) }
             }
             await growContainerIfPending(guestSSH)
             guard status.state == .starting else { return }
@@ -146,43 +147,25 @@ public final class VMRunner {
         }
     }
 
-    /// A resumed guest's clock is behind by however long it was suspended. NTP first, then the
-    /// host's clock if the guest can't reach a time server; either failing only warns.
-    private func setClock(_ ssh: GuestSSH) async {
+    /// A resumed guest's clock is behind by however long it was suspended. NTP first where the
+    /// guest has it, then the host's clock; either failing only warns.
+    private func setClock(_ ssh: GuestSSH, os: any VMBundle.Type) async {
         status.detail = "setting the guest's clock"
-        if (try? await ssh.run("sudo -n sntp -sS time.apple.com", quiet: true)) == 0 { return }
+        if let ntp = os.ntpClockCommand, (try? await ssh.run(ntp, quiet: true)) == 0 { return }
         do {
-            try await ssh.check(Self.setDateCommand(.now), what: "setting the guest's clock")
+            try await ssh.check(os.setClockCommand(.now), what: "setting the guest's clock")
         } catch {
             log("warning: \(error); the guest's clock may be behind")
         }
     }
 
-    /// A restored VM's virtio-fs device starts afresh on the host, so the guest's handles into
-    /// the shares are stale: lookups fail with ENOENT (checked 2026-11-02 on 27.2) until the
-    /// mount is replaced. Files the guest had open in a share are lost either way.
-    private func remountShares(_ ssh: GuestSSH) async {
+    private func remountShares(_ ssh: GuestSSH, command: String) async {
         status.detail = "remounting the shared folders"
         do {
-            try await ssh.check(Self.remountSharesCommand, what: "remounting the shared folders")
+            try await ssh.check(command, what: "remounting the shared folders")
         } catch {
             log("warning: \(error); the guest may not see its shared folders until it restarts")
         }
-    }
-
-    static let remountSharesCommand = {
-        let mountPoint = shellQuote(MacVMBundle.sharesMountPoint)
-        return "sudo -n umount -f \(mountPoint); sudo -n mkdir -p \(mountPoint) && "
-            + "sudo -n mount -t virtiofs \(VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag) \(mountPoint)"
-    }()
-
-    /// Sets the guest's clock to `date`, passed in date(1)'s `mmddHHMMccyy.ss` form.
-    nonisolated static func setDateCommand(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        formatter.dateFormat = "MMddHHmmyyyy.ss"
-        return "sudo -n date -u \(formatter.string(from: date)) >/dev/null"
     }
 
     /// Decision 9's second step: `hobo set --disk` grew the image while the VM was stopped, and

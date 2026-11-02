@@ -8,6 +8,16 @@ import Virtualization
 public struct LinuxVMBundle: VMBundle {
     public static let platformFiles = ["disk.asif", "efi-vars.fd", "machine-identifier.bin"]
     public static let hiDPIDisplay = false
+    /// chrony would slew a long suspension away only slowly, so the host's time is set instead.
+    public static let ntpClockCommand: String? = nil
+    /// Seconds since the epoch: Ubuntu's uutils `date` rejects the `mmddHHMMccyy.ss` form
+    /// (checked 2026-11-02 on 26.04), and GNU's takes this too.
+    public static func setClockCommand(_ date: Date) -> String {
+        "sudo -n date -u -s @\(String(format: "%.3f", date.timeIntervalSince1970)) >/dev/null"
+    }
+    /// The guest's virtio-fs mount keeps working across a restore: after a resume it sees files
+    /// the host added and writes through (checked 2026-11-02 on Ubuntu 26.04).
+    public static let remountSharesCommand: String? = nil
 
     public var directory: URL
     /// The cloud-init seed ISO, attached read-only as a second disk while `create` runs.
