@@ -24,8 +24,8 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
     }
 
     /// Creates a VM from the latest IPSW, runs it through start and stop under launchd, then
-    /// renames and deletes it. The recipe's step asserts the Vagrant conventions from inside the
-    /// guest, so a VM that builds has them. It enables `[gui_testing]`, whose grants create checks
+    /// renames and deletes it. The recipe's step asserts the Vagrant conventions and a GUI session
+    /// from inside the guest, so a VM that builds has them. It enables `[gui_testing]`, whose grants create checks
     /// and the test checks again on a later boot. VMs go to a temp `HOBO_VMS`, whose store hash keeps
     /// their launchd jobs apart from real ones; the IPSW goes through the real image index, so it
     /// downloads only once.
@@ -53,6 +53,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         sudo -n true
         grep -q 'vagrant insecure public key' ~/.ssh/authorized_keys
         test "$(pmset -g | awk '$1 == "sleep" { print $2 }')" = 0
+        launchctl print gui/$(id -u) >/dev/null
         '''
 
         [gui_testing]

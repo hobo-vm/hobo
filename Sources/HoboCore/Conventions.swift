@@ -49,6 +49,21 @@ public enum Conventions {
         """
     }
 
+    /// Root script run at the end of the conventions boot: waits up to 5 minutes for the first
+    /// auto-login to finish, signalled by the user's tccd opening the TCC.db it creates then (also
+    /// what `[gui_testing]` writes into). SSH answers well before the login is done, and shutting
+    /// down before it is leaves the next boot, the one recipe steps run in, with no GUI session at
+    /// all (checked on macOS 27.2, 2026-11-02); later boots log in either way.
+    public static let waitForLoginScript = """
+        for attempt in $(seq 60); do
+          lsof -c tccd 2>/dev/null | grep -q '/ProtectedSystem/.*/TCC\\.db$' && exit 0
+          sleep 5
+        done
+        echo 'the first login did not finish within 5 minutes' >&2
+        exit 1
+
+        """
+
     /// Root script run after recipe steps: drop caches, logs, history and temp files so the new VM
     /// is small and carries nothing from the build. Freed blocks return to the ASIF via TRIM.
     public static let cleanupScript = """

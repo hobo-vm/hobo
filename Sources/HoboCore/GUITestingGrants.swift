@@ -52,7 +52,8 @@ public enum GUITestingGrants {
 
     /// The user's TCC.db: since macOS 27 it lives in tccd's container under
     /// `/private/var/containers/Data/ProtectedSystem`, found by the container's metadata. tccd
-    /// creates it at the user's first login, which unattended setup's auto-login provides. The grants
+    /// creates it at the user's first login, which the conventions boot waits for
+    /// (`Conventions.waitForLoginScript`). The grants
     /// run before any recipe step, so the setup user is the only one (uid 501 and up are people).
     static func userDatabase(in dataVolume: URL) throws -> URL {
         let containers = dataVolume.appending(path: "private/var/containers/Data/ProtectedSystem")
@@ -68,18 +69,6 @@ public enum GUITestingGrants {
         guard FileManager.default.fileExists(atPath: database.path) else { throw GUITestingError.userDatabase(0) }
         return database
     }
-
-    /// Run over SSH (as root) in the conventions boot before it shuts down: waits up to 5 minutes for
-    /// the auto-login session's tccd to open the user's TCC.db, which it creates. SSH answers well
-    /// before the login finishes, so without this the build boots can end before the database exists.
-    public static let waitForUserDatabaseCommand = """
-        for attempt in $(seq 60); do
-          lsof -c tccd 2>/dev/null | grep -q '/ProtectedSystem/.*/TCC\\.db$' && exit 0
-          sleep 5
-        done
-        echo 'the user TCC database did not appear (did auto-login fail?)' >&2
-        exit 1
-        """
 
     /// Run over SSH in the guest: fails unless the session has Accessibility, Screen Recording and
     /// Automation of System Events. `screencapture` succeeds without the grant (it just leaves

@@ -129,7 +129,10 @@ global VMs on 2026-11-01.
        (`vagrant`/`vagrant`, auto-login, Remote Login);
     3. conventions, over password SSH: passwordless sudo, Vagrant's insecure keys (ed25519 + RSA) in
        `authorized_keys`, no sleep/screensaver, no automatic updates. The insecure key stays: a
-       per-VM key is deferred (decided 2026-11-01, see `TODO.md`);
+       per-VM key is deferred (decided 2026-11-01, see `TODO.md`). The boot then waits (up to
+       5 min) for the first auto-login to finish, signalled by the user's tccd opening its TCC.db:
+       SSH answers well before then, and shutting down early left the next boot, where recipe steps
+       run, with no GUI session at all (2026-11-02, macOS 27.2);
     4. `[gui_testing]` if enabled (decision 17): TCC grants written from the host into the stopped
        guest's Data volume, then checked over SSH on the next boot;
     5. recipe `[[provision]]` steps (shell inline/path with `privileged` and `env`, and file), run
@@ -255,9 +258,7 @@ global VMs on 2026-11-01.
         (`kTCCServiceAppleEvents`), which UI scripting needs, in the user's TCC.db. A row in the system
         database doesn't satisfy Automation. On macOS 27 the user's database moved into tccd's
         container in `/private/var/containers/Data/ProtectedSystem`, found by its metadata. tccd
-        creates it during the first auto-login, which finishes well after SSH answers, so with
-        `[gui_testing]` the conventions boot waits (up to 5 min) until the user's tccd has it open
-        before shutting down.
+        creates it during the first auto-login, which the conventions boot waits for (step 3).
       - Apple clients get their designated requirement as `csreq` (`identifier "…" and anchor
         apple`, compiled on the host to the same blob tccd writes). Recipe clients get a NULL `csreq`,
         which tccd honours, so they need not exist yet when the grants are written (provision steps

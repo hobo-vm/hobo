@@ -83,7 +83,7 @@ public struct VMCreator {
         let os = image.operatingSystemVersion
 
         let bundle = try MacVMBundle.create(at: directory, hardwareModel: requirements.hardwareModel, diskBytes: recipe.disk.bytes)
-        try await installAndApplyConventions(bundle, ipsw: ipsw, machine: machine, guiTesting: recipe.guiTesting != nil)
+        try await installAndApplyConventions(bundle, ipsw: ipsw, machine: machine)
         if let guiTesting = recipe.guiTesting {
             // The conventions boot ended in a shutdown, so the disk is free to mount.
             log("Granting GUI testing permissions (Accessibility, Screen Recording, Automation)")
@@ -141,9 +141,7 @@ public struct VMCreator {
         }
     }
 
-    /// With `guiTesting`, the boot also waits for the user's TCC database before shutting down, so
-    /// the grants written next have somewhere to go.
-    private func installAndApplyConventions(_ bundle: MacVMBundle, ipsw: URL, machine: Machine, guiTesting: Bool) async throws {
+    private func installAndApplyConventions(_ bundle: MacVMBundle, ipsw: URL, machine: Machine) async throws {
         let installer = try GuestVM(bundle: bundle, machine: machine)
         log("Installing macOS (this takes a while)")
         let progress = ProgressLine(log: log)
@@ -172,11 +170,9 @@ public struct VMCreator {
             log("Applying Vagrant conventions")
             try await ssh.upload(contents: Conventions.script, to: "/tmp/hobo-conventions.sh")
             try await ssh.check("\(passwordSudo) /bin/bash /tmp/hobo-conventions.sh && rm /tmp/hobo-conventions.sh", what: "conventions")
-            if guiTesting {
-                log("Waiting for the login session")
-                try await ssh.upload(contents: GUITestingGrants.waitForUserDatabaseCommand, to: "/tmp/hobo-wait-login.sh")
-                try await ssh.check("sudo -n /bin/bash /tmp/hobo-wait-login.sh && rm /tmp/hobo-wait-login.sh", what: "waiting for the login session")
-            }
+            log("Waiting for the first login")
+            try await ssh.upload(contents: Conventions.waitForLoginScript, to: "/tmp/hobo-wait-login.sh")
+            try await ssh.check("sudo -n /bin/bash /tmp/hobo-wait-login.sh && rm /tmp/hobo-wait-login.sh", what: "waiting for the first login")
             try await shutDown(vm, ssh: ssh, sudo: passwordSudo)
         } catch {
             try await holdForDebugging(vm, auth: auth, error: error)
