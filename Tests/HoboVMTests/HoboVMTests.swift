@@ -317,7 +317,8 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
 
         #expect(try output(hobo, ["stop", "litest"], environment: env).contains("Stopped litest"))
         // With no shares the device is still attached, so /mnt/hobo is an empty mount, not the disk.
-        // The disk grows too: the root filesystem follows it at the next start, and the grow is done.
+        // The disk grows too: at the next start the root filesystem outgrows the whole original 32 GB
+        // disk, and the pending flag clears.
         #expect(try run(hobo, ["set", "litest", "--unshare", "kept", "--disk", "40GB"], in: work, environment: env) == 0)
         #expect(try run(hobo, ["start", "litest"], in: work, environment: env) == 0)
         let grownBytes = try output(hobo, ["exec", "litest", "--", "df", "--output=size", "-B1", "/"], environment: env)
