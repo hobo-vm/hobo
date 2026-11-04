@@ -142,10 +142,11 @@ extension VMStore {
         try snapshotBundle.copyPlatformFiles(to: restoring)
         if restoresState { try Self.cloneSavedState(from: source, to: restoring) }
 
-        // Nothing failed for want of space, so now the VM's own files can go.
-        for directory in [SavedState.directory(in: bundle), SavedState.partialDirectory(in: bundle)] {
-            try? FileManager.default.removeItem(at: directory)
-        }
+        // Nothing failed for want of space, so now the VM's own files can go. A saved state that
+        // stayed would resume onto a disk it doesn't match, so failing to remove it ends the restore.
+        let savedState = SavedState.directory(in: bundle)
+        if FileManager.default.fileExists(atPath: savedState.path) { try FileManager.default.removeItem(at: savedState) }
+        try? FileManager.default.removeItem(at: SavedState.partialDirectory(in: bundle))
         for name in type(of: snapshotBundle).platformFiles {
             try Self.replace(bundle.appending(path: name), with: restoring.appending(path: name))
         }

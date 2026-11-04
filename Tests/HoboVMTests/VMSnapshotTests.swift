@@ -222,6 +222,20 @@ import Testing
         #expect(SavedState.load(in: bundle) == nil, "a disk-only snapshot has no memory to go with its disk")
     }
 
+    /// A saved state left in place would resume onto the restored disk, which it doesn't match.
+    @Test func aSavedStateThatCantBeRemovedStopsTheRestoreBeforeTheDiskChanges() async throws {
+        defer { cleanUp() }
+        _ = try await lifecycle.saveSnapshot("dev", tag: "clean")
+        try writeDisk("now")
+        try suspend(state: "later")
+        let state = SavedState.directory(in: bundle).path
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: state)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: state) }
+        await #expect(throws: (any Error).self) { _ = try await lifecycle.restoreSnapshot("dev", tag: "clean", force: true) }
+        #expect(try platformFilesAll(say: "now", in: bundle))
+        #expect(try savedState(in: bundle) == "later")
+    }
+
     @Test func restoringOverARunningVMNeedsForceWhichPowersItOff() async throws {
         defer { cleanUp() }
         _ = try await lifecycle.saveSnapshot("dev", tag: "clean")
