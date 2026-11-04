@@ -111,6 +111,7 @@ public enum VMError: Error, CustomStringConvertible {
     case invalidMachineIdentifier
     case unsupportedRestoreImage
     case cloneFailed(String, String)
+    case replaceFailed(String, String)
     case commandFailed(String, Int32)
     case timedOut(String)
     case stoppedWithError
@@ -131,6 +132,7 @@ public enum VMError: Error, CustomStringConvertible {
         case .invalidMachineIdentifier: "the VM's machine identifier is invalid"
         case .unsupportedRestoreImage: "this host cannot run the IPSW's macOS version"
         case .cloneFailed(let name, let reason): "cloning \(name) failed: \(reason)"
+        case .replaceFailed(let name, let reason): "replacing \(name) failed: \(reason)"
         case .commandFailed(let command, let status): "\(command) exited with status \(status)"
         case .timedOut(let what): "timed out \(what)"
         case .stoppedWithError: "the VM stopped with an error"

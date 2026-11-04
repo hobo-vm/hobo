@@ -130,23 +130,23 @@ extension VMStore {
         try FileManager.default.createDirectory(at: restoring, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: restoring) }
 
-        let useState = snapshot.isLive && snapshot.record.savedStateFits(config)
-        if snapshot.isLive && !useState {
+        let restoresState = snapshot.isLive && snapshot.record.savedStateFits(config)
+        if snapshot.isLive && !restoresState {
             log(
                 "warning: \(snapshot.tag) was saved with \(snapshot.record.cpus) CPUs and \(ByteSize(bytes: snapshot.record.memory)) "
                     + "of memory, and the VM now has \(config.cpus) and \(ByteSize(bytes: config.memory)), so its saved state "
                     + "can't be used; booting from its disk, as after a power loss"
             )
         }
-        let platform = try vmBundle(at: source, os: config.os)
-        try platform.copyPlatformFiles(to: restoring)
-        if useState { try Self.cloneSavedState(from: source, to: restoring) }
+        let snapshotBundle = try vmBundle(at: source, os: config.os)
+        try snapshotBundle.copyPlatformFiles(to: restoring)
+        if restoresState { try Self.cloneSavedState(from: source, to: restoring) }
 
         // Nothing failed for want of space, so now the VM's own files can go.
         for directory in [SavedState.directory(in: bundle), SavedState.partialDirectory(in: bundle)] {
             try? FileManager.default.removeItem(at: directory)
         }
-        for name in type(of: platform).platformFiles {
+        for name in type(of: snapshotBundle).platformFiles {
             try Self.replace(bundle.appending(path: name), with: restoring.appending(path: name))
         }
         if config.disk != snapshot.record.disk {
@@ -155,7 +155,7 @@ extension VMStore {
         config.disk = snapshot.record.disk
         config.diskGrowPending = snapshot.record.diskGrowPending
         try config.write(to: configFile)
-        if useState {
+        if restoresState {
             try Self.replace(SavedState.directory(in: bundle), with: SavedState.directory(in: restoring))
         }
     }
@@ -170,9 +170,9 @@ extension VMStore {
         }
     }
 
-    private static func replace(_ target: URL, with file: URL) throws {
-        guard Foundation.rename(file.path, target.path) == 0 else {
-            throw VMError.cloneFailed(target.lastPathComponent, String(cString: strerror(errno)))
+    private static func replace(_ target: URL, with replacement: URL) throws {
+        guard Foundation.rename(replacement.path, target.path) == 0 else {
+            throw VMError.replaceFailed(target.lastPathComponent, String(cString: strerror(errno)))
         }
     }
 }
