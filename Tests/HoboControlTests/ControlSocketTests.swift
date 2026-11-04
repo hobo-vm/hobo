@@ -133,6 +133,24 @@ import HoboCore
         #expect(message.contains("hobo stop --force"))
     }
 
+    /// `hobo snapshot save` knows a VM process from before snapshots by this answer.
+    @Test func serverAnswersARequestItDoesntKnowWithABadMessage() throws {
+        let server = try ControlServer(path: socket) { _, _ in .accepted }
+        defer { server.close() }
+        let fd = try ControlSocket.makeSocket()
+        defer { close(fd) }
+        var address = try ControlSocket.address(socket.path)
+        let connected = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        try #require(connected == 0)
+        try ControlSocket.writeAll(fd, Data("{\"version\":\(ControlProtocol.version),\"request\":{\"fromTheFuture\":{}}}\n".utf8))
+        var reader = LineReader(fd: fd)
+        let response = try ControlSocket.decode(ControlResponse.self, from: try #require(try reader.next()))
+        guard case .error(let message) = response else { Issue.record("expected an error, got \(response)"); return }
+        #expect(message.hasPrefix(String(describing: ControlError.badMessage(""))))
+    }
+
     @Test func serverReplacesAStaleSocketFile() async throws {
         try Data().write(to: socket)
         let server = try ControlServer(path: socket) { _, _ in .accepted }
