@@ -32,10 +32,15 @@ extension VMLifecycle {
         do {
             return (name, try await start(name, gui: gui, shares: shares, timeout: timeout))
         } catch {
-            // One that booted is deleted once it stops (finding it deletes it, `removeIfEphemeral`);
-            // one that never booted (a bad share, say) is still here, stopped, and deleted now.
+            // One that booted is deleted once it stops (finding it deletes it, `removeIfEphemeral`).
+            // One that never booted is still here and deleted now: stopped (a bad share, say), or
+            // crashed if its process died before marking it started (its `started` marker
+            // unwritable on a full disk, say); the error already carries its log's tail.
             // One still booting after a timeout is left to run.
-            if case .stopped? = try? store.find(name).status { try? store.delete(name) }
+            switch try? store.find(name).status {
+            case .stopped?, .crashed?: try? store.delete(name)
+            default: break
+            }
             throw error
         }
     }
