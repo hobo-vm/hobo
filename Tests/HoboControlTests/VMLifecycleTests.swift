@@ -161,7 +161,7 @@ import Testing
     @Test func forceDeleteStopsARunningVMAndDeletesIt() async throws {
         defer { cleanUp() }
         launchctl.pid.withLock { $0 = 4242 }
-        // Stops only for a forced stop: the VM's guest isn't given a chance to shut down.
+        // Refuses a graceful stop: delete --force must not wait for the guest to shut down.
         let server = try ControlServer(path: store.job(for: "dev").socket) { [launchctl] request, _ in
             guard case .stop(force: true) = request else { return .error("expected a forced stop") }
             launchctl.pid.withLock { $0 = nil }

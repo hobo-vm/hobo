@@ -139,7 +139,8 @@ public struct VMStore: Sendable {
         try FileManager.default.removeItem(at: bundle(for: name))
     }
 
-    /// Throws if `vm` is being built, running, or (unless `allowSuspended`) holding saved state.
+    /// Throws if `vm` is being built, (unless `allowRunning`) running, or (unless `allowSuspended`)
+    /// holding saved state.
     /// Saved state fits only the disk, configuration and platform identity it was saved with, so
     /// anything that changes those must refuse a suspended VM. Only operations that move or remove
     /// the bundle as a unit (delete, rename, discard) pass `allowSuspended`. `allowRunning` is for a

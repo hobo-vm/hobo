@@ -832,7 +832,7 @@ struct Delete: OutputCommand {
     @Flag(name: .shortAndLong, help: "Don't ask for confirmation.")
     var yes = false
 
-    @Flag(help: "Don't ask for confirmation, and if the VM is running, power it off at once first, killing its VM process if it isn't answering.")
+    @Flag(help: "Don't ask for confirmation, and power off a running VM first, as stop --force does.")
     var force = false
 
     @Flag(help: "Print the deleted VM's name as JSON. Needs --yes or --force.")
@@ -847,6 +847,7 @@ struct Delete: OutputCommand {
     func execute(_ output: Output) async throws -> Reply {
         let store = VMStore.standard()
         let vm = try store.find(name)
+        // Checked here as well as by the delete below, to refuse before asking rather than after.
         try store.checkStopped(vm, allowSuspended: true, allowRunning: force)
         // The prompt is text only: validate() requires --yes or --force with --json.
         if !yes && !force {
