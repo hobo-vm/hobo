@@ -70,10 +70,12 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+ONLY=${ONLY// /}
+
 # Checked now, since a bad gap would end the run at its last test, and an --only that matches
 # nothing would run no tests and report success.
 [[ "$GAP_MINUTES" =~ ^(0|[1-9][0-9]*)$ ]] || usage_error "--gap takes whole minutes, not: $GAP_MINUTES"
-[ -z "$ONLY" ] || [[ "$(echo "$ONLY" | tr -d ' ')" =~ ^((10|[1-9]),)*(10|[1-9])$ ]] \
+[ -z "$ONLY" ] || [[ "$ONLY" =~ ^((10|[1-9]),)*(10|[1-9])$ ]] \
     || usage_error "--only takes test numbers from 1 to 10, separated by commas, not: $ONLY"
 
 HOBO=$REPO/.build/release/hobo
@@ -453,11 +455,7 @@ title() {
     esac
 }
 
-wanted() {
-    [ -z "$ONLY" ] && return 0
-    case ",$(echo "$ONLY" | tr -d ' ')," in *",$1,"*) return 0 ;; esac
-    return 1
-}
+wanted() { [[ -z "$ONLY" || ",$ONLY," == *",$1,"* ]]; }
 
 run_test() {
     wanted "$1" || return 0
