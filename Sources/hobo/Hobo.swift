@@ -340,19 +340,23 @@ struct List: OutputCommand {
         }
         let total = ["TOTAL", "", "", "", "", fileSize(listing.totalBytes), snapshotsCell(count: listing.snapshotCount, bytes: listing.totalSnapshotBytes)]
         let rows = [["NAME", "STATE", "OS", "CPUS", "MEMORY", "DISK (USED/SIZE)", "SNAPSHOTS"]] + vmRows + [total]
-        guard verbose else { return formatTable(rows) }
-        // Each VM's line, followed by its snapshots lined up under the STATE column.
+        return verbose ? tableWithSnapshots(rows, summaries: listing.vms) : formatTable(rows)
+    }
+
+    /// The table of `rows` (a header, a row per VM, the total), with each VM's snapshots after its
+    /// line, lined up under the STATE column.
+    private func tableWithSnapshots(_ rows: [[String]], summaries: [VMSummary]) -> String {
         let indent = String(repeating: " ", count: (rows.map { $0[0].count }.max() ?? 0) + 2)
         let lines = formatTable(rows).components(separatedBy: "\n")
         var output = [lines[0]]
-        for (line, summary) in zip(lines.dropFirst(), listing.vms) {
+        for (line, summary) in zip(lines.dropFirst(), summaries) {
             output.append(line)
             let snapshots = summary.snapshots ?? []
             if snapshots.isEmpty { continue }
             let details = formatTable(snapshots.map { [$0.tag, $0.isLive ? "live" : "disk", createdText($0), fileSize($0.uniqueBytes ?? 0)] })
             output += details.components(separatedBy: "\n").map { indent + $0 }
         }
-        output.append(lines[lines.count - 1])
+        output.append(lines[lines.count - 1]) // The total, which the zip stopped short of.
         return output.joined(separator: "\n")
     }
 
