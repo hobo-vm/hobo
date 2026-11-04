@@ -340,6 +340,127 @@ import Testing
         decoder.dateDecodingStrategy = .iso8601
         #expect(try decoder.decode([VMSummary].self, from: Data(line.utf8)) == store.list().map(VMSummary.init))
     }
+
+    /// Copies what `cloneVM`'s copy does, without VZ: the platform files, and a new identifier.
+    private func clone(_ source: String, to destination: String, ephemeral: Bool = false) throws -> VMStore.VM {
+        try store.clone(source, to: destination, ephemeral: ephemeral, macAddress: "5a:00:00:00:00:02", log: { _ in }) { from, to, _ in
+            try FileManager.default.copyItem(at: from.appending(path: "disk.asif"), to: to.appending(path: "disk.asif"))
+            try Data("new".utf8).write(to: to.appending(path: "machine-identifier.bin"))
+        }
+    }
+
+    /// A finished VM with a disk to clone.
+    private func madeWithDisk(_ name: String) throws {
+        try made(name)
+        try Data("disk".utf8).write(to: store.bundle(for: name).appending(path: "disk.asif"))
+    }
+
+    @Test func cloneCopiesTheRecipeAndConfigWithANewMAC() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try madeWithDisk("dev")
+        let source = store.bundle(for: "dev")
+        try Data("old".utf8).write(to: source.appending(path: "machine-identifier.bin"))
+        try Data("console".utf8).write(to: source.appending(path: "console.log"))
+
+        let before = Date.now
+        let vm = try clone("dev", to: "exp", ephemeral: true)
+        guard case .stopped(let cloned) = vm.status else { Issue.record("not stopped: \(vm.status)"); return }
+        #expect(cloned.macAddress == "5a:00:00:00:00:02")
+        #expect(cloned.ephemeral)
+        #expect(cloned.created >= before.addingTimeInterval(-1))
+        var expected = cloned
+        expected.macAddress = config.macAddress
+        expected.created = config.created
+        expected.ephemeral = false
+        #expect(expected == config)
+        #expect(try Data(contentsOf: vm.bundle.appending(path: VMStore.recipeFile)) == Data("cpus = 4\n".utf8))
+        #expect(try Data(contentsOf: vm.bundle.appending(path: "disk.asif")) == Data("disk".utf8))
+        #expect(try Data(contentsOf: vm.bundle.appending(path: "machine-identifier.bin")) == Data("new".utf8))
+        #expect(!FileManager.default.fileExists(atPath: vm.bundle.appending(path: "console.log").path))
+        #expect(!FileManager.default.fileExists(atPath: vm.bundle.appending(path: VMStore.buildingMarker).path))
+        // The source is untouched.
+        #expect(try store.find("dev").status == .stopped(config))
+    }
+
+    @Test func cloneRefusesARunningOrSuspendedSourceAndATakenName() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        for name in ["up", "asleep", "taken"] { try made(name) }
+        try suspend("asleep")
+        launchctl.list = "PID\tStatus\tLabel\n4242\t0\t\(store.job(for: "up").label)\n"
+        #expect(throws: VMStoreError.busy("up", reason: "running (hobo stop up)")) { try clone("up", to: "exp") }
+        #expect(throws: VMStoreError.busy("asleep", reason: "suspended (hobo discard asleep throws its saved state away)")) {
+            try clone("asleep", to: "exp")
+        }
+        #expect(throws: VMStoreError.exists("up")) { try clone("taken", to: "UP") }
+        #expect(throws: VMStoreError.invalidName("bad name")) { try clone("taken", to: "bad name") }
+        #expect(store.list().map(\.name) == ["asleep", "taken", "up"])
+    }
+
+    /// Their netplan matches the source's MAC, so a clone with a new one would have no network.
+    @Test func cloneRefusesALinuxVMThatMatchesItsNICByMAC() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        var linux = config
+        linux.os = .linux
+        _ = try store.beginCreate("old")
+        try store.finishCreate("old", config: linux, recipe: Data())
+        linux.nicMatchedByDriver = true
+        _ = try store.beginCreate("new")
+        try store.finishCreate("new", config: linux, recipe: Data())
+        try Data().write(to: store.bundle(for: "new").appending(path: "disk.asif"))
+
+        #expect(throws: VMStoreError.notClonable(
+            "old", "its guest finds its network card by MAC, so a clone would have no network; create it again to clone it"
+        )) { try clone("old", to: "exp") }
+        _ = try clone("new", to: "exp")
+    }
+
+    @Test func aCloneThatFailsIsDeleted() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try made("dev")
+        // No disk.asif to copy.
+        #expect(throws: (any Error).self) { try clone("dev", to: "exp") }
+        #expect(store.list().map(\.name) == ["dev"])
+    }
+
+    @Test func ephemeralNamesAreFreeAndFitTheNameLimit() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try made("dev")
+        let name = try store.ephemeralName(for: "dev")
+        #expect(name.wholeMatch(of: /dev-[0-9a-f]{4}/) != nil)
+        let long = try store.ephemeralName(for: String(repeating: "a", count: 63))
+        #expect(long.count == 63)
+        try VMStore.validate(long)
+    }
+
+    @Test(arguments: [false, true])
+    func removeIfEphemeralDeletesTheBundleAndJobFilesAndTheLogUnlessKept(keepLog: Bool) throws {
+        defer {
+            try? FileManager.default.removeItem(at: store.directory)
+            try? FileManager.default.removeItem(at: store.home.root)
+        }
+        try madeWithDisk("dev")
+        _ = try clone("dev", to: "exp", ephemeral: true)
+        let job = store.job(for: "exp")
+        try FileManager.default.createDirectory(at: job.plist.deletingLastPathComponent(), withIntermediateDirectories: true)
+        for file in [job.plist, job.socket, job.log] { try Data("x".utf8).write(to: file) }
+
+        #expect(!store.removeIfEphemeral("dev", keepLog: keepLog))
+        #expect(store.removeIfEphemeral("exp", keepLog: keepLog))
+        #expect(store.list().map(\.name) == ["dev"])
+        #expect(!FileManager.default.fileExists(atPath: job.plist.path))
+        #expect(!FileManager.default.fileExists(atPath: job.socket.path))
+        #expect(FileManager.default.fileExists(atPath: job.log.path) == keepLog)
+    }
+
+    /// A suspended ephemeral VM is kept until it is discarded and stopped.
+    @Test func removeIfEphemeralKeepsASuspendedVM() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try madeWithDisk("dev")
+        _ = try clone("dev", to: "exp", ephemeral: true)
+        try suspend("exp")
+        #expect(!store.removeIfEphemeral("exp", keepLog: false))
+        #expect(store.list().map(\.name) == ["dev", "exp"])
+    }
 }
 
 /// Stands in for `launchctl`: `list` prints `list`, everything else succeeds silently, and every

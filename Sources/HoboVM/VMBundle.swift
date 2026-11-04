@@ -15,6 +15,8 @@ public protocol VMBundle: Sendable {
     /// its UI by itself (Linux's text console and default desktop) gets one in points instead, so
     /// its text isn't half size; the window scales it up.
     static var hiDPIDisplay: Bool { get }
+    /// Gives the bundle a new machine identifier, so a clone and its source can run side by side.
+    func writeNewMachineIdentifier() throws
     func configuration(
         cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare]
     ) throws -> VZVirtualMachineConfiguration
@@ -25,6 +27,17 @@ extension VMBundle {
     public func allocatedDiskBytes() -> UInt64 {
         let values = try? disk.resourceValues(forKeys: [.totalFileAllocatedSizeKey])
         return UInt64(values?.totalFileAllocatedSize ?? 0)
+    }
+
+    /// Copies `platformFiles` into `destination`, as APFS clones where it can (instant, and free
+    /// until either copy changes a block), otherwise as full copies.
+    func copyPlatformFiles(to destination: URL) throws {
+        for name in Self.platformFiles {
+            let target = destination.appending(path: name)
+            guard copyfile(directory.appending(path: name).path, target.path, nil, copyfile_flags_t(COPYFILE_CLONE)) == 0 else {
+                throw VMError.cloneFailed(name, String(cString: strerror(errno)))
+            }
+        }
     }
 }
 

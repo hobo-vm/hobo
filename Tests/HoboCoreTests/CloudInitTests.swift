@@ -3,7 +3,7 @@ import Testing
 @testable import HoboCore
 
 @Suite struct CloudInitTests {
-    let seed = CloudInit.seed(vmName: "dev", macAddress: "AA:BB:CC:DD:EE:0F", uid: 502)
+    let seed = CloudInit.seed(vmName: "dev", uid: 502)
 
     @Test func seedHasTheNoCloudFiles() {
         #expect(Set(seed.keys) == ["meta-data", "user-data", "network-config"])
@@ -15,7 +15,7 @@ import Testing
         #expect(CloudInit.hostname(for: "dev") == "dev")
         #expect(CloudInit.hostname(for: "my_vm.2") == "my-vm-2")
         #expect(CloudInit.hostname(for: "build-") == "build")
-        #expect(CloudInit.seed(vmName: "a_b", macAddress: "AA:BB:CC:DD:EE:0F", uid: 502)["meta-data"]?.contains("local-hostname: a-b\n") == true)
+        #expect(CloudInit.seed(vmName: "a_b", uid: 502)["meta-data"]?.contains("local-hostname: a-b\n") == true)
     }
 
     @Test func userDataAppliesTheVagrantConventions() throws {
@@ -43,10 +43,12 @@ import Testing
         #expect(userData.contains("  - [mkdir, -p, /mnt/hobo]\n"))
     }
 
-    /// bootpd records the client ID it is sent, and leases are found by MAC.
-    @Test func networkConfigUsesTheMACAsDHCPIdentifier() throws {
+    /// bootpd records the client ID it is sent, and leases are found by MAC. The NIC is matched by
+    /// driver, so a clone with a new MAC still gets a network.
+    @Test func networkConfigMatchesTheDriverAndUsesTheMACAsDHCPIdentifier() throws {
         let config = try #require(seed["network-config"])
-        #expect(config.contains("macaddress: \"aa:bb:cc:dd:ee:0f\""))
+        #expect(config.contains("match:\n      driver: virtio_net\n"))
+        #expect(!config.contains("macaddress"))
         #expect(config.contains("dhcp-identifier: mac"))
     }
 

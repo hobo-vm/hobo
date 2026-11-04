@@ -53,6 +53,27 @@ import Testing
         }
     }
 
+    /// `--keep` changes nothing the guest sees, so a running or suspended VM may take it; its VM
+    /// process reads config.json again as it exits.
+    @Test(arguments: [false, true])
+    func keepClearsEphemeralEvenOnARunningOrSuspendedVM(suspended: Bool) throws {
+        defer { cleanUp() }
+        var ephemeral = config
+        ephemeral.ephemeral = true
+        _ = try store.beginCreate("dev")
+        try store.finishCreate("dev", config: ephemeral, recipe: Data())
+        if suspended {
+            try FileManager.default.createDirectory(at: SavedState.directory(in: store.bundle(for: "dev")), withIntermediateDirectories: false)
+        } else {
+            let label = store.job(for: "dev").label
+            jobs.value.withLock { $0 += "4242\t0\t\(label)\n" }
+        }
+        #expect(throws: VMStoreError.self) { try VMSettings(cpus: 2, keep: true).apply(to: "dev", store: store) { _ in } }
+        let kept = try VMSettings(keep: true).apply(to: "dev", store: store) { _ in }
+        #expect(kept == config)
+        #expect(try VMConfig.load(from: store.bundle(for: "dev").appending(path: VMStore.configFile)) == config)
+    }
+
     @Test func aSuspendedVMIsRefused() throws {
         defer { cleanUp() }
         _ = try store.beginCreate("dev")

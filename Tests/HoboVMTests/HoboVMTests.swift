@@ -306,7 +306,58 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["start", "litest"], in: work, environment: env) == 0)
         #expect(try output(hobo, ["exec", "litest", "--", "findmnt", "-n", "-o", "FSTYPE", shared], environment: env) == "virtiofs\n")
         #expect(try output(hobo, ["exec", "litest", "--", "ls", "-A", shared], environment: env) == "")
+
+        // clone: the source must be stopped; the clone gets its own MAC and identifier, so both
+        // run at once, each with its own lease (netplan matches the NIC by driver, not MAC).
+        #expect(try run(hobo, ["clone", "litest", "lclone"], in: work, environment: env) != 0, "running")
         #expect(try output(hobo, ["stop", "litest"], environment: env).contains("Stopped litest"))
+        #expect(try output(hobo, ["clone", "litest", "lclone"], environment: env).contains("Cloned litest to lclone"))
+        let cloneConfig = try VMConfig.load(from: vms.appending(path: "lclone.hobovm/config.json"))
+        #expect(cloneConfig.macAddress != config.macAddress && !cloneConfig.ephemeral)
+        let identifier = "machine-identifier.bin"
+        #expect(try Data(contentsOf: bundle.appending(path: identifier)) != Data(contentsOf: vms.appending(path: "lclone.hobovm/\(identifier)")))
+        defer { _ = try? run(hobo, ["stop", "--force", "lclone"], in: work, environment: env) }
+        #expect(try run(hobo, ["start", "litest"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["start", "lclone"], in: work, environment: env) == 0)
+        let cloneIP = try output(hobo, ["ip", "lclone"], environment: env).trimmingCharacters(in: .whitespacesAndNewlines)
+        let sourceIP = try output(hobo, ["ip", "litest"], environment: env).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(!cloneIP.isEmpty && cloneIP != sourceIP)
+        #expect(try output(hobo, ["exec", "lclone", "--", "whoami"], environment: env) == "vagrant\n")
+        #expect(try output(hobo, ["exec", "litest", "--", "whoami"], environment: env) == "vagrant\n")
+        #expect(try output(hobo, ["stop", "lclone"], environment: env).contains("Stopped lclone"))
+        #expect(try run(hobo, ["delete", "lclone", "--yes"], in: work, environment: env) == 0)
+
+        // start --ephemeral: a new auto-named clone, deleted when it stops unless set --keep.
+        #expect(try run(hobo, ["start", "litest", "--ephemeral"], in: work, environment: env) != 0, "running")
+        #expect(try output(hobo, ["stop", "litest"], environment: env).contains("Stopped litest"))
+        func startEphemeral() throws -> String {
+            let started = try output(hobo, ["start", "litest", "--ephemeral"], environment: env)
+            let name = try #require(started.firstMatch(of: /(litest-[0-9a-f]{4}) is running/)?.1, "\(started)")
+            return String(name)
+        }
+        let ephemeral = try startEphemeral()
+        defer { _ = try? run(hobo, ["stop", "--force", ephemeral], in: work, environment: env) }
+        #expect(try output(hobo, ["list"], environment: env).contains(try Regex("\(ephemeral)\\s+running, ephemeral")))
+        #expect(try output(hobo, ["exec", ephemeral, "--", "whoami"], environment: env) == "vagrant\n")
+        #expect(try output(hobo, ["stop", ephemeral], environment: env).contains("Stopped and deleted \(ephemeral)"))
+        #expect(!FileManager.default.fileExists(atPath: vms.appending(path: "\(ephemeral).hobovm").path))
+        #expect(!FileManager.default.fileExists(atPath: VMStore(directory: vms).job(for: ephemeral).log.path), "a clean run's log goes too")
+        // A guest that shuts itself down is deleted too.
+        let selfStopping = try startEphemeral()
+        defer { _ = try? run(hobo, ["stop", "--force", selfStopping], in: work, environment: env) }
+        _ = try run(hobo, ["exec", selfStopping, "--", "sudo", "-n", "shutdown", "-h", "now"], in: work, environment: env)
+        let deadline = Date.now.addingTimeInterval(120)
+        while FileManager.default.fileExists(atPath: vms.appending(path: "\(selfStopping).hobovm").path), Date.now < deadline {
+            Thread.sleep(forTimeInterval: 2)
+        }
+        #expect(!FileManager.default.fileExists(atPath: vms.appending(path: "\(selfStopping).hobovm").path))
+        let keptClone = try startEphemeral()
+        defer { _ = try? run(hobo, ["stop", "--force", keptClone], in: work, environment: env) }
+        #expect(try run(hobo, ["set", keptClone, "--keep"], in: work, environment: env) == 0)
+        #expect(try output(hobo, ["stop", keptClone], environment: env).contains("Stopped \(keptClone)\n"))
+        #expect(try output(hobo, ["list"], environment: env).contains(try Regex("\(keptClone)\\s+stopped\\s")))
+        #expect(try run(hobo, ["delete", keptClone, "--yes"], in: work, environment: env) == 0)
+
         #expect(try run(hobo, ["delete", "litest", "--yes"], in: work, environment: env) == 0)
         #expect(try FileManager.default.contentsOfDirectory(atPath: vms.path).isEmpty)
     }

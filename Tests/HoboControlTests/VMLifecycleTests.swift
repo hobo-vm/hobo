@@ -86,6 +86,20 @@ import Testing
         #expect(launchctl.called("bootout"))
     }
 
+    /// An ephemeral VM's process deletes its bundle as it exits.
+    @Test func stopReportsAnEphemeralVMsDeletion() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let bundle = store.bundle(for: "dev")
+        let server = try ControlServer(path: store.job(for: "dev").socket) { [launchctl] _, _ in
+            try? FileManager.default.removeItem(at: bundle)
+            launchctl.pid.withLock { $0 = nil }
+            return .accepted
+        }
+        defer { server.close() }
+        #expect(try await lifecycle.stop("dev", force: false) == .deleted)
+    }
+
     @Test func silentProcessIsReportedWithoutForce() async throws {
         defer { cleanUp() }
         launchctl.pid.withLock { $0 = 4242 }
@@ -316,10 +330,13 @@ import Testing
         #expect(try json(VMLifecycle.StartResult.resumed(status))
             == #"{"outcome":"resumed","status":{"ipAddress":"192.168.64.5","pid":42,"state":"running","windowShown":false}}"#)
         #expect(try json(VMLifecycle.StartResult.alreadyRunning(nil)) == #"{"outcome":"alreadyRunning"}"#)
+        #expect(try json(NamedStartResult(name: "dev-3f9a", result: .started(status)))
+            == #"{"name":"dev-3f9a","outcome":"started","status":{"ipAddress":"192.168.64.5","pid":42,"state":"running","windowShown":false}}"#)
     }
 
     @Test func stopResults() throws {
         #expect(try json(VMLifecycle.StopResult.stopped) == #"{"outcome":"stopped"}"#)
+        #expect(try json(VMLifecycle.StopResult.deleted) == #"{"outcome":"deleted"}"#)
         #expect(try json(VMLifecycle.StopResult.wasNotRunning) == #"{"outcome":"wasNotRunning"}"#)
     }
 

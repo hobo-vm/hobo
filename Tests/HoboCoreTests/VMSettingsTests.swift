@@ -21,6 +21,8 @@ import Testing
         #expect(VMSettings().isEmpty)
         #expect(!VMSettings(addShares: [VMShare(name: "src", path: "/src", readOnly: false)]).isEmpty)
         #expect(!VMSettings(removeShares: ["src"]).isEmpty)
+        #expect(!VMSettings(keep: true).isEmpty && !VMSettings(keep: true).changesMachine)
+        #expect(VMSettings(cpus: 2).changesMachine)
         #expect(throws: VMSettingsError.nothingToChange) { try VMSettings().applied(to: Self.config, limits: Self.limits) }
     }
 

@@ -1,0 +1,41 @@
+import Foundation
+import HoboControl
+import HoboCore
+import Virtualization
+
+extension VMStore {
+    /// `hobo clone <source> <destination> [--ephemeral]` (decision 12): an APFS clone of the
+    /// stopped VM `source`, with a new machine identifier and MAC so both can run at once. The
+    /// clone keeps the source's aux storage and hardware model, which it must: a macOS clone with
+    /// fresh aux storage never boots.
+    public func cloneVM(_ source: String, to destination: String, ephemeral: Bool = false, log: (String) -> Void) throws -> VM {
+        try clone(
+            source, to: destination, ephemeral: ephemeral, macAddress: VZMACAddress.randomLocallyAdministered().string, log: log
+        ) { from, to, config in
+            try vmBundle(at: from, os: config.os).copyPlatformFiles(to: to)
+            try vmBundle(at: to, os: config.os).writeNewMachineIdentifier()
+        }
+    }
+}
+
+extension VMLifecycle {
+    /// `hobo start <source> --ephemeral`: clones the stopped VM `source` to a new, auto-named
+    /// ephemeral VM (`VMStore.ephemeralName`) and starts that, returning its name. The clone is
+    /// deleted when it stops, as it is if it fails to start.
+    public func startEphemeral(
+        from source: String, gui: Bool = false, shares: [VMShare] = [], timeout: Duration = .seconds(10 * 60)
+    ) async throws -> (name: String, result: StartResult) {
+        let vm = try store.find(source)
+        let name = try store.ephemeralName(for: vm.name)
+        _ = try store.cloneVM(vm.name, to: name, ephemeral: true, log: log)
+        log("Cloned \(vm.name) to \(name)")
+        do {
+            return (name, try await start(name, gui: gui, shares: shares, timeout: timeout))
+        } catch {
+            // Its VM process deletes it as it exits; one that never ran (a bad share, say) is
+            // deleted here. One that is still booting after a timeout is left to run.
+            if case .stopped = try? store.find(name).status { try? store.delete(name) }
+            throw error
+        }
+    }
+}

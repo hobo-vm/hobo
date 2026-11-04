@@ -15,11 +15,11 @@ public enum CloudInit {
 
     /// The seed's files, by name, for the VM `vmName`. `uid` is the host user's, given to
     /// `vagrant` so that shared files, which the guest sees with their host owner, are its own.
-    public static func seed(vmName: String, macAddress: String, uid: UInt32) -> [String: String] {
+    public static func seed(vmName: String, uid: UInt32) -> [String: String] {
         [
             "meta-data": metaData(hostname: hostname(for: vmName)),
             "user-data": userData(uid: uid),
-            "network-config": networkConfig(macAddress: macAddress),
+            "network-config": networkConfig,
         ]
     }
 
@@ -84,20 +84,20 @@ public enum CloudInit {
         """
     }
 
-    /// DHCP keyed by MAC rather than the default DUID: macOS's bootpd records the client ID it is
-    /// sent, and Hobo finds a VM's lease by its MAC (`DHCPLeases`).
-    static func networkConfig(macAddress: String) -> String {
-        """
+    /// The NIC matched by driver, not MAC, so a clone with a new MAC still finds it (cloud-init is
+    /// off by then, so nothing would rewrite this). DHCP keyed by MAC rather than the default DUID:
+    /// macOS's bootpd records the client ID it is sent, and Hobo finds a VM's lease by its MAC
+    /// (`DHCPLeases`); a DUID comes from `/etc/machine-id`, which a clone shares with its source.
+    static let networkConfig = """
         version: 2
         ethernets:
           primary:
             match:
-              macaddress: "\(macAddress.lowercased())"
+              driver: virtio_net
             dhcp4: true
             dhcp-identifier: mac
 
         """
-    }
 
     /// Run over SSH once the guest answers: waits for cloud-init to finish, then checks that the
     /// conventions took. `status --wait` exits 2 for a finished run with warnings, which is fine.

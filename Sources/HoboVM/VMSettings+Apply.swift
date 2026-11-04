@@ -13,17 +13,24 @@ extension VMSettings.Limits {
 }
 
 extension VMSettings {
-    /// `hobo set`: changes a stopped VM's `config.json`, growing its disk image first if asked.
-    /// The guest's APFS container grows into the new space at the next boot (`VMRunner`).
+    /// `hobo set`: changes a VM's `config.json`, growing its disk image first if asked. The guest's
+    /// APFS container grows into the new space at the next boot (`VMRunner`). Only `keep` applies
+    /// to a running or suspended VM; its VM process reads `config.json` again as it exits.
     public func apply(to name: String, store: VMStore = .standard(), log: @Sendable (String) -> Void) throws -> VMConfig {
         let vm = try store.find(name)
-        // Also refuses a VM process still running from a bundle whose config.json has gone bad.
-        try store.checkStopped(vm)
+        if changesMachine {
+            // Also refuses a VM process still running from a bundle whose config.json has gone bad.
+            try store.checkStopped(vm)
+        } else if case .building = vm.status {
+            throw VMStoreError.busy(vm.name, reason: "being built")
+        }
         let config: VMConfig
         switch vm.status {
         case .stopped(let stored), .crashed(let stored, _): config = stored
-        case .running, .building, .suspended:
-            preconditionFailure("checkStopped refuses a running, building or suspended VM")
+        case .running(let stored, _), .suspended(let stored, _):
+            precondition(!changesMachine, "checkStopped refuses a running or suspended VM")
+            config = stored
+        case .building: preconditionFailure("refused above")
         case .failed: throw VMSettingsError.notConfigurable(vm.name, "its build failed (hobo delete \(vm.name))")
         case .broken: throw VMSettingsError.notConfigurable(vm.name, "its bundle has no valid \(VMStore.configFile)")
         }

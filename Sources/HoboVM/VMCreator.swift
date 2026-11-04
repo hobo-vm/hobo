@@ -89,7 +89,7 @@ public struct VMCreator {
         let (image, sourceSHA256) = try await resolveSource(recipe.source)
         let machine = Machine(cpus: recipe.cpus, memory: recipe.memory.bytes, macAddress: .randomLocallyAdministered())
         var bundle = try LinuxVMBundle.create(at: directory, image: image, diskBytes: recipe.disk.bytes, log: log)
-        let seed = try bundle.writeSeed(vmName: options.name, macAddress: machine.macAddress)
+        let seed = try bundle.writeSeed(vmName: options.name)
         defer { try? FileManager.default.removeItem(at: seed) }
         bundle.seed = seed
 
@@ -111,7 +111,7 @@ public struct VMCreator {
         return VMConfig(
             engine: .vz, os: .linux, cpus: machine.cpus, memory: machine.memory, disk: recipe.disk.bytes,
             macAddress: machine.macAddress.string, guestOSVersion: version,
-            created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256
+            created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256, nicMatchedByDriver: true
         )
     }
 

@@ -25,6 +25,16 @@ import Testing
         #expect(try VMConfig.decoder.decode(VMConfig.self, from: VMConfig.encoder.encode(pending)) == pending)
     }
 
+    /// Bundles from before clone are kept when they stop, and (for Linux) match their NIC by MAC.
+    @Test func olderConfigsAreNotEphemeralAndMatchTheNICByMAC() throws {
+        let config = try VMConfig.decoder.decode(VMConfig.self, from: Data(Self.json.replacingOccurrences(of: "%@", with: "").utf8))
+        #expect(!config.ephemeral && !config.nicMatchedByDriver)
+        var clone = config
+        clone.ephemeral = true
+        clone.nicMatchedByDriver = true
+        #expect(try VMConfig.decoder.decode(VMConfig.self, from: VMConfig.encoder.encode(clone)) == clone)
+    }
+
     @Test func securityRoundTrips() throws {
         let config = try VMConfig.decoder.decode(
             VMConfig.self, from: Data(Self.json.replacingOccurrences(of: "%@", with: #","sip":false,"amfi":false"#).utf8)

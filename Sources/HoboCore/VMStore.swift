@@ -172,6 +172,85 @@ public struct VMStore: Sendable {
         forgetJob(of: vm.name)
     }
 
+    /// `hobo clone` (decision 12): a new VM `destination` from the stopped VM `source`, with its
+    /// recipe and `config.json` but a new MAC (`macAddress`), and `ephemeral` as asked. `copy`
+    /// copies the platform files from the source bundle to the new one and gives the new one its
+    /// own machine identifier; it is HoboVM's, which knows each guest OS's files. The new bundle is
+    /// marked as being built until it is complete, and deleted if anything fails.
+    public func clone(
+        _ source: String, to destination: String, ephemeral: Bool, macAddress: String,
+        log: (String) -> Void, copy: (_ from: URL, _ to: URL, VMConfig) throws -> Void
+    ) throws -> VM {
+        let vm = try find(source)
+        try checkStopped(vm)
+        let config: VMConfig
+        switch vm.status {
+        case .stopped(let stored), .crashed(let stored, _): config = stored
+        case .running, .building, .suspended: preconditionFailure("checkStopped refuses a running, building or suspended VM")
+        case .failed: throw VMStoreError.notClonable(vm.name, "its build failed (hobo delete \(vm.name))")
+        case .broken: throw VMStoreError.notClonable(vm.name, "its bundle has no valid \(Self.configFile)")
+        }
+        if config.os == .linux, !config.nicMatchedByDriver {
+            throw VMStoreError.notClonable(
+                vm.name, "its guest finds its network card by MAC, so a clone would have no network; create it again to clone it"
+            )
+        }
+        let recipe = try Data(contentsOf: vm.bundle.appending(path: Self.recipeFile))
+        let bundle = try beginCreate(destination)
+        do {
+            if !Self.sameVolume(vm.bundle, directory) {
+                log("warning: \(vm.name)'s bundle is on another volume, so cloning it is a full copy of its disk")
+            }
+            try copy(vm.bundle, bundle, config)
+            var cloned = config
+            cloned.macAddress = macAddress
+            cloned.created = .now
+            cloned.ephemeral = ephemeral
+            try finishCreate(destination, config: cloned, recipe: recipe)
+        } catch {
+            try? abandonCreate(destination)
+            throw error
+        }
+        return try find(destination)
+    }
+
+    /// A free name for an ephemeral clone of `source`: `<source>-<4 hex digits>`, the source's name
+    /// shortened if need be to stay within a name's 63 characters.
+    public func ephemeralName(for source: String) throws -> String {
+        let suffixLength = 5
+        let base = String(source.prefix(63 - suffixLength))
+        for _ in 0..<100 {
+            let name = "\(base)-\(String(format: "%04x", UInt16.random(in: .min ... .max)))"
+            if existingName(matching: name) == nil { return name }
+        }
+        throw VMStoreError.exists("\(base)-*")
+    }
+
+    /// Run by an ephemeral VM's process as it exits: deletes the bundle and the job's plist and
+    /// socket, unless it is suspended or no longer ephemeral (`hobo set --keep`). With `keepLog`
+    /// (a failed run), the job's log stays so a start that failed can still show why; an
+    /// auto-named clone's name never comes back, so a clean run's log would otherwise pile up.
+    /// The job stays loaded, as an exited one does, until the next start (or a stop) unloads it.
+    /// Returns whether it deleted anything.
+    @discardableResult
+    public func removeIfEphemeral(_ name: String, keepLog: Bool) -> Bool {
+        let bundle = bundle(for: name)
+        guard let config = try? VMConfig.load(from: bundle.appending(path: Self.configFile)), config.ephemeral,
+              SavedState.load(in: bundle) == nil
+        else { return false }
+        let job = job(for: name)
+        for file in [bundle, job.plist, job.socket] + (keepLog ? [] : [job.log]) { try? FileManager.default.removeItem(at: file) }
+        return true
+    }
+
+    static func sameVolume(_ a: URL, _ b: URL) -> Bool {
+        func volume(_ url: URL) -> (any NSObjectProtocol & NSCopying)? {
+            try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier
+        }
+        guard let first = volume(a), let second = volume(b) else { return true }
+        return first.isEqual(second)
+    }
+
     /// A VM name is a filename, a launchd label suffix and a socket name, so it is kept plain.
     public static func validate(_ name: String) throws {
         guard name.wholeMatch(of: /[A-Za-z0-9][A-Za-z0-9._-]{0,62}/) != nil else {
@@ -255,6 +334,7 @@ public enum VMStoreError: Error, Equatable, CustomStringConvertible {
     case exists(String)
     case notFound(String)
     case busy(String, reason: String)
+    case notClonable(String, String)
 
     public var description: String {
         switch self {
@@ -263,6 +343,7 @@ public enum VMStoreError: Error, Equatable, CustomStringConvertible {
         case .exists(let name): "a VM named \"\(name)\" already exists (hobo delete \(name) to replace it)"
         case .notFound(let name): "no VM named \"\(name)\""
         case .busy(let name, let reason): "VM \"\(name)\" is \(reason)"
+        case .notClonable(let name, let reason): "can't clone \(name): \(reason)"
         }
     }
 }

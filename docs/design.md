@@ -48,7 +48,7 @@ global VMs on 2026-11-01.
    `start [--ephemeral] [--gui] [--cold] [--share path] [--idle-timeout d]`, `stop [--force]`,
    `suspend`, `discard`, `ssh <name> [--print] [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp [-r] <src>... <dst>`, `ip <name>`, `view`, `screenshot`,
    `clone <src> <dst> [--ephemeral]`, `delete <name> [--yes]`, `rename <old> <new>`,
-   `set <name> --cpus/--memory/--disk/--share/--unshare`, `snapshot save|restore|list|delete`,
+   `set <name> --cpus/--memory/--disk/--share/--unshare/--keep`, `snapshot save|restore|list|delete`,
    `provision <name> [recipe]` (re-run steps on an existing VM), `df`, `usage`,
    `claude install|uninstall [--project] [--force]`. A recipe argument defaults
    to `./Hobo.toml`; there is no `--from` and no `--ipsw` override (decided 2026-11-01: the recipe
@@ -120,9 +120,12 @@ global VMs on 2026-11-01.
    `config.json`, which is the truth thereafter: `engine`, `os`, `cpus`, `memory` and `disk` (bytes),
    `macAddress` (fixed at create, so the DHCP lease and `hobo ip` are stable), `guestOSVersion`,
    `created`, `recipeSHA256` and `sourceSHA256` (`guestOSVersion` is `27.2.0 (26B123)` for
-   macOS, and names the distribution for Linux, e.g. `Ubuntu 26.04` from `/etc/os-release`).
+   macOS, and names the distribution for Linux, e.g. `Ubuntu 26.04` from `/etc/os-release`),
+   `ephemeral` (decision 12) and, for Linux, `nicMatchedByDriver` (decision 21).
    `hobo set` changes CPUs, memory, disk (grow only) and
-   persistent shares. `start --share` adds a share for that run only. Clones inherit `config.json`.
+   persistent shares, all on a stopped VM, and `--keep` clears `ephemeral`, on a running or
+   suspended VM too. `start --share` adds a share for that run only. Clones inherit `config.json`
+   but for a new MAC, `created` and `ephemeral`.
    Shares are virtio-fs on the macOS automount tag, so the guest mounts each at
    `/Volumes/My Shared Files/<name>` with nothing to run inside it; the host can't change that
    path, and a provision step can symlink a share somewhere nicer (decided 2026-11-02, over
@@ -242,8 +245,22 @@ global VMs on 2026-11-01.
     no disk writes), so aux must be copied. Sharing an identifier also worked, given distinct MACs
     (Tart's way: it keeps a macOS clone's identifier), but the guest's serial is then duplicated,
     which Apple services can notice (Apple ID re-auth, untested here), so Hobo regenerates it.
-    `--ephemeral` (on `clone`, or `start dev --ephemeral`, which clones to an auto-named VM and starts
-    it) deletes the clone when it stops; a suspended ephemeral clone is kept until it is discarded.
+    Decided 2026-11-03 (hobo-9if): a clone copies the bundle's platform files (`VMBundle.platformFiles`:
+    disk, aux or EFI vars, hardware model, identifier, then a new identifier written over it) with
+    `COPYFILE_CLONE`, which makes a full copy where it can't clone, plus `recipe.toml` and a
+    rewritten `config.json`. `console.log`, snapshots and anything else stay behind. A clone always
+    lands in the source's directory, so it is a full copy only if the source bundle is a symlink to
+    another volume, which warns. The clone is marked as being built while it copies. The source
+    must also be built and readable; a Linux source must match its NIC by driver (decision 21).
+    `--ephemeral` (on `clone`, or `start dev --ephemeral`, which clones to `dev-<4 hex>` and starts
+    it, printing the name and returning it as `name` in the JSON) records `ephemeral` in
+    `config.json`. The VM process deletes such a VM as it exits, however it stops: `hobo stop`, the
+    guest shutting down, a crash, or (hobo-r86) a lease expiring. It reads `config.json` again then,
+    so `hobo set --keep` keeps it. It deletes the bundle and the job's plist and socket, and the
+    job's log after a clean exit; after a failure the log stays, so a failed `start` can still
+    show why (an auto-named clone's name never comes back, so clean logs would pile up).
+    A suspended ephemeral clone is kept until it is discarded. `hobo stop` reports the deletion
+    (`"outcome":"deleted"`), and `hobo list` marks ephemeral VMs.
 13. **Snapshots.** `hobo snapshot save|restore|list|delete <tag>`, stored in the bundle's
     `snapshots/<tag>/` as APFS clones of the disk and aux files, deleted with the VM. A running VM is
     paused, its state saved (`saveMachineStateTo`), its disk cloned at the same instant, and resumed;
@@ -454,7 +471,11 @@ global VMs on 2026-11-01.
       sudo, both insecure keys, password SSH, no unattended upgrades, the VM's name as hostname,
       `vagrant`'s uid matching the host user's and the fstab line for shares (decision 9),
       and DHCP with `dhcp-identifier: mac`. That last is required: Ubuntu's default DUID client ID
-      leaves bootpd's lease without the MAC Hobo looks it up by. Create waits for `cloud-init status
+      leaves bootpd's lease without the MAC Hobo looks it up by (and would be shared by a clone,
+      since it comes from `/etc/machine-id`). The netplan matches the NIC by driver
+      (`virtio_net`), not MAC, so a clone with a new MAC still gets a network, with nothing in the
+      guest rewritten (cloud-init is off by then); `config.json` records `nicMatchedByDriver`. Linux
+      VMs created before 2026-11-03 matched by MAC, and `clone` refuses them: create them again. Create waits for `cloud-init status
       --wait` over key SSH, runs the recipe's steps, and cleanup touches
       `/etc/cloud/cloud-init.disabled` and runs `fstrim`, so later boots and clones never re-run
       cloud-init. Recipe-supplied cloud-init user-data was rejected: `[[provision]]` is the one

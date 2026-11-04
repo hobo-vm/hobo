@@ -115,6 +115,8 @@ public struct VMLifecycle: Sendable {
 
     public enum StopResult: Equatable, Sendable {
         case stopped
+        /// It was ephemeral, so its VM process deleted it as it exited.
+        case deleted
         case wasNotRunning
     }
 
@@ -146,7 +148,7 @@ public struct VMLifecycle: Sendable {
             try store.launchd.kill(job.label, signal: "SIGKILL")
         }
         try await waitForExit(vm.name, job: job, timeout: timeout)
-        return .stopped
+        return FileManager.default.fileExists(atPath: vm.bundle.path) ? .stopped : .deleted
     }
 
     public enum SuspendResult: Equatable, Sendable {
@@ -326,7 +328,27 @@ extension VMLifecycle.StartResult: Encodable {
     }
 }
 
-/// `{"outcome": "stopped" | "wasNotRunning"}`.
+/// `start`'s result as `--json` reports it: the `StartResult` with the VM's name, which
+/// `start --ephemeral` chose. `{"name": …, "outcome": …, "status": {...}}`.
+public struct NamedStartResult: Encodable, Equatable, Sendable {
+    public var name: String
+    public var result: VMLifecycle.StartResult
+
+    public init(name: String, result: VMLifecycle.StartResult) {
+        self.name = name
+        self.result = result
+    }
+
+    private enum CodingKeys: String, CodingKey { case name }
+
+    public func encode(to encoder: any Encoder) throws {
+        try result.encode(to: encoder)
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+    }
+}
+
+/// `{"outcome": "stopped" | "deleted" | "wasNotRunning"}`.
 extension VMLifecycle.StopResult: Encodable {
     private enum CodingKeys: String, CodingKey { case outcome }
 
@@ -334,6 +356,7 @@ extension VMLifecycle.StopResult: Encodable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
         case .stopped: try container.encode("stopped", forKey: .outcome)
+        case .deleted: try container.encode("deleted", forKey: .outcome)
         case .wasNotRunning: try container.encode("wasNotRunning", forKey: .outcome)
         }
     }

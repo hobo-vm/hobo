@@ -52,6 +52,10 @@ public struct LinuxVMBundle: VMBundle {
     /// `shares` go on one virtio-fs tag, which the guest's fstab (from the cloud-init seed) mounts
     /// at `/mnt/hobo`, so each appears at `/mnt/hobo/<name>`. The device is attached even with no
     /// shares, so the mount never fails and nothing written there lands on the guest's disk.
+    public func writeNewMachineIdentifier() throws {
+        try VZGenericMachineIdentifier().dataRepresentation.write(to: machineIdentifier, options: .atomic)
+    }
+
     public func configuration(
         cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare]
     ) throws -> VZVirtualMachineConfiguration {
@@ -100,12 +104,12 @@ public struct LinuxVMBundle: VMBundle {
     }
 
     /// Writes the cloud-init seed for this VM as a `cidata` ISO in the bundle.
-    public func writeSeed(vmName: String, macAddress: VZMACAddress) throws -> URL {
+    public func writeSeed(vmName: String) throws -> URL {
         let staging = directory.appending(path: "cidata")
         let iso = directory.appending(path: "cidata.iso")
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: staging) }
-        for (name, contents) in CloudInit.seed(vmName: vmName, macAddress: macAddress.string, uid: getuid()) {
+        for (name, contents) in CloudInit.seed(vmName: vmName, uid: getuid()) {
             try contents.write(to: staging.appending(path: name), atomically: true, encoding: .utf8)
         }
         try? FileManager.default.removeItem(at: iso)

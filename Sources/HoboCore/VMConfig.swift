@@ -29,12 +29,19 @@ public struct VMConfig: Codable, Equatable, Sendable {
     @MissingAsFalse public var diskGrowPending: Bool
     /// Persistent shares (`hobo set --share`), names unique case-insensitively.
     @MissingAsEmpty public var shares: [VMShare]
+    /// Deleted when its VM process exits, unless it exits suspended (`clone --ephemeral`,
+    /// `start --ephemeral`; `hobo set --keep` clears it).
+    @MissingAsFalse public var ephemeral: Bool
+    /// A Linux guest whose netplan matches its NIC by driver rather than by MAC, so a clone with a
+    /// new MAC still gets a network. Linux VMs created before this was recorded match by MAC, and
+    /// can't be cloned.
+    @MissingAsFalse public var nicMatchedByDriver: Bool
 
     public init(
         engine: Engine, os: OS, cpus: Int, memory: UInt64, disk: UInt64, macAddress: String,
         guestOSVersion: String, created: Date, recipeSHA256: String, sourceSHA256: String,
         sip: Bool = true, amfi: Bool = true, diskGrowPending: Bool = false,
-        shares: [VMShare] = []
+        shares: [VMShare] = [], ephemeral: Bool = false, nicMatchedByDriver: Bool = false
     ) {
         self.engine = engine
         self.os = os
@@ -50,6 +57,8 @@ public struct VMConfig: Codable, Equatable, Sendable {
         self.amfi = amfi
         self.diskGrowPending = diskGrowPending
         self.shares = shares
+        self.ephemeral = ephemeral
+        self.nicMatchedByDriver = nicMatchedByDriver
     }
 
     /// The guest OS for people, e.g. `macOS 27.2.0 (26B123)` or `Ubuntu 26.04`.

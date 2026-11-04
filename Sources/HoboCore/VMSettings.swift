@@ -1,7 +1,7 @@
 import Foundation
 
-/// A `hobo set` change to a stopped VM's `config.json`: each setting to change, nil for those left
-/// alone. The disk only grows (decision 9): its ASIF image already returns freed blocks to the
+/// A `hobo set` change to a VM's `config.json`: each setting to change, nil for those left alone.
+/// Only `keep` may change a running or suspended VM; the rest need it stopped. The disk only grows (decision 9): its ASIF image already returns freed blocks to the
 /// host, so a smaller size would save nothing.
 public struct VMSettings: Equatable, Sendable {
     public var cpus: Int?
@@ -11,16 +11,26 @@ public struct VMSettings: Equatable, Sendable {
     public var addShares: [VMShare]
     /// Shares to remove (`--unshare`), each a name or an absolute path (`VMShare.unshareTarget`).
     public var removeShares: [String]
+    /// `--keep`: the VM is no longer ephemeral, so it stays when it stops.
+    public var keep: Bool
 
-    public init(cpus: Int? = nil, memory: ByteSize? = nil, disk: ByteSize? = nil, addShares: [VMShare] = [], removeShares: [String] = []) {
+    public init(
+        cpus: Int? = nil, memory: ByteSize? = nil, disk: ByteSize? = nil, addShares: [VMShare] = [], removeShares: [String] = [],
+        keep: Bool = false
+    ) {
         self.cpus = cpus
         self.memory = memory
         self.disk = disk
         self.addShares = addShares
         self.removeShares = removeShares
+        self.keep = keep
     }
 
-    public var isEmpty: Bool { cpus == nil && memory == nil && disk == nil && addShares.isEmpty && removeShares.isEmpty }
+    public var isEmpty: Bool { !changesMachine && !keep }
+
+    /// Whether this changes what the guest runs on, which needs the VM stopped: saved state fits
+    /// only the machine it was saved from, and a running VM's is fixed until it stops.
+    public var changesMachine: Bool { cpus != nil || memory != nil || disk != nil || !addShares.isEmpty || !removeShares.isEmpty }
 
     /// What the host allows a VM, passed in so validation doesn't need the Virtualization framework.
     public struct Limits: Equatable, Sendable {
@@ -65,6 +75,7 @@ public struct VMSettings: Equatable, Sendable {
         for share in addShares { try share.checkFolder() }
         updated.shares += addShares
         try VMShare.checkNames(updated.shares)
+        if keep { updated.ephemeral = false }
         return updated
     }
 }
@@ -79,7 +90,7 @@ public enum VMSettingsError: Error, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .nothingToChange: "nothing to change: give at least one of --cpus, --memory, --disk, --share or --unshare"
+        case .nothingToChange: "nothing to change: give at least one of --cpus, --memory, --disk, --share, --unshare or --keep"
         case .cpusOutOfRange(let cpus, let range):
             "\(cpus) CPUs is outside what this host allows (\(range.lowerBound)–\(range.upperBound))"
         case .memoryOutOfRange(let memory, let range):

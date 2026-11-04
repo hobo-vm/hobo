@@ -72,6 +72,9 @@ struct Usage: ParsableCommand {
                           exits 1. Usage errors are text on stderr.
               exec, cp    hobo exits with the guest command's (or scp's) status. With --json their output
                           goes to stderr and stdout gets {"exitStatus":…}.
+              Ephemeral   `start <vm> --ephemeral` boots a new clone of a stopped VM, named <vm>-<4 hex>
+                          (printed, and "name" in its JSON). An ephemeral VM is deleted when it stops,
+                          even by crashing, but not when it is suspended. `set <name> --keep` keeps it.
               Capacity    macOS allows at most 2 running macOS guests per host.
             """
     }

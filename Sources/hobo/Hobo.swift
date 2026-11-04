@@ -35,7 +35,7 @@ struct HoboCommand: AsyncParsableCommand {
         version: Hobo.version,
         subcommands: [
             Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self, Suspend.self, Discard.self, View.self,
-            SSH.self, Exec.self, Copy.self, IP.self, SetCommand.self, Provision.self, Rename.self, Delete.self, Claude.self, Usage.self,
+            SSH.self, Exec.self, Copy.self, IP.self, SetCommand.self, Provision.self, Clone.self, Rename.self, Delete.self, Claude.self, Usage.self,
         ]
     )
 }
@@ -319,22 +319,28 @@ struct List: OutputCommand {
 
     private func table(_ vms: [VMStore.VM], summaries: [VMSummary]) -> String {
         let rows = [["NAME", "STATE", "OS", "CPUS", "MEMORY", "DISK (USED/SIZE)"]] + zip(vms, summaries).map { vm, summary in
-            let used = fileSize(vm.allocatedBytes)
-            switch vm.status {
-            case .stopped(let config):
-                return [vm.name, "stopped"] + columns(config, used: used)
-            case .running(let config, _):
-                return [vm.name, summary.windowShown == true ? "running (window)" : "running"] + columns(config, used: used)
-            case .suspended(let config, let saved):
-                return [vm.name, "suspended (\(fileSize(saved.bytes)))"] + columns(config, used: used)
-            case .crashed(let config, let status):
-                return [vm.name, "crashed (\(status < 0 ? "signal \(-status)" : "exit \(status)"))"] + columns(config, used: used)
-            case .building: return [vm.name, "building", "—", "—", "—", "\(used) / —"]
-            case .failed: return [vm.name, "failed", "—", "—", "—", "\(used) / —"]
-            case .broken: return [vm.name, "broken", "—", "—", "—", "\(used) / —"]
-            }
+            var row = row(vm, summary: summary)
+            if summary.config?.ephemeral == true { row[1] += ", ephemeral" }
+            return row
         }
         return formatTable(rows)
+    }
+
+    private func row(_ vm: VMStore.VM, summary: VMSummary) -> [String] {
+        let used = fileSize(vm.allocatedBytes)
+        switch vm.status {
+        case .stopped(let config):
+            return [vm.name, "stopped"] + columns(config, used: used)
+        case .running(let config, _):
+            return [vm.name, summary.windowShown == true ? "running (window)" : "running"] + columns(config, used: used)
+        case .suspended(let config, let saved):
+            return [vm.name, "suspended (\(fileSize(saved.bytes)))"] + columns(config, used: used)
+        case .crashed(let config, let status):
+            return [vm.name, "crashed (\(status < 0 ? "signal \(-status)" : "exit \(status)"))"] + columns(config, used: used)
+        case .building: return [vm.name, "building", "—", "—", "—", "\(used) / —"]
+        case .failed: return [vm.name, "failed", "—", "—", "—", "\(used) / —"]
+        case .broken: return [vm.name, "broken", "—", "—", "—", "\(used) / —"]
+        }
     }
 
     private func columns(_ config: VMConfig, used: String) -> [String] {
@@ -367,25 +373,47 @@ struct Start: OutputCommand {
     )
     var shares: [VMShare] = []
 
-    @Flag(help: "Print progress and the VM's status (state, PID, IP address) as JSON Lines events.")
+    @Flag(help: "Boot a new clone of the VM instead, deleted when it stops. The VM must be stopped.")
+    var ephemeral = false
+
+    @Flag(help: "Print progress and the VM's name and status (state, PID, IP address) as JSON Lines events.")
     var json = false
 
     static let jsonStyle = Output.JSONStyle.events
 
+    func validate() throws {
+        if ephemeral && cold { throw ValidationError("--cold and --ephemeral can't go together: a suspended VM can't be cloned") }
+    }
+
     func execute(_ output: Output) async throws -> Reply {
-        let name = name
-        let interrupt = signalSource(SIGINT) {
-            output.interrupted("left \(name) booting (hobo stop \(name) to stop it)")
-            Darwin.exit(130)
+        let lifecycle = VMLifecycle(log: output.log)
+        let name: String
+        let result: VMLifecycle.StartResult
+        if ephemeral {
+            // A ^C leaves the clone booting, and the clone's name is only known once it exists.
+            let source = self.name
+            let interrupt = signalSource(SIGINT) {
+                output.interrupted("left the ephemeral clone of \(source) booting (hobo list shows it; hobo stop deletes it)")
+                Darwin.exit(130)
+            }
+            defer { interrupt.cancel() }
+            (name, result) = try await lifecycle.startEphemeral(from: source, gui: gui, shares: shares)
+        } else {
+            let target = self.name
+            let interrupt = signalSource(SIGINT) {
+                output.interrupted("left \(target) booting (hobo stop \(target) to stop it)")
+                Darwin.exit(130)
+            }
+            defer { interrupt.cancel() }
+            name = target
+            result = try await lifecycle.start(target, gui: gui, cold: cold, shares: shares)
         }
-        defer { interrupt.cancel() }
-        let result = try await VMLifecycle(log: output.log).start(name, gui: gui, cold: cold, shares: shares)
         let text = switch result {
         case .started(let status): "\(name) is running\(status.ipAddress.map { " (\($0))" } ?? "")"
         case .resumed(let status): "\(name) resumed\(status.ipAddress.map { " (\($0))" } ?? "")"
         case .alreadyRunning(let status): "\(name) is already running\(status?.ipAddress.map { " (\($0))" } ?? "")"
         }
-        return Reply(result, text: text)
+        return Reply(NamedStartResult(name: name, result: result), text: text)
     }
 }
 
@@ -410,6 +438,7 @@ struct Stop: OutputCommand {
         let result = try await VMLifecycle(log: output.log).stop(name, force: force)
         let text = switch result {
         case .stopped: "Stopped \(name)"
+        case .deleted: "Stopped and deleted \(name), which was ephemeral"
         case .wasNotRunning: "\(name) is not running"
         }
         return Reply(result, text: text)
@@ -643,7 +672,7 @@ private func signalSource(_ signo: Int32, _ handler: @escaping @Sendable () -> V
 struct SetCommand: OutputCommand {
     static let configuration = CommandConfiguration(
         commandName: "set",
-        abstract: "Change a stopped VM's CPUs, memory, disk size or shared folders.",
+        abstract: "Change a stopped VM's CPUs, memory, disk size or shared folders, or keep an ephemeral VM.",
         discussion: """
             The disk only grows. Its image grows now, and the guest's APFS container grows into the new space \
             at the next hobo start.
@@ -651,6 +680,8 @@ struct SetCommand: OutputCommand {
             A shared folder appears in the guest at /Volumes/My Shared Files/<folder name> (macOS) or \
             /mnt/hobo/<folder name> (Linux). --unshare runs before --share, so \
             --unshare src --share ~/src:ro makes a share read-only.
+
+            --keep works on a running or suspended VM too.
             """
     )
 
@@ -679,6 +710,9 @@ struct SetCommand: OutputCommand {
     )
     var unshares: [String] = []
 
+    @Flag(help: "Keep an ephemeral VM: it stays when it stops instead of being deleted.")
+    var keep = false
+
     @Flag(help: "Print the updated VM as JSON.")
     var json = false
 
@@ -687,12 +721,13 @@ struct SetCommand: OutputCommand {
     private var settings: VMSettings {
         VMSettings(
             cpus: cpus, memory: memory, disk: disk, addShares: shares,
-            removeShares: unshares.map { VMShare.unshareTarget($0, currentDirectory: .currentDirectory()) }
+            removeShares: unshares.map { VMShare.unshareTarget($0, currentDirectory: .currentDirectory()) },
+            keep: keep
         )
     }
 
     func validate() throws {
-        if settings.isEmpty { throw ValidationError("give at least one of --cpus, --memory, --disk, --share or --unshare") }
+        if settings.isEmpty { throw ValidationError("give at least one of --cpus, --memory, --disk, --share, --unshare or --keep") }
     }
 
     func execute(_ output: Output) async throws -> Reply {
@@ -702,6 +737,7 @@ struct SetCommand: OutputCommand {
         var lines = ["\(vm.name): \(config.cpus) CPUs, \(fileSize(config.memory)) memory, \(fileSize(config.disk)) disk"]
         lines += config.shares.map { "Sharing \($0.path) as \($0.name)\($0.readOnly ? " (read-only)" : "")" }
         if config.diskGrowPending { lines.append("The guest grows into the larger disk at the next hobo start \(vm.name).") }
+        if keep { lines.append("\(vm.name) is kept: it stays when it stops.") }
         return Reply(VMSummary(vm), text: lines.joined(separator: "\n"))
     }
 }
@@ -729,6 +765,36 @@ struct Provision: OutputCommand {
     func execute(_ output: Output) async throws -> Reply {
         let result = try await Provisioning.provision(name, recipeFile: URL(filePath: path), log: output.log)
         return Reply(result, text: "Provisioned \(result.name) (\(result.steps) step\(result.steps == 1 ? "" : "s"))")
+    }
+}
+
+struct Clone: OutputCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Copy a stopped VM to a new one, instantly on APFS.",
+        discussion: """
+            The clone has its own machine identifier and MAC address, so it can run beside the original. \
+            It shares the original's disk blocks until either one changes them. Snapshots aren't copied.
+            """
+    )
+
+    @Argument(help: "The VM to copy.")
+    var source: String
+
+    @Argument(help: "Name of the new VM.")
+    var destination: String
+
+    @Flag(help: "Delete the clone when it stops (hobo set --keep changes that).")
+    var ephemeral = false
+
+    @Flag(help: "Print the new VM as JSON.")
+    var json = false
+
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        let store = VMStore.standard()
+        let vm = try store.cloneVM(source, to: destination, ephemeral: ephemeral, log: output.log)
+        return Reply(VMSummary(vm), text: "Cloned \(source) to \(vm.name)\(ephemeral ? " (ephemeral: deleted when it stops)" : "")")
     }
 }
 

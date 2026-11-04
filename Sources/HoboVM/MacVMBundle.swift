@@ -34,17 +34,10 @@ public struct MacVMBundle: VMBundle {
         return bundle
     }
 
-    /// Copies the bundle's files to `destination` as APFS clones, so it is instant and free.
-    public func clone(to destination: URL) throws -> MacVMBundle {
-        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
-        for name in Self.platformFiles {
-            let target = destination.appending(path: name)
-            try? FileManager.default.removeItem(at: target)
-            guard copyfile(directory.appending(path: name).path, target.path, nil, copyfile_flags_t(COPYFILE_CLONE_FORCE)) == 0 else {
-                throw VMError.cloneFailed(name, String(cString: strerror(errno)))
-            }
-        }
-        return MacVMBundle(directory: destination)
+    /// The aux storage and hardware model stay: a clone with fresh aux storage never leaves
+    /// firmware (decision 12).
+    public func writeNewMachineIdentifier() throws {
+        try VZMacMachineIdentifier().dataRepresentation.write(to: machineIdentifier, options: .atomic)
     }
 
     /// `shares` go on the macOS automount tag, so the guest mounts each at

@@ -5,7 +5,8 @@ import Virtualization
 
 /// The VM process, `hobo _vm-run <name>`: owns one running VM under launchd and serves its control
 /// socket. It exits when the VM is off, with status 0 for a shutdown (by the guest or a `stop`)
-/// and nonzero for a failure, which `hobo list` shows as crashed.
+/// and nonzero for a failure, which `hobo list` shows as crashed. An ephemeral VM is deleted as
+/// its process exits either way, unless it was suspended.
 @MainActor
 public final class VMRunner {
     static let gracefulTimeout: Duration = .seconds(30)
@@ -31,6 +32,8 @@ public final class VMRunner {
     private var window: VMWindow?
     private var server: ControlServer?
     private var status = VMRunStatus(state: .starting, pid: getpid(), detail: "booting")
+    /// The VM's name as its bundle spells it, once found; `name` may differ in case.
+    private var bundleName: String?
 
     public init(
         store: VMStore = .standard(), name: String, gui: Bool = false, runShares: [VMShare] = [],
@@ -59,6 +62,8 @@ public final class VMRunner {
         let job = store.job(for: vm.name)
         // Every VM runs under launchd (always PID 1), whose job table is how clients see it.
         guard getppid() == 1 else { throw RunnerError.notUnderLaunchd(vm.name) }
+        // Only from here may exiting delete an ephemeral VM: a stray `hobo _vm-run` mustn't.
+        bundleName = vm.name
         let config = try VMConfig.load(from: vm.bundle.appending(path: VMStore.configFile))
         guard config.engine == .vz, config.os != .windows else { throw RunnerError.unsupported(config.engine, config.os) }
         guard let mac = VZMACAddress(string: config.macAddress) else { throw RunnerError.badMACAddress(config.macAddress) }
@@ -365,6 +370,8 @@ public final class VMRunner {
 
     private func finish(_ code: Int32) -> Never {
         server?.close()
+        // config.json is read again here, since `hobo set --keep` may have changed it meanwhile.
+        if let bundleName, store.removeIfEphemeral(bundleName, keepLog: code != 0) { log("Deleted the ephemeral VM \(bundleName)") }
         log("Exiting (\(code))")
         exit(code)
     }
