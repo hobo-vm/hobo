@@ -128,13 +128,19 @@ import Testing
         #expect(launchctl.calls.withLock { $0 }.contains(["kill", "SIGKILL", "gui/\(getuid())/\(store.job(for: "dev").label)"]))
     }
 
-    /// A killed VM process can't delete its ephemeral VM as it exits, so `stop` does.
-    @Test func forceDeletesAKilledEphemeralVM() async throws {
-        defer { cleanUp() }
+    /// Makes `dev` an ephemeral VM whose VM process has booted it.
+    func makeEphemeralAndStarted() throws {
         let configFile = store.bundle(for: "dev").appending(path: VMStore.configFile)
         var config = try VMConfig.load(from: configFile)
         config.ephemeral = true
         try config.write(to: configFile)
+        try Data().write(to: store.bundle(for: "dev").appending(path: VMStore.startedMarker))
+    }
+
+    /// A killed VM process can't delete its ephemeral VM as it exits; `stop` finding it again does.
+    @Test func forceDeletesAKilledEphemeralVM() async throws {
+        defer { cleanUp() }
+        try makeEphemeralAndStarted()
         launchctl.pid.withLock { $0 = 4242 }
         #expect(try await lifecycle.stop("dev", force: true) == .deleted)
         #expect(!FileManager.default.fileExists(atPath: store.bundle(for: "dev").path))
@@ -319,6 +325,15 @@ import Testing
         #expect(launchctl.called("bootout"))
     }
 
+    /// With its saved state gone, a suspended ephemeral VM that had run has stopped, so it goes.
+    @Test func discardDeletesAnEphemeralVM() throws {
+        defer { cleanUp() }
+        try makeEphemeralAndStarted()
+        try suspend()
+        #expect(try lifecycle.discard("dev") == .deleted)
+        #expect(!FileManager.default.fileExists(atPath: store.bundle(for: "dev").path))
+    }
+
     @Test func runSharesGoToTheVMProcess() {
         let shares = [VMShare(name: "a", path: "/x/a", readOnly: false), VMShare(name: "b", path: "/x/b", readOnly: true)]
         let arguments = VMLifecycle.runArguments(executable: URL(filePath: "/bin/hobo"), name: "dev", gui: false, shares: shares)
@@ -361,6 +376,7 @@ import Testing
 
     @Test func discardResults() throws {
         #expect(try json(VMLifecycle.DiscardResult.discarded) == #"{"outcome":"discarded"}"#)
+        #expect(try json(VMLifecycle.DiscardResult.deleted) == #"{"outcome":"deleted"}"#)
         #expect(try json(VMLifecycle.DiscardResult.notSuspended) == #"{"outcome":"notSuspended"}"#)
     }
 }

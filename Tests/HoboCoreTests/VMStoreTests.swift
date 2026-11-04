@@ -432,6 +432,11 @@ import Testing
         try VMStore.validate(long)
     }
 
+    /// What an ephemeral VM's process writes as it boots.
+    private func markStarted(_ name: String) throws {
+        try Data().write(to: store.bundle(for: name).appending(path: VMStore.startedMarker))
+    }
+
     @Test(arguments: [false, true])
     func removeIfEphemeralDeletesTheBundleAndJobFilesAndTheLogUnlessKept(keepLog: Bool) throws {
         defer {
@@ -444,6 +449,10 @@ import Testing
         try FileManager.default.createDirectory(at: job.plist.deletingLastPathComponent(), withIntermediateDirectories: true)
         for file in [job.plist, job.socket, job.log] { try Data("x".utf8).write(to: file) }
 
+        // Not until it has booted: `clone --ephemeral` leaves it stopped, waiting for a start.
+        #expect(!store.removeIfEphemeral("exp", keepLog: keepLog))
+        try markStarted("dev")
+        try markStarted("exp")
         #expect(!store.removeIfEphemeral("dev", keepLog: keepLog))
         #expect(store.removeIfEphemeral("exp", keepLog: keepLog))
         #expect(store.list().map(\.name) == ["dev"])
@@ -457,9 +466,36 @@ import Testing
         defer { try? FileManager.default.removeItem(at: store.directory) }
         try madeWithDisk("dev")
         _ = try clone("dev", to: "exp", ephemeral: true)
+        try markStarted("exp")
         try suspend("exp")
         #expect(!store.removeIfEphemeral("exp", keepLog: false))
         #expect(store.list().map(\.name) == ["dev", "exp"])
+    }
+
+    /// Whatever ended its run (a kill, a crash, a host reboot, a discard), an ephemeral VM that has
+    /// booted and has no process is deleted when the store next reads it, keeping a crash's log.
+    @Test func readingAStoppedOrCrashedEphemeralVMDeletesIt() throws {
+        defer {
+            try? FileManager.default.removeItem(at: store.directory)
+            try? FileManager.default.removeItem(at: store.home.root)
+        }
+        try madeWithDisk("dev")
+        for name in ["fresh", "up", "down", "crashed"] { _ = try clone("dev", to: name, ephemeral: true) }
+        for name in ["up", "down", "crashed"] { try markStarted(name) }
+        let logs = ["down", "crashed"].map { store.job(for: $0).log }
+        try FileManager.default.createDirectory(at: store.home.root, withIntermediateDirectories: true)
+        for log in logs { try Data("x".utf8).write(to: log) }
+        launchctl.list = """
+        PID\tStatus\tLabel
+        4242\t0\t\(store.job(for: "up").label)
+        -\t-9\t\(store.job(for: "crashed").label)
+        """
+
+        #expect(throws: VMStoreError.notFound("down")) { try store.find("down") }
+        // Not yet booted, or still running: kept.
+        #expect(store.list().map(\.name) == ["dev", "fresh", "up"])
+        #expect(!FileManager.default.fileExists(atPath: logs[0].path))
+        #expect(FileManager.default.fileExists(atPath: logs[1].path))
     }
 }
 

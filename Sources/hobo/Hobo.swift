@@ -463,7 +463,7 @@ struct Suspend: OutputCommand {
 
 struct Discard: OutputCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Throw a suspended VM's saved state away, leaving it stopped.",
+        abstract: "Throw a suspended VM's saved state away, leaving it stopped (or deleting it, if it is ephemeral).",
         discussion: "Whatever was in the guest's memory is lost, as if it had lost power."
     )
 
@@ -479,6 +479,7 @@ struct Discard: OutputCommand {
         let result = try VMLifecycle(log: output.log).discard(name)
         let text = switch result {
         case .discarded: "Discarded \(name)'s saved state"
+        case .deleted: "Discarded \(name)'s saved state and deleted it, which was ephemeral"
         case .notSuspended: "\(name) is not suspended"
         }
         return Reply(result, text: text)

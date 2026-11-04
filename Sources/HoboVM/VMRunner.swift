@@ -65,6 +65,8 @@ public final class VMRunner {
         // Only from here may exiting delete an ephemeral VM: a stray `hobo _vm-run` mustn't.
         bundleName = vm.name
         let config = try VMConfig.load(from: vm.bundle.appending(path: VMStore.configFile))
+        // From now on, the VM going without a process and saved state deletes it.
+        if config.ephemeral { try Data().write(to: vm.bundle.appending(path: VMStore.startedMarker)) }
         guard config.engine == .vz, config.os != .windows else { throw RunnerError.unsupported(config.engine, config.os) }
         guard let mac = VZMACAddress(string: config.macAddress) else { throw RunnerError.badMACAddress(config.macAddress) }
 

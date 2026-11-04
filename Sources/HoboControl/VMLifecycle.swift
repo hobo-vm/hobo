@@ -132,7 +132,6 @@ public struct VMLifecycle: Sendable {
             store.launchd.bootout(job.label)
             return .wasNotRunning
         }
-        var killed = false
         do {
             let response = try await ControlClient.send(.stop(force: force), to: job.socket)
             switch response {
@@ -147,12 +146,10 @@ public struct VMLifecycle: Sendable {
             // A refusal (e.g. a VM process from an older hobo) gets the same fallback as silence.
             log("The VM process isn't answering (\(error)); killing it")
             try store.launchd.kill(job.label, signal: "SIGKILL")
-            killed = true
         }
         try await waitForExit(vm.name, job: job, timeout: timeout)
-        // A killed VM process never got to delete its ephemeral VM, so it is deleted here.
-        if killed { store.removeIfEphemeral(vm.name, keepLog: true) }
-        return FileManager.default.fileExists(atPath: vm.bundle.path) ? .stopped : .deleted
+        // Finding it again deletes an ephemeral VM whose killed process couldn't (`removeIfEphemeral`).
+        return (try? store.find(vm.name)) == nil ? .deleted : .stopped
     }
 
     public enum SuspendResult: Equatable, Sendable {
@@ -189,16 +186,20 @@ public struct VMLifecycle: Sendable {
 
     public enum DiscardResult: Equatable, Sendable {
         case discarded
+        /// It was ephemeral and had run, so with its saved state gone it was deleted.
+        case deleted
         case notSuspended
     }
 
-    /// `hobo discard`: throws a suspended VM's saved state away, leaving it stopped.
+    /// `hobo discard`: throws a suspended VM's saved state away, leaving it stopped, or deleting it
+    /// if it is ephemeral.
     public func discard(_ name: String) throws -> DiscardResult {
         let vm = try store.find(name)
         guard try store.discard(vm.name) else { return .notSuspended }
         // A resume that failed leaves its job's exit status, which would show the VM as crashed.
         store.launchd.bootout(store.job(for: vm.name).label)
-        return .discarded
+        // Finding it again deletes it if it is ephemeral (`removeIfEphemeral`).
+        return (try? store.find(vm.name)) == nil ? .deleted : .discarded
     }
 
     /// Waits for a VM process told to exit to do so, logging what it reports doing, then unloads
@@ -385,7 +386,7 @@ extension VMLifecycle.SuspendResult: Encodable {
     }
 }
 
-/// `{"outcome": "discarded" | "notSuspended"}`.
+/// `{"outcome": "discarded" | "deleted" | "notSuspended"}`.
 extension VMLifecycle.DiscardResult: Encodable {
     private enum CodingKeys: String, CodingKey { case outcome }
 
@@ -393,6 +394,7 @@ extension VMLifecycle.DiscardResult: Encodable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
         case .discarded: try container.encode("discarded", forKey: .outcome)
+        case .deleted: try container.encode("deleted", forKey: .outcome)
         case .notSuspended: try container.encode("notSuspended", forKey: .outcome)
         }
     }

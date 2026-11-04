@@ -10,6 +10,10 @@ public struct VMStore: Sendable {
     public static let configFile = "config.json"
     public static let recipeFile = "recipe.toml"
     public static let buildingMarker = "building"
+    /// Written by an ephemeral VM's process as it boots. From then on the VM is deleted as soon as
+    /// it has neither a process nor saved state (`removeIfEphemeral`); until then, a clone made
+    /// with `clone --ephemeral` stays, stopped, waiting for its first start.
+    public static let startedMarker = "started"
 
     public var directory: URL
     /// Where the VM processes' sockets, logs and plists live.
@@ -59,16 +63,20 @@ public struct VMStore: Sendable {
         directory.appending(path: "\(name).\(Self.bundleExtension)", directoryHint: .isDirectory)
     }
 
-    /// Every VM, sorted by name. Anything in `directory` that isn't a `.hobovm` is ignored.
+    /// Every VM, sorted by name. Anything in `directory` that isn't a `.hobovm` is ignored. An
+    /// ephemeral VM that has stopped is deleted rather than listed (`removeIfEphemeral`).
     public func list() -> [VM] {
         let jobs = launchd.jobs()
-        return names().sorted { $0.localizedStandardCompare($1) == .orderedAscending }.map { vm(named: $0, jobs: jobs) }
+        return names().sorted { $0.localizedStandardCompare($1) == .orderedAscending }.compactMap { vm(named: $0, jobs: jobs) }
     }
 
-    /// The VM called `name`, matched case-insensitively.
+    /// The VM called `name`, matched case-insensitively. An ephemeral VM that has stopped is
+    /// deleted, and so not found (`removeIfEphemeral`).
     public func find(_ name: String) throws -> VM {
-        guard let existing = existingName(matching: name) else { throw VMStoreError.notFound(name) }
-        return vm(named: existing, jobs: launchd.jobs())
+        guard let existing = existingName(matching: name), let vm = vm(named: existing, jobs: launchd.jobs()) else {
+            throw VMStoreError.notFound(name)
+        }
+        return vm
     }
 
     /// The launchd job and files of the VM process for `name`. They are keyed by this store's
@@ -226,16 +234,20 @@ public struct VMStore: Sendable {
         throw VMStoreError.exists("\(base)-*")
     }
 
-    /// Run by an ephemeral VM's process as it exits: deletes the bundle and the job's plist and
-    /// socket, unless it is suspended or no longer ephemeral (`hobo set --keep`). With `keepLog`
-    /// (a failed run), the job's log stays so a start that failed can still show why; an
-    /// auto-named clone's name never comes back, so a clean run's log would otherwise pile up.
-    /// The job stays loaded, as an exited one does, until the next start (or a stop) unloads it.
-    /// Returns whether it deleted anything.
+    /// The one place an ephemeral VM is deleted (decision 12): once it has booted (`startedMarker`),
+    /// whenever it has no saved state and no process. Its VM process calls this as it exits, and
+    /// the store as it reads a VM (`find`, `list`), so a VM whose process was killed, crashed, or
+    /// went with a host reboot, or whose saved state was discarded, goes the next time anything
+    /// looks at it. Deletes the bundle and the job's plist and socket, unless it is suspended or no
+    /// longer ephemeral (`hobo set --keep`). With `keepLog` (a failed run), the job's log stays so
+    /// a start that failed can still show why; an auto-named clone's name never comes back, so a
+    /// clean run's log would otherwise pile up. The job stays loaded, as an exited one does, until
+    /// the next start (or a stop) unloads it. Returns whether it deleted anything.
     @discardableResult
     public func removeIfEphemeral(_ name: String, keepLog: Bool) -> Bool {
         let bundle = bundle(for: name)
         guard let config = try? VMConfig.load(from: bundle.appending(path: Self.configFile)), config.ephemeral,
+              FileManager.default.fileExists(atPath: bundle.appending(path: Self.startedMarker).path),
               SavedState.load(in: bundle) == nil
         else { return false }
         let job = job(for: name)
@@ -271,10 +283,19 @@ public struct VMStore: Sendable {
         names().first { $0.lowercased() == name.lowercased() }
     }
 
-    private func vm(named name: String, jobs: [String: Launchd.Job]) -> VM {
+    /// Nil for an ephemeral VM that has stopped, which this deletes.
+    private func vm(named name: String, jobs: [String: Launchd.Job]) -> VM? {
         let bundle = bundle(for: name)
         let job = jobs[job(for: name).label]
-        return VM(name: name, bundle: bundle, status: status(of: bundle, job: job), allocatedBytes: Self.allocatedBytes(of: bundle), job: job)
+        let status = status(of: bundle, job: job)
+        // Only with no process and no saved state; a crash's log is kept, as its process would.
+        let keepLog: Bool? = switch status {
+        case .stopped: false
+        case .crashed: true
+        default: nil
+        }
+        if let keepLog, removeIfEphemeral(name, keepLog: keepLog) { return nil }
+        return VM(name: name, bundle: bundle, status: status, allocatedBytes: Self.allocatedBytes(of: bundle), job: job)
     }
 
     private func status(of bundle: URL, job: Launchd.Job?) -> Status {

@@ -254,12 +254,19 @@ global VMs on 2026-11-01.
     must also be built and readable; a Linux source must match its NIC by driver (decision 21).
     `--ephemeral` (on `clone`, or `start dev --ephemeral`, which clones to `dev-<4 hex>` and starts
     it, printing the name and returning it as `name` in the JSON) records `ephemeral` in
-    `config.json`. The VM process deletes such a VM as it exits, however it stops: `hobo stop`, the
-    guest shutting down, a crash, or (hobo-r86) a lease expiring. It reads `config.json` again then,
-    so `hobo set --keep` keeps it. It deletes the bundle and the job's plist and socket, and the
-    job's log after a clean exit; after a failure the log stays, so a failed `start` can still
-    show why (an auto-named clone's name never comes back, so clean logs would pile up).
-    A suspended ephemeral clone is kept until it is discarded. `hobo stop` reports the deletion
+    `config.json`. One rule deletes it, in one place (`VMStore.removeIfEphemeral`; decided
+    2026-11-03 after a review found exit paths that each had to remember the call, and
+    `discard` that didn't): once it has booted, whenever it has neither a process nor saved state.
+    Its VM process writes a `started` marker in the bundle as it boots, so a `clone --ephemeral`
+    waits, stopped, for its first start. The VM process applies the rule as it exits, however it
+    stops (`hobo stop`, the guest shutting down, a crash, or (hobo-r86) a lease expiring), and the
+    store applies it whenever it reads a VM, so a VM whose process was killed, or went with a host
+    reboot, or whose saved state was discarded, goes the next time any command looks: with no
+    daemon, nothing else could. The rule reads `config.json` then, so `hobo set --keep` keeps it.
+    It deletes the bundle and the job's plist and socket, and the job's log after a clean exit;
+    after a failure the log stays, so a failed `start` can still show why (an auto-named clone's
+    name never comes back, so clean logs would pile up). A suspended ephemeral VM is kept, and
+    `hobo discard` deletes it. `hobo stop` and `hobo discard` report the deletion
     (`"outcome":"deleted"`), and `hobo list` marks ephemeral VMs.
 13. **Snapshots.** `hobo snapshot save|restore|list|delete <tag>`, stored in the bundle's
     `snapshots/<tag>/` as APFS clones of the disk and aux files, deleted with the VM. A running VM is
