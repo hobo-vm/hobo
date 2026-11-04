@@ -336,6 +336,7 @@ import Testing
         #expect(line.contains(#""memory":8589934592"#))
         #expect(line.contains(#""created":"2027-01-15T08:00:00Z""#))
         #expect(!line.contains("pid"))
+        #expect(!line.contains(#""snapshots""#) && !line.contains(#""snapshotBytes""#)) // Only from `list`.
     }
 
     /// Copies what `cloneVM`'s copy does, without VZ: the platform files, and a new identifier.

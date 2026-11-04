@@ -499,6 +499,8 @@ import Testing
         #expect(disk.contains(#""kind":"disk""#) && !disk.contains("savedStateBytes"))
         let live = try encoded(Snapshot(tag: "a", record: record, savedStateBytes: 5))
         #expect(live.contains(#""kind":"live""#) && live.contains(#""savedStateBytes":5"#))
+        #expect(!live.contains("uniqueBytes")) // As from `snapshot save`, which doesn't measure it.
+        #expect(try encoded(Snapshot(tag: "a", record: record, savedStateBytes: nil, uniqueBytes: 0)).contains(#""uniqueBytes":0"#))
     }
 
     /// Run by the local shell, standing in for a guest's: it must pass only near the given time.

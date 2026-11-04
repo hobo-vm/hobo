@@ -43,6 +43,20 @@ import Testing
         #expect(usage.uniqueBytes["a"]?["s"] == nil)
     }
 
+    /// A's own files hold the block, so it adds nothing to a's snapshots, but b's still count it.
+    @Test func snapshotsOfDifferentVMsSharingABlock() {
+        let usage = DiskUsage.measure([
+            (.vm("a"), extents(0..<100)),
+            (.snapshot(vm: "a", tag: "s"), extents(0..<100, 200..<230)),
+            (.snapshot(vm: "b", tag: "t"), extents(0..<100, 200..<230)),
+        ])
+        #expect(usage.totalBytes == 130)
+        #expect(usage.totalSnapshotBytes == 30)
+        #expect(usage.snapshotBytes["a"] == 30)
+        #expect(usage.snapshotBytes["b"] == 130)
+        #expect(usage.uniqueBytes.isEmpty)
+    }
+
     @Test func aHolderOverlappingItselfCountsOnce() {
         #expect(DiskUsage.measure([(.vm("a"), extents(0..<100, 50..<150))]).totalBytes == 150)
     }
@@ -234,6 +248,26 @@ import Testing
         var extents = FileExtents()
         for file in [link, bundle, bundle.appending(path: "gone")] { extents.add(file: file) }
         #expect(extents == FileExtents())
+    }
+
+    /// `list` reports zeros rather than leaving them out, and a snapshot holding nothing alone is
+    /// measured at 0, not unmeasured.
+    @Test func listingCountsEveryVMsSnapshotsAndReportsZeros() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let one = try made("one", in: store, megabytes: 1)
+        let two = try made("two", in: store, megabytes: 1)
+        _ = try made("none", in: store, megabytes: 1)
+        try snapshot("s", of: one)
+        try snapshot("s", of: two)
+        try snapshot("t", of: two)
+        let vms = store.list()
+        let listing = VMListing(vms, usage: store.diskUsage(of: vms))
+        #expect(listing.snapshotCount == 3)
+        let none = try #require(listing.vms.first { $0.name == "none" })
+        #expect(none.snapshots == [])
+        #expect(none.snapshotBytes == 0)
+        #expect(DiskUsage().snapshots(of: try #require(vms.first { $0.name == "one" })).map(\.uniqueBytes) == [0])
     }
 
     @Test func listingJSONHasTotalsAndSnapshots() throws {
