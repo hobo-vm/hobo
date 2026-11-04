@@ -253,7 +253,7 @@ test_1() {
 
 test_2() {
     ensure_running || return
-    hobo view "$VM"
+    hobo view "$VM" || bad "hobo view: $OUT"
     pause "Leave something recognisable on screen in the window: the restore returns to it."
     hobo snapshot save "$VM" t2 || bad "the save failed: $OUT"
     pause "Now change what's on screen, so you can tell the restore worked."
@@ -305,7 +305,7 @@ test_5() {
     local rc=$?
     SAVE_PID=
     note "the save said: $(tr '\n' ' ' < "$WORK/save.txt")"
-    [ $rc -ne 0 ] && ok "the interrupted save reported failure" || bad "the interrupted save exited 0"
+    if [ $rc -ne 0 ]; then ok "the interrupted save reported failure"; else bad "the interrupted save exited 0"; fi
     check "the VM is stopped" is_stopped
     if tag_listed forced; then bad "the interrupted snapshot is listed"; else ok "the interrupted snapshot isn't listed"; fi
 
@@ -357,7 +357,7 @@ test_7() {
     if echo "$OUT" | grep -q "can't be used"; then ok "it warned that the saved state doesn't fit"; else bad "no warning: $OUT"; fi
     check "the VM booted and answers" guest_answers
     if sleeper_alive "$sleeper"; then bad "the memory came back, though it doesn't fit"; else ok "it booted from the disk, not the memory"; fi
-    [ "$(config_value cpus)" = $((cpus + 1)) ] && ok "the CPUs stayed as they are now" || bad "the CPUs changed: $(config_value cpus)"
+    if [ "$(config_value cpus)" = $((cpus + 1)) ]; then ok "the CPUs stayed as they are now"; else bad "the CPUs changed: $(config_value cpus)"; fi
 
     # With the old settings back, the same snapshot's memory fits again.
     ensure_stopped
@@ -383,15 +383,15 @@ test_8() {
     if hobo snapshot restore "$VM" t8; then ok "the restore succeeded"; else bad "the restore failed: $OUT"; fi
     if echo "$OUT" | grep -q "The disk is back to"; then ok "it said the disk went back"; else bad "it didn't say the disk went back: $OUT"; fi
     check "the VM stays stopped" is_stopped
-    [ "$(config_value disk)" = "$disk" ] && ok "config.json has the old size" || bad "config.json has $(config_value disk), not $disk"
+    if [ "$(config_value disk)" = "$disk" ]; then ok "config.json has the old size"; else bad "config.json has $(config_value disk), not $disk"; fi
     if grep -Eq '"diskGrowPending" *: *false' "$BUNDLE/config.json"; then ok "no grow is pending"; else bad "a grow is pending"; fi
 
     ensure_running || return
     check "the guest boots on the old disk" guest_answers
-    [ "$(guest 'cat $HOME/t8-marker' | tr -d '[:space:]')" = before ] && ok "the disk has the snapshot's contents" || bad "the disk doesn't have the snapshot's contents"
+    if [ "$(guest 'cat $HOME/t8-marker' | tr -d '[:space:]')" = before ]; then ok "the disk has the snapshot's contents"; else bad "the disk doesn't have the snapshot's contents"; fi
     local seen
     seen=$(guest 'diskutil info disk0' | sed -n 's/.*Disk Size.*(\([0-9]*\) Bytes).*/\1/p')
-    [ "$seen" = "$disk" ] && ok "the guest sees the old size" || bad "the guest sees ${seen:-nothing}, not $disk"
+    if [ "$seen" = "$disk" ]; then ok "the guest sees the old size"; else bad "the guest sees ${seen:-nothing}, not $disk"; fi
     drop_snapshot t8
 }
 
@@ -412,7 +412,7 @@ test_9() {
     fi
     hobo snapshot save "$VM" t9
     note "the save said: $OUT"
-    [ "$RC" -ne 0 ] && ok "the save was refused" || bad "the save exited 0"
+    if [ "$RC" -ne 0 ]; then ok "the save was refused"; else bad "the save exited 0"; fi
     check "the VM is still running" is_running
     check "the guest answers" guest_answers
     if tag_listed t9; then bad "a snapshot was listed"; else ok "no snapshot was listed"; fi
@@ -427,14 +427,17 @@ test_10() {
     local inside="/Volumes/My Shared Files/$name"
     mkdir -p "$folder"
     echo hello > "$folder/hello.txt"
-    hobo start "$VM" --share "$folder" || { bad "couldn't start with a share: $OUT"; return; }
-    [ "$(guest "cat '$inside/hello.txt'")" = hello ] && ok "the share works before the save" || bad "the share doesn't work before the save"
+    if ! hobo start "$VM" --share "$folder"; then
+        bad "couldn't start with a share: $OUT"
+        return
+    fi
+    if [ "$(guest "cat '$inside/hello.txt'")" = hello ]; then ok "the share works before the save"; else bad "the share doesn't work before the save"; fi
     hobo snapshot save "$VM" t10 || bad "the save failed: $OUT"
     ensure_stopped
     if hobo snapshot restore "$VM" t10; then ok "the restore succeeded"; else bad "the restore failed: $OUT"; fi
-    [ "$(guest "cat '$inside/hello.txt'")" = hello ] && ok "the guest reads the share after the restore" || bad "the guest can't read the share after the restore"
+    if [ "$(guest "cat '$inside/hello.txt'")" = hello ]; then ok "the guest reads the share after the restore"; else bad "the guest can't read the share after the restore"; fi
     guest "echo back > '$inside/from-guest.txt'"
-    [ "$(cat "$folder/from-guest.txt" 2> /dev/null)" = back ] && ok "the guest writes to the share after the restore" || bad "the guest can't write to the share after the restore"
+    if [ "$(cat "$folder/from-guest.txt" 2> /dev/null)" = back ]; then ok "the guest writes to the share after the restore"; else bad "the guest can't write to the share after the restore"; fi
     drop_snapshot t10
     ensure_stopped
 }
