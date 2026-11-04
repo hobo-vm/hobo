@@ -135,15 +135,20 @@ tag_listed() { "$HOBO" snapshot list "$VM" 2>> "$LOG" | grep -Eq "^$1 "; }
 no_partial_left() { ! ls -d "$BUNDLE"/snapshots/.saving-* > /dev/null 2>&1; }
 config_value() { sed -n "s/.*\"$1\"[^0-9]*\([0-9]*\).*/\1/p" "$BUNDLE/config.json" | head -1; }
 
-# Starts the VM if it isn't running. A start straight after a forced stop may need a retry (hobo-rok).
-ensure_running() {
-    is_running && return 0
-    local tries=0
-    while [ $tries -lt 3 ]; do
+# A start straight after a forced stop may need a retry (hobo-rok). Leaves the attempt it got to in
+# START_ATTEMPT.
+start_with_retries() {
+    for START_ATTEMPT in 1 2 3 4; do
         hobo start "$VM" && return 0
-        tries=$((tries + 1))
+        note "start attempt $START_ATTEMPT failed: $OUT"
         sleep 5
     done
+    return 1
+}
+
+ensure_running() {
+    is_running && return 0
+    start_with_retries && return 0
     bad "couldn't start $VM: $OUT"
     return 1
 }
@@ -199,6 +204,18 @@ background_save() {
     "$HOBO" snapshot save "$VM" "$1" > "$WORK/save.txt" 2>&1 &
     SAVE_PID=$!
     set +m
+}
+
+# save_ended_too_soon <tag> <interruption>: gives the background save 2 s, and is true if it ended
+# before it could be interrupted. That's a failure if the save failed, otherwise inconclusive.
+save_ended_too_soon() {
+    sleep 2
+    kill -0 "$SAVE_PID" 2> /dev/null && return 1
+    wait "$SAVE_PID" || bad "the save failed: $(tr '\n' ' ' < "$WORK/save.txt")"
+    SAVE_PID=
+    TEST_INCONCLUSIVE="the save finished in under 2 s, before $2"
+    drop_snapshot "$1"
+    return 0
 }
 
 # --- Tests ----------------------------------------------------------------------------------------
@@ -266,14 +283,7 @@ test_4() {
 test_5() {
     ensure_running || return
     background_save forced
-    sleep 2
-    if ! kill -0 "$SAVE_PID" 2> /dev/null; then
-        wait "$SAVE_PID" || bad "the save failed: $(tr '\n' ' ' < "$WORK/save.txt")"
-        SAVE_PID=
-        TEST_INCONCLUSIVE="the save finished in under 2 s, before the forced stop"
-        drop_snapshot forced
-        return
-    fi
+    save_ended_too_soon forced "the forced stop" && return
     hobo stop --force "$VM" || bad "the forced stop failed: $OUT"
     wait "$SAVE_PID"
     local rc=$?
@@ -283,18 +293,11 @@ test_5() {
     check "the VM is stopped" is_stopped
     if tag_listed forced; then bad "the interrupted snapshot is listed"; else ok "the interrupted snapshot isn't listed"; fi
 
-    local tries=1
-    until hobo start "$VM"; do
-        note "start attempt $tries failed: $OUT"
-        tries=$((tries + 1))
-        [ $tries -le 4 ] || break
-        sleep 5
-    done
-    if [ $tries -gt 4 ]; then
+    if ! start_with_retries; then
         bad "the VM wouldn't start again"
         return
     fi
-    ok "the VM starts again (attempt $tries; more than one is hobo-rok)"
+    ok "the VM starts again (attempt $START_ATTEMPT; more than one is hobo-rok)"
     check "the boot cleared what the save left" no_partial_left
     check "the guest answers" guest_answers
 }
@@ -304,14 +307,7 @@ test_6() {
     local sleeper
     sleeper=$(start_sleeper)
     background_save interrupted
-    sleep 2
-    if ! kill -0 "$SAVE_PID" 2> /dev/null; then
-        wait "$SAVE_PID" || bad "the save failed: $(tr '\n' ' ' < "$WORK/save.txt")"
-        SAVE_PID=
-        TEST_INCONCLUSIVE="the save finished in under 2 s, before the Ctrl-C"
-        drop_snapshot interrupted
-        return
-    fi
+    save_ended_too_soon interrupted "the Ctrl-C" && return
     kill -INT "$SAVE_PID"
     wait "$SAVE_PID"
     note "the client exited $? and said: $(tr '\n' ' ' < "$WORK/save.txt")"
