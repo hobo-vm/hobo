@@ -163,6 +163,38 @@ import Testing
         }
     }
 
+    /// The snapshot is in place before the process resumes the guest, so it can die with the save done.
+    @Test func aVMThatStopsAfterTheSaveFinishedStillReportsTheSnapshot() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 123 }
+        let (launchctl, bundle, config) = (launchctl, bundle, config)
+        let exit = Task {
+            try await Task.sleep(for: .milliseconds(300))
+            let partial = try Snapshot.begin("clean", in: bundle)
+            try Snapshot.finish("clean", partial: partial, in: bundle, config: config)
+            launchctl.pid.withLock { $0 = nil }
+        }
+        defer { exit.cancel() }
+        #expect(try await lifecycle.saveSnapshot("dev", tag: "clean").tag == "clean")
+    }
+
+    /// The tag found afterwards is the earlier snapshot, not this save.
+    @Test func aVMThatStopsDuringASaveToATakenTagIsReportedAsStopped() async throws {
+        defer { cleanUp() }
+        let partial = try Snapshot.begin("clean", in: bundle)
+        try Snapshot.finish("clean", partial: partial, in: bundle, config: config)
+        launchctl.pid.withLock { $0 = 123 }
+        let launchctl = launchctl
+        let exit = Task {
+            try await Task.sleep(for: .milliseconds(300))
+            launchctl.pid.withLock { $0 = nil }
+        }
+        defer { exit.cancel() }
+        await #expect(throws: SnapshotError.stoppedWhileSaving("dev", tag: "clean")) {
+            _ = try await lifecycle.saveSnapshot("dev", tag: "clean")
+        }
+    }
+
     /// What a VM process from before snapshots answers, unable to decode the request.
     @Test func aVMProcessFromAnOlderHoboIsToldApart() async throws {
         defer { cleanUp() }

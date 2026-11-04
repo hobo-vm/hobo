@@ -28,12 +28,18 @@ extension VMLifecycle {
     }
 
     private func askProcessToSnapshot(_ name: String, tag: String, timeout: Duration) async throws {
+        let bundle = store.bundle(for: name)
+        let tagWasTaken = (try? Snapshot.find(tag, in: bundle)) != nil
         let response: ControlResponse
         do {
             // The answer comes once the VM is running again, which takes a while for a large memory.
             response = try await ControlClient.send(.snapshot(tag: tag), to: store.job(for: name).socket, timeout: timeout)
         } catch {
-            if await hasStopped(name) { throw SnapshotError.stoppedWhileSaving(name, tag: tag) }
+            if await hasStopped(name) {
+                // A snapshot in place is complete; the process died after that, resuming the guest.
+                if !tagWasTaken, (try? Snapshot.find(tag, in: bundle)) != nil { return }
+                throw SnapshotError.stoppedWhileSaving(name, tag: tag)
+            }
             throw LifecycleError.unresponsive(name, String(describing: error))
         }
         switch response {
