@@ -80,10 +80,9 @@ global VMs on 2026-11-01.
    (`delete --force` powers a running VM off first, as `stop --force` does).
    Names match `[A-Za-z0-9][A-Za-z0-9._-]{0,62}` (a filename, launchd label and socket name) and
    collide case-insensitively; `create` and `rename` refuse a taken name, with no `--force`.
-   `delete` asks for confirmation on a terminal, refuses without one unless `--yes` or `--force`
-   (which implies `--yes`), and `rename`
-   is a directory move (nothing inside the bundle records the name). `~/.hobo/` holds only small
-   state: the IPSW index, logs, sockets, launchd plists.
+   `delete` asks for confirmation on a terminal and refuses without one, unless `--yes` or `--force`
+   skips it, and `rename` is a directory move (nothing inside the bundle records the name).
+   `~/.hobo/` holds only small state: the IPSW index, logs, sockets, launchd plists.
    A macOS guest's Apple ID identity derives from the host's Secure Enclave and host user, so a
    bundle moved to another Mac or user (e.g. on an external SSD) makes the guest re-authenticate.
 8. **Install images.** Downloads land in `~/Downloads` under the vendor's filename (e.g.

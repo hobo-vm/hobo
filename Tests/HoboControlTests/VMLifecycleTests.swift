@@ -194,7 +194,7 @@ import Testing
 
     /// Stopping it deleted it, which mustn't then fail as "not found". The kill keeps the log for a
     /// `stop --force`, but a delete leaves nothing behind.
-    @Test func forceDeleteOfAnEphemeralVM() async throws {
+    @Test func forceDeleteOfAnEphemeralVMLeavesNothingBehind() async throws {
         defer { cleanUp() }
         try makeEphemeralAndStarted()
         let log = store.job(for: "dev").log
@@ -212,7 +212,7 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: store.bundle(for: "dev").path))
     }
 
-    @Test func forceDeleteOfASuspendedVM() async throws {
+    @Test func forceDeleteDeletesASuspendedVM() async throws {
         defer { cleanUp() }
         try suspend()
         try await lifecycle.delete("dev", force: true)
