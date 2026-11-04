@@ -331,20 +331,19 @@ import Testing
     }
 
     /// Run by the local shell, standing in for a guest's: it must pass only near the given time.
-    @Test(arguments: [(0.0, true), (2.0, true), (-2.0, true), (10.0, false), (-10.0, false)])
+    /// The agreeing offsets stop a second short of the 2 s limit, as a second may pass before it runs.
+    @Test(arguments: [(0.0, true), (1.0, true), (-1.0, true), (10.0, false), (-10.0, false)])
     func clockAgreement(offset: Double, agrees: Bool) throws {
         defer { cleanUp() }
         let shell = Process()
         shell.executableURL = URL(filePath: "/bin/sh")
-        // A second may pass between building this and running it, so the edge cases keep inside it.
-        let margin = offset > 0 ? -1.0 : offset < 0 ? 1.0 : 0
-        shell.arguments = ["-c", clockAgreesCommand(Date.now.addingTimeInterval(offset + (abs(offset) == 2 ? margin : 0)))]
+        shell.arguments = ["-c", clockAgreesCommand(Date.now.addingTimeInterval(offset))]
         try shell.run()
         shell.waitUntilExit()
         #expect((shell.terminationStatus == 0) == agrees)
     }
 
-    @Test func restoreResults() throws {
+    @Test func restoreResultsEncodeTheirOutcome() throws {
         defer { cleanUp() }
         #expect(String(decoding: try HoboJSON.line(VMLifecycle.RestoreResult.stopped), as: UTF8.self).contains(#""outcome":"stopped""#))
         let status = VMRunStatus(state: .running, pid: 1)
