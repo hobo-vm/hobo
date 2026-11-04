@@ -319,11 +319,9 @@ public final class VMRunner {
         do {
             try await guest.pause()
         } catch {
-            try? FileManager.default.removeItem(at: partial)
-            log("error: snapshot \(tag) failed: \(error)")
-            return .error("saving snapshot \(tag) of \(name) failed: \(error)")
+            return abandonSnapshot(tag, partial: partial, error)
         }
-        var failure: (any Error)?
+        var failure: ControlResponse?
         do {
             let state = SavedState.directory(in: partial)
             try FileManager.default.createDirectory(at: state, withIntermediateDirectories: false)
@@ -332,9 +330,7 @@ public final class VMRunner {
             try guest.bundle.copyPlatformFiles(to: partial)
             try Snapshot.finish(tag, partial: partial, in: bundle, config: config)
         } catch {
-            try? FileManager.default.removeItem(at: partial)
-            log("error: snapshot \(tag) failed: \(error)")
-            failure = error
+            failure = abandonSnapshot(tag, partial: partial, error)
         }
         do {
             try await guest.resume()
@@ -342,13 +338,19 @@ public final class VMRunner {
             log("error: resuming after snapshot \(tag) failed: \(error)")
             return .error("\(name) stayed paused after snapshot \(tag): \(error) (hobo stop --force \(name) powers it off)")
         }
-        if let failure { return .error("saving snapshot \(tag) of \(name) failed: \(failure)") }
+        if let failure { return failure }
         // The guest's clock stood still during the pause.
         if status.state == .running, let ip = status.ipAddress, let ssh = try? ssh(ip) {
             await setClock(ssh, platform: type(of: guest.bundle))
         }
         log("Saved snapshot \(tag)")
         return .accepted
+    }
+
+    private func abandonSnapshot(_ tag: String, partial: URL, _ error: any Error) -> ControlResponse {
+        try? FileManager.default.removeItem(at: partial)
+        log("error: snapshot \(tag) failed: \(error)")
+        return .error("saving snapshot \(tag) of \(name) failed: \(error)")
     }
 
     /// Decision 11: pauses the VM, saves its state into `suspending/` and renames that into
