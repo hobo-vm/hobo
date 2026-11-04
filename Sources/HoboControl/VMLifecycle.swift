@@ -163,8 +163,12 @@ public struct VMLifecycle: Sendable {
     public func delete(_ name: String, force: Bool) async throws {
         let vm = try store.find(name)
         try store.checkStopped(vm, allowSuspended: true, allowRunning: force)
-        // Stopping an ephemeral VM deletes it, leaving nothing more to do.
-        if vm.job?.pid != nil, try await stop(vm.name, force: true) == .deleted { return }
+        // Stopping an ephemeral VM deletes it, but a killed or failed run keeps its log, which
+        // nothing would clean up once the VM is gone.
+        if vm.job?.pid != nil, try await stop(vm.name, force: true) == .deleted {
+            store.forgetJob(of: vm.name)
+            return
+        }
         try store.delete(vm.name)
     }
 

@@ -98,7 +98,7 @@ public struct VMStore: Sendable {
 
     /// Unloads a VM's leftover job (one that has exited) and removes its files, for a VM that is
     /// going away or changing name.
-    func forgetJob(of name: String) {
+    public func forgetJob(of name: String) {
         let job = job(for: name)
         launchd.bootout(job.label)
         for file in [job.plist, job.socket, job.log] { try? FileManager.default.removeItem(at: file) }
