@@ -5,7 +5,7 @@ The output is deterministic. A sign added or removed here must also change VMIco
 
     python3 assets/draw_signs.py
 """
-import math, os, random, sys
+import math, os, random
 
 # The default sweep passes 360 degrees, so a circle's ends overlap as a hand-drawn one's do.
 def circle(cx, cy, r, start=-100, sweep=375, ry=None):
@@ -29,11 +29,8 @@ def wave(x0, x1, y, amp, cycles):
     n = 60
     return [(x0 + (x1 - x0) * i / n, y + amp * math.sin(2 * math.pi * cycles * i / n)) for i in range(n + 1)]
 
-def dot(cx, cy, r=26):
+def dot(cx, cy, r):
     return circle(cx, cy, r, 0, 720)
-
-def cuffs():
-    return [circle(360, 500, 195), circle(640, 500, 195, start=80)]
 
 def coil():
     n = 90; turns = 2.5
@@ -74,7 +71,7 @@ SIGNS = {
     "not-safe": [[(180, 800), (390, 200)], [(395, 800), (605, 200)], [(610, 800), (820, 200)]],
     "defend-yourself": [[(500, 150), (740, 420), (500, 690), (260, 420), (500, 150)], [(500, 690), (500, 870)]],
     "cursed-out": hatch(),
-    "police": cuffs(),
+    "police": [circle(360, 500, 195), circle(640, 500, 195, start=80)],
     "thieves": [bezier((385, 245), (410, 110), (620, 120), (600, 260)) + [(390, 425), (620, 425)], [(280, 505), (720, 505)], [(375, 590), (375, 840)], circle(575, 715, 90, ry=125)],
     "jail": [[(x, 170), (x, 830)] for x in (310, 500, 690)] + [[(170, y), (830, y)] for y in (310, 500, 690)],
     "courthouse": [circle(500, 500, 330), coil()],
