@@ -297,7 +297,8 @@ global VMs on 2026-11-01.
       restore or boot deletes what a restore that died left in that folder. A live
       snapshot's state becomes the VM's saved state, and `restore` starts the VM, so the one resume
       path does the clock, the share remount and `start --cold`; if the resume fails the VM stays
-      suspended. A disk-only snapshot leaves it stopped. The snapshot stays, to restore again.
+      suspended. A window showing on a running VM reopens when a live snapshot comes back. A
+      disk-only snapshot leaves it stopped. The snapshot stays, to restore again.
       Fusion's GUI also resumes running, though its `vmrun revertToSnapshot` leaves that to `start`.
     - Over a running or suspended VM, `restore` refuses without `--force`, which powers it off or
       discards its state: discarding memory stays explicit (decision 11), but a guest about to be

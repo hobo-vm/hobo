@@ -432,6 +432,18 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try guest("cat $HOME/marker") == "before")
         #expect(try guest("cksum < $HOME/unsynced") == sum)
 
+        // A restore opens no window of its own, but one that was showing comes back with the VM. It
+        // opens just after the guest answers SSH, so it may be a moment behind the restore.
+        #expect(try !output(hobo, ["list"], environment: env).contains(Regex("\(vm)\\s+running \\(window\\)")))
+        #expect(try run(hobo, ["view", vm], in: work, environment: env) == 0)
+        #expect(try output(hobo, ["snapshot", "restore", "--force", vm, "live"], environment: env).contains("\(vm) is running"))
+        var windowCameBack = false
+        for _ in 0..<30 where !windowCameBack {
+            windowCameBack = try output(hobo, ["list"], environment: env).contains(Regex("\(vm)\\s+running \\(window\\)"))
+            if !windowCameBack { Thread.sleep(forTimeInterval: 1) }
+        }
+        #expect(windowCameBack)
+
         // Restored once, the snapshot is still there to restore again, and suspended it takes --force.
         _ = try guest("echo again > $HOME/marker; sync")
         #expect(try output(hobo, ["suspend", vm], environment: env).contains("Suspended \(vm)"))

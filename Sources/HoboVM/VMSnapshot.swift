@@ -54,13 +54,16 @@ extension VMLifecycle {
     /// it was when they were saved. A live snapshot's state becomes the VM's saved state, so `start`
     /// resumes it as it would any suspended VM. The snapshot itself is untouched and can be restored
     /// again. A running or suspended VM has something to lose, so it takes `force`, which powers it
-    /// off or discards its state; a stopped VM's disk is simply replaced.
+    /// off or discards its state; a stopped VM's disk is simply replaced. A window showing on a
+    /// running VM comes back when a live snapshot does, since someone is watching that VM.
     public func restoreSnapshot(_ name: String, tag: String, force: Bool, timeout: Duration = .seconds(10 * 60)) async throws -> RestoreResult {
         let vm = try store.find(name)
         let snapshot = try Snapshot.find(tag, in: vm.bundle)
+        var windowWasShown = false
         switch vm.status {
         case .running:
             guard force else { throw SnapshotError.needsForce(vm.name, tag: snapshot.tag, state: "running") }
+            windowWasShown = (try? await ControlClient.status(at: store.job(for: vm.name).socket))?.windowShown ?? false
             _ = try await stop(vm.name, force: true)
         case .suspended:
             guard force else { throw SnapshotError.needsForce(vm.name, tag: snapshot.tag, state: "suspended") }
@@ -74,7 +77,7 @@ extension VMLifecycle {
         store.launchd.bootout(store.job(for: vm.name).label)
         log("Restored \(vm.name) to \(snapshot.tag)")
         guard snapshot.isLive else { return .stopped }
-        return .started(try await start(vm.name, timeout: timeout))
+        return .started(try await start(vm.name, gui: windowWasShown, timeout: timeout))
     }
 }
 
