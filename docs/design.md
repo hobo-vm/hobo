@@ -523,6 +523,12 @@ global VMs on 2026-11-01.
 24. **Repo.** `ggal625/hobo`, private, Apache-2.0, `main`.
 25. **Naming.** "Hobo" plays on "Vagrant". The hobo-and-trains metaphor (Boxcar, roundhouse,
     depot) was dropped on 2026-11-01: the recipe is plain `Hobo.toml`.
+26. **Logo.** A bindle, a stick with a tied red bandana bag, on a cream macOS icon tile (decided
+    2026-11-03). `assets/icon.svg` is the master and `assets/icon-small.svg` the simplified drawing
+    for 16-32 px; `swift assets/render.swift` regenerates everything else from them. The binary isn't
+    an app bundle and `make install` copies only the binary, so `HoboVM` compiles in a 512 px PNG
+    (`.embedInCode`), which `VMWindow` sets as the application icon right after the process turns
+    regular and appears in the Dock (the Dock ignores one set earlier). `assets/Hobo.icns` is for the planned GUI wrapper; nothing uses it yet.
 
 ## Milestones
 

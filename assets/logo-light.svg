@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 400" width="340" height="100">
+  <title>Hobo</title>
+  <g transform="translate(-30 -30) scale(0.4492)">
+  
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FCF5E4"/>
+      <stop offset="1" stop-color="#EBDABA"/>
+    </linearGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#CFA070"/>
+      <stop offset="0.4" stop-color="#A0703F"/>
+      <stop offset="1" stop-color="#5A3A1E"/>
+    </linearGradient>
+    <radialGradient id="cloth" gradientUnits="userSpaceOnUse" cx="550" cy="540" r="380">
+      <stop offset="0" stop-color="#D5504A"/>
+      <stop offset="0.6" stop-color="#BC3833"/>
+      <stop offset="1" stop-color="#8A2324"/>
+    </radialGradient>
+    <linearGradient id="knot" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#CC4A42"/>
+      <stop offset="1" stop-color="#8F2626"/>
+    </linearGradient>
+    <linearGradient id="fold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6E1A1C" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#6E1A1C" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="under" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5A1416" stop-opacity="0"/>
+      <stop offset="1" stop-color="#5A1416" stop-opacity="0.42"/>
+    </linearGradient>
+    <clipPath id="bag">
+      <path d="M 628 392 C 566 420 424 486 406 604 C 392 700 446 770 532 796 C 592 814 664 812 722 792 C 806 766 858 700 846 606 C 832 500 716 424 678 390 Z"/>
+    </clipPath>
+    <g id="sprig">
+      <path d="M 2 -24 C 20 -12 20 12 2 20 C -14 22 -18 6 -9 -3 C -3 -9 4 -12 2 -24 Z"/>
+      <circle cx="3" cy="6" r="4.5" fill="#B5322E"/>
+    </g>
+  </defs>
+
+  <!-- Tile shadow: stacked translucent shapes, because the renderer has no blur filter. -->
+  <g fill="#3A2A14" opacity="0.5">
+    <rect x="82" y="96" width="860" height="852" rx="200" opacity="0.012"/>
+    <rect x="84" y="97" width="856" height="848" rx="199" opacity="0.014"/>
+    <rect x="86" y="98" width="852" height="844" rx="198" opacity="0.016"/>
+    <rect x="88" y="98" width="848" height="841" rx="196" opacity="0.018"/>
+    <rect x="90" y="99" width="844" height="838" rx="194" opacity="0.02"/>
+    <rect x="92" y="99" width="840" height="835" rx="192" opacity="0.024"/>
+    <rect x="94" y="100" width="836" height="832" rx="190" opacity="0.028"/>
+    <rect x="96" y="100" width="832" height="830" rx="188" opacity="0.034"/>
+    <rect x="98" y="100" width="828" height="828" rx="186" opacity="0.04"/>
+  </g>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)"/>
+
+  <!-- Stick, behind the bag. -->
+  <g transform="translate(182 766) rotate(-39.4)">
+    <rect x="0" y="-21" width="830" height="42" rx="21" fill="url(#wood)"/>
+    <path d="M 70 -3 C 150 -8 230 3 320 -2" fill="none" stroke="#4E3219" stroke-width="3" stroke-linecap="round" opacity="0.4"/>
+    <path d="M 120 9 C 170 5 220 12 270 8" fill="none" stroke="#4E3219" stroke-width="3" stroke-linecap="round" opacity="0.3"/>
+    <path d="M 690 -4 C 730 -8 770 -1 810 -4" fill="none" stroke="#4E3219" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+    <ellipse cx="822" cy="0" rx="7" ry="15" fill="#E0BE96"/>
+    <ellipse cx="822" cy="0" rx="3" ry="7" fill="#B98A5A"/>
+  </g>
+
+  <!-- Bag. -->
+  <path d="M 628 392 C 566 420 424 486 406 604 C 392 700 446 770 532 796 C 592 814 664 812 722 792 C 806 766 858 700 846 606 C 832 500 716 424 678 390 Z" fill="url(#cloth)"/>
+  <g clip-path="url(#bag)">
+    <!-- Folds running down from the tie, and creases where the load pulls the cloth. -->
+    <path d="M 636 396 C 586 452 506 500 452 610 C 520 530 606 486 652 426 Z" fill="url(#fold)"/>
+    <path d="M 652 396 C 640 480 590 560 570 650 C 620 570 662 490 668 410 Z" fill="url(#fold)"/>
+    <path d="M 668 396 C 690 490 700 560 688 668 C 722 570 716 470 684 396 Z" fill="url(#fold)"/>
+    <path d="M 680 396 C 730 450 790 510 818 620 C 806 510 752 440 692 392 Z" fill="url(#fold)"/>
+    <path d="M 450 712 C 500 740 560 738 610 712 C 556 752 496 756 450 712 Z" fill="#6E1A1C" opacity="0.32"/>
+    <path d="M 660 746 C 716 742 770 712 806 668 C 780 730 720 766 660 746 Z" fill="#6E1A1C" opacity="0.3"/>
+    <!-- Bandana pattern. -->
+    <g fill="#FBF0DF">
+      <use href="#sprig" transform="translate(502 600) rotate(-30) scale(1.05)"/>
+      <use href="#sprig" transform="translate(626 524) rotate(8)"/>
+      <use href="#sprig" transform="translate(756 594) rotate(32) scale(1.05)"/>
+      <use href="#sprig" transform="translate(640 636) rotate(-8) scale(1.15)"/>
+      <use href="#sprig" transform="translate(534 708) rotate(-48) scale(1.05)"/>
+      <use href="#sprig" transform="translate(742 700) rotate(44) scale(1.05)"/>
+      <circle cx="568" cy="580" r="7.5"/>
+      <circle cx="694" cy="566" r="7.5"/>
+      <circle cx="578" cy="664" r="7.5"/>
+      <circle cx="698" cy="648" r="7.5"/>
+      <circle cx="640" cy="738" r="8"/>
+      <circle cx="466" cy="664" r="7"/>
+      <circle cx="800" cy="656" r="7"/>
+      <circle cx="582" cy="474" r="6.5"/>
+      <circle cx="696" cy="470" r="6.5"/>
+      <circle cx="506" cy="518" r="6.5"/>
+      <circle cx="770" cy="520" r="6.5"/>
+    </g>
+    <!-- Weight at the bottom of the bag. -->
+    <rect x="396" y="610" width="470" height="210" fill="url(#under)"/>
+  </g>
+
+  <!-- Tie around the stick: two ears above, a wrap across it. -->
+  <path d="M 646 356 C 610 322 572 304 528 306 C 548 342 590 384 640 396 Z" fill="url(#knot)"/>
+  <path d="M 668 340 C 672 292 696 244 732 214 C 752 262 744 324 696 372 Z" fill="url(#knot)"/>
+  <path d="M 636 376 C 610 356 582 342 552 330" fill="none" stroke="#6E1A1C" stroke-width="5" stroke-linecap="round" opacity="0.45"/>
+  <path d="M 682 340 C 688 305 702 272 722 246" fill="none" stroke="#6E1A1C" stroke-width="5" stroke-linecap="round" opacity="0.45"/>
+  <path d="M 618 372 C 636 332 684 318 714 344 C 730 370 708 410 672 416 C 640 420 610 404 618 372 Z" fill="url(#knot)"/>
+  <path d="M 640 372 C 654 356 678 350 698 358" fill="none" stroke="#E87F76" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+  <path d="M 628 392 C 650 408 690 404 708 380" fill="none" stroke="#6E1A1C" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
+
+</g>
+  <g transform="translate(450 2)" fill="none" stroke="#3B2A1A" stroke-width="44" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 22 90 V 330 M 182 90 V 330 M 22 210 H 182"/>
+    <circle cx="336" cy="255" r="78"/>
+    <path d="M 486 90 V 255"/>
+    <circle cx="564" cy="255" r="78"/>
+    <circle cx="792" cy="255" r="78"/>
+  </g>
+</svg>

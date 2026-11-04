@@ -18,7 +18,12 @@ let package = Package(
             dependencies: [.product(name: "TOMLKit", package: "TOMLKit")]
         ),
         .target(name: "HoboControl", dependencies: ["HoboCore"]),
-        .target(name: "HoboVM", dependencies: ["HoboCore", "HoboControl"]),
+        .target(
+            name: "HoboVM",
+            dependencies: ["HoboCore", "HoboControl"],
+            // Compiled in: `make install` copies only the binary, so a resource bundle wouldn't follow it.
+            resources: [.embedInCode("Resources/AppIcon.png")]
+        ),
         .target(name: "HoboMCP", dependencies: ["HoboCore", "HoboControl"]),
         .executableTarget(
             name: "hobo",
