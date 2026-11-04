@@ -386,28 +386,19 @@ struct Start: OutputCommand {
     }
 
     func execute(_ output: Output) async throws -> Reply {
-        let lifecycle = VMLifecycle(log: output.log)
-        let name: String
-        let result: VMLifecycle.StartResult
-        if ephemeral {
-            // A ^C leaves the clone booting, and the clone's name is only known once it exists.
-            let source = self.name
-            let interrupt = signalSource(SIGINT) {
-                output.interrupted("left the ephemeral clone of \(source) booting (hobo list shows it; hobo stop deletes it)")
-                Darwin.exit(130)
-            }
-            defer { interrupt.cancel() }
-            (name, result) = try await lifecycle.startEphemeral(from: source, gui: gui, shares: shares)
-        } else {
-            let target = self.name
-            let interrupt = signalSource(SIGINT) {
-                output.interrupted("left \(target) booting (hobo stop \(target) to stop it)")
-                Darwin.exit(130)
-            }
-            defer { interrupt.cancel() }
-            name = target
-            result = try await lifecycle.start(target, gui: gui, cold: cold, shares: shares)
+        // An ephemeral clone's name is only known once it exists, so a ^C names its source.
+        let interruptedMessage = ephemeral
+            ? "left the ephemeral clone of \(self.name) booting (hobo list shows it; hobo stop deletes it)"
+            : "left \(self.name) booting (hobo stop \(self.name) to stop it)"
+        let interrupt = signalSource(SIGINT) {
+            output.interrupted(interruptedMessage)
+            Darwin.exit(130)
         }
+        defer { interrupt.cancel() }
+        let lifecycle = VMLifecycle(log: output.log)
+        let (name, result) = ephemeral
+            ? try await lifecycle.startEphemeral(from: self.name, gui: gui, shares: shares)
+            : (self.name, try await lifecycle.start(self.name, gui: gui, cold: cold, shares: shares))
         let text = switch result {
         case .started(let status): "\(name) is running\(status.ipAddress.map { " (\($0))" } ?? "")"
         case .resumed(let status): "\(name) resumed\(status.ipAddress.map { " (\($0))" } ?? "")"
