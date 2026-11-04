@@ -128,6 +128,18 @@ import Testing
         #expect(launchctl.calls.withLock { $0 }.contains(["kill", "SIGKILL", "gui/\(getuid())/\(store.job(for: "dev").label)"]))
     }
 
+    /// A killed VM process can't delete its ephemeral VM as it exits, so `stop` does.
+    @Test func forceDeletesAKilledEphemeralVM() async throws {
+        defer { cleanUp() }
+        let configFile = store.bundle(for: "dev").appending(path: VMStore.configFile)
+        var config = try VMConfig.load(from: configFile)
+        config.ephemeral = true
+        try config.write(to: configFile)
+        launchctl.pid.withLock { $0 = 4242 }
+        #expect(try await lifecycle.stop("dev", force: true) == .deleted)
+        #expect(!FileManager.default.fileExists(atPath: store.bundle(for: "dev").path))
+    }
+
     @Test func forceKillsARefusingProcess() async throws {
         defer { cleanUp() }
         launchctl.pid.withLock { $0 = 4242 }

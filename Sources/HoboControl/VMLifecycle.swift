@@ -132,6 +132,7 @@ public struct VMLifecycle: Sendable {
             store.launchd.bootout(job.label)
             return .wasNotRunning
         }
+        var killed = false
         do {
             let response = try await ControlClient.send(.stop(force: force), to: job.socket)
             switch response {
@@ -146,8 +147,11 @@ public struct VMLifecycle: Sendable {
             // A refusal (e.g. a VM process from an older hobo) gets the same fallback as silence.
             log("The VM process isn't answering (\(error)); killing it")
             try store.launchd.kill(job.label, signal: "SIGKILL")
+            killed = true
         }
         try await waitForExit(vm.name, job: job, timeout: timeout)
+        // A killed VM process never got to delete its ephemeral VM, so it is deleted here.
+        if killed { store.removeIfEphemeral(vm.name, keepLog: true) }
         return FileManager.default.fileExists(atPath: vm.bundle.path) ? .stopped : .deleted
     }
 
