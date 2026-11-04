@@ -32,6 +32,8 @@ public final class VMRunner {
     private var window: VMWindow?
     private var server: ControlServer?
     private var status = VMRunStatus(state: .starting, pid: getpid(), detail: "booting")
+    /// The snapshot being saved. The guest is paused for most of it, so nothing else may start.
+    private var snapshotSave: Task<ControlResponse, Never>?
     /// The VM's name as its bundle spells it, once found; `name` may differ in case.
     private var bundleName: String?
 
@@ -75,6 +77,7 @@ public final class VMRunner {
         }
         // Left by a suspend that died partway; `suspended/` appears only once a save is complete.
         try? FileManager.default.removeItem(at: SavedState.partialDirectory(in: vm.bundle))
+        Snapshot.removePartials(in: vm.bundle)
         let saved = SavedState.load(in: vm.bundle)
         if let saved {
             // The saved state fits only the run it came from, shares and all.
@@ -157,10 +160,15 @@ public final class VMRunner {
     }
 
     /// A resumed guest's clock is behind by however long it was suspended. NTP first where the
-    /// guest has it, then the host's clock; either failing only warns.
+    /// guest has it, then the host's clock; either failing only warns. NTP succeeding isn't taken
+    /// on trust: a macOS guest has been seen ahead afterwards by the time it was frozen, so a clock
+    /// still off the host's gets the host's time too.
     private func setClock(_ ssh: GuestSSH, platform: any VMBundle.Type) async {
         status.detail = "setting the guest's clock"
-        if let ntp = platform.ntpClockCommand, (try? await ssh.run(ntp, quiet: true)) == 0 { return }
+        if let ntp = platform.ntpClockCommand, (try? await ssh.run(ntp, quiet: true)) == 0,
+           (try? await ssh.run(clockAgreesCommand(.now), quiet: true)) == 0 {
+            return
+        }
         do {
             try await ssh.check(platform.setClockCommand(.now), what: "setting the guest's clock")
         } catch {
@@ -205,6 +213,8 @@ public final class VMRunner {
             return .accepted
         case .suspend:
             return await beginSuspend(reply: reply)
+        case .snapshot(let tag):
+            return await beginSnapshot(tag)
         case .view:
             guard status.state != .stopping else { return .error("\(name) is shutting down") }
             guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
@@ -227,6 +237,7 @@ public final class VMRunner {
         reply: ControlReply,
         _ body: (GuestSSH, @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32
     ) async -> ControlResponse {
+        guard snapshotSave == nil else { return .error("\(name) is saving a snapshot; try again once that's done") }
         guard status.state == .running, let ip = status.ipAddress else {
             return .error("\(name) is \(status.state.rawValue)\(status.detail.map { " (\($0))" } ?? "")")
         }
@@ -267,8 +278,75 @@ public final class VMRunner {
         guard status.state == .running, let guest else {
             return .error("\(name) is still starting; try again once it is running")
         }
+        guard snapshotSave == nil else { return .error("\(name) is saving a snapshot; try again once that's done") }
         // Its own task, so a client that hangs up can't cancel the save halfway.
         return await Task { await suspend(guest, reply: reply) }.value
+    }
+
+    /// `snapshot save` on a running VM. Not while it is starting, for the reason `suspend` gives.
+    private func beginSnapshot(_ tag: String) async -> ControlResponse {
+        guard status.state != .stopping else { return .error("\(name) is shutting down") }
+        guard status.state == .running, let guest else {
+            return .error("\(name) is still starting; try again once it is running")
+        }
+        guard snapshotSave == nil else { return .error("\(name) is already saving a snapshot; try again once that's done") }
+        // Its own task, so a client that hangs up can't leave the guest paused.
+        let save = Task { await saveSnapshot(tag, guest) }
+        snapshotSave = save
+        let response = await save.value
+        snapshotSave = nil
+        return response
+    }
+
+    /// Decision 13: pauses the VM, saves its state and clones its disk at that same instant, then
+    /// resumes it. The partial folder comes first, so a tag already taken doesn't pause the guest.
+    /// A failed save is cleaned up and the VM resumed either way.
+    private func saveSnapshot(_ tag: String, _ guest: GuestVM) async -> ControlResponse {
+        status.detail = "saving snapshot \(tag)"
+        log("Saving snapshot \(tag)")
+        defer { if status.state == .running { status.detail = nil } }
+        let bundle = store.bundle(for: name)
+        let partial: URL
+        let config: VMConfig
+        do {
+            config = try VMConfig.load(from: bundle.appending(path: VMStore.configFile))
+            partial = try Snapshot.begin(tag, in: bundle)
+        } catch {
+            return .error(String(describing: error))
+        }
+        do {
+            try await guest.pause()
+        } catch {
+            try? FileManager.default.removeItem(at: partial)
+            log("error: snapshot \(tag) failed: \(error)")
+            return .error("saving snapshot \(tag) of \(name) failed: \(error)")
+        }
+        var failure: (any Error)?
+        do {
+            let state = SavedState.directory(in: partial)
+            try FileManager.default.createDirectory(at: state, withIntermediateDirectories: false)
+            try await guest.saveState(to: state.appending(path: SavedState.stateFile))
+            try SuspendedRun(shares: shares, suspendedAt: .now).write(to: state.appending(path: SavedState.runFile))
+            try guest.bundle.copyPlatformFiles(to: partial)
+            try Snapshot.finish(tag, partial: partial, in: bundle, config: config)
+        } catch {
+            try? FileManager.default.removeItem(at: partial)
+            log("error: snapshot \(tag) failed: \(error)")
+            failure = error
+        }
+        do {
+            try await guest.resume()
+        } catch {
+            log("error: resuming after snapshot \(tag) failed: \(error)")
+            return .error("\(name) stayed paused after snapshot \(tag): \(error) (hobo stop --force \(name) powers it off)")
+        }
+        if let failure { return .error("saving snapshot \(tag) of \(name) failed: \(failure)") }
+        // The guest's clock stood still during the pause.
+        if status.state == .running, let ip = status.ipAddress, let ssh = try? ssh(ip) {
+            await setClock(ssh, platform: type(of: guest.bundle))
+        }
+        log("Saved snapshot \(tag)")
+        return .accepted
     }
 
     /// Decision 11: pauses the VM, saves its state into `suspending/` and renames that into
@@ -329,6 +407,9 @@ public final class VMRunner {
         guard let guest else { finish(0) }
         if !force {
             log("Stop requested")
+            // A paused guest can't shut down. A forced stop doesn't wait: a save that hangs mustn't
+            // keep the VM up, and the next boot clears what it leaves.
+            _ = await snapshotSave?.value
             if let ip = status.ipAddress ?? DHCPLeases.ipAddress(forMAC: guest.macAddress.string),
                let ssh = try? ssh(ip), (try? await ssh.run("true", quiet: true)) == 0 {
                 status.detail = "shutting down over SSH"

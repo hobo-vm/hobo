@@ -301,7 +301,7 @@ public struct VMStore: Sendable {
         default: nil
         }
         if let keepLog, removeIfEphemeral(name, keepLog: keepLog) { return nil }
-        return VM(name: name, bundle: bundle, status: status, allocatedBytes: Self.allocatedBytes(of: bundle), job: job)
+        return VM(name: name, bundle: bundle, status: status, allocatedBytes: Self.bundleBytes(of: bundle), job: job)
     }
 
     private func status(of bundle: URL, job: Launchd.Job?) -> Status {
@@ -335,11 +335,24 @@ public struct VMStore: Sendable {
         return started <= markerWritten
     }
 
-    static func allocatedBytes(of bundle: URL) -> UInt64 {
+    /// Bytes a VM's bundle occupies. Of its snapshots only the saved state counts: their platform
+    /// files are clones, whose blocks the VM's own files already count until they diverge. How far
+    /// they have diverged isn't something a file's size can say, so it goes uncounted.
+    static func bundleBytes(of bundle: URL) -> UInt64 {
+        allocatedBytes(of: bundle, excluding: Snapshot.directoryName)
+            + Snapshot.list(in: bundle).reduce(0) { $0 + ($1.savedStateBytes ?? 0) }
+    }
+
+    /// Bytes `directory` occupies on the host, leaving out any top-level entry named `excluded`.
+    static func allocatedBytes(of directory: URL, excluding excluded: String? = nil) -> UInt64 {
         let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey]
-        guard let files = FileManager.default.enumerator(at: bundle, includingPropertiesForKeys: keys) else { return 0 }
+        guard let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: keys) else { return 0 }
         var total: UInt64 = 0
         for case let file as URL in files {
+            if files.level == 1, file.lastPathComponent == excluded {
+                files.skipDescendants()
+                continue
+            }
             total += UInt64((try? file.resourceValues(forKeys: Set(keys)).totalFileAllocatedSize) ?? 0)
         }
         return total

@@ -75,6 +75,10 @@ struct Usage: ParsableCommand {
               Ephemeral   `start <vm> --ephemeral` boots a new clone of a stopped VM, named <vm>-<4 hex>
                           (printed, and "name" in its JSON). An ephemeral VM is deleted when it stops,
                           even by crashing, but not when it is suspended. `set <name> --keep` keeps it.
+              Snapshots   `snapshot save <vm> <tag>` on a running or suspended VM also saves its memory, and
+                          `snapshot restore` returns to that running moment; a stopped VM's has only its
+                          disk, and it stays stopped. Restoring over a running or suspended VM takes
+                          --force. Ephemeral VMs can't have snapshots.
               Capacity    macOS allows at most 2 running macOS guests per host.
             """
     }

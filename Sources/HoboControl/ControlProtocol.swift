@@ -24,6 +24,9 @@ public enum ControlRequest: Codable, Equatable, Sendable {
     /// Pauses the VM and saves its state, answering once the state is saved (or with what stopped
     /// it, leaving the VM running); the VM process then powers the VM off and exits.
     case suspend
+    /// Pauses the VM, saves its state and clones its disk to the snapshot `tag`, and resumes it,
+    /// answering once it is running again (or with what stopped it).
+    case snapshot(tag: String)
     /// Shows the VM's window, creating it the first time, and brings it to the front.
     case view
 }

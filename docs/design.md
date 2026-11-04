@@ -48,7 +48,7 @@ global VMs on 2026-11-01.
    `start [--ephemeral] [--gui] [--cold] [--share path] [--idle-timeout d]`, `stop [--force]`,
    `suspend`, `discard`, `ssh <name> [--print] [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp [-r] <src>... <dst>`, `ip <name>`, `view`, `screenshot`,
    `clone <src> <dst> [--ephemeral]`, `delete <name> [--yes] [--force]`, `rename <old> <new>`,
-   `set <name> --cpus/--memory/--disk/--share/--unshare/--keep`, `snapshot save|restore|list|delete`,
+   `set <name> --cpus/--memory/--disk/--share/--unshare/--keep`, `snapshot save|restore [--force]|list|delete <name> <tag>`,
    `provision <name> [recipe]` (re-run steps on an existing VM), `df`, `usage`,
    `claude install|uninstall [--project] [--force]`. A recipe argument defaults
    to `./Hobo.toml`; there is no `--from` and no `--ipsw` override (decided 2026-11-01: the recipe
@@ -274,12 +274,45 @@ global VMs on 2026-11-01.
     name never comes back, so clean logs would pile up). A suspended ephemeral VM is kept, and
     `hobo discard` deletes it. `hobo stop` and `hobo discard` report the deletion
     (`"outcome":"deleted"`), and `hobo list` marks ephemeral VMs.
-13. **Snapshots.** `hobo snapshot save|restore|list|delete <tag>`, stored in the bundle's
-    `snapshots/<tag>/` as APFS clones of the disk and aux files, deleted with the VM. A running VM is
-    paused, its state saved (`saveMachineStateTo`), its disk cloned at the same instant, and resumed;
-    restoring such a snapshot returns to that running moment. Stopped VMs get disk-only snapshots.
-    Saved state is only valid for the same CPU/memory config; after a change, restore boots from the
-    disk with a warning. (Replaces the earlier DiskImageKit overlay plan.)
+13. **Snapshots.** `hobo snapshot save|restore|list|delete <vm> <tag>`, stored in the bundle's
+    `snapshots/<tag>/` as APFS clones of the platform files (`VMBundle.platformFiles`), deleted with
+    the VM. A running VM is paused, its state saved (`saveMachineStateTo`), its disk cloned at the
+    same instant, and resumed (`.snapshot` on the control socket); its guest clock, which stood
+    still, is then set over SSH, as a resume does, though its shares need no remount, since the
+    device never restarts. A suspended VM's state and disk are cloned as they lie, also a live
+    snapshot. Stopped VMs get disk-only snapshots. (Replaces the earlier DiskImageKit overlay plan.)
+    Decided 2026-11-03 (hobo-di8), and checked then on a 27.2 guest and host: a VM runs on normally
+    after `saveMachineStateTo`, and a disk cloned while it is paused matches the state, even for
+    unsynced writes read back with the guest's caches dropped. A save took about 9 s and a
+    restore over a running VM about 14 s for an 8 GB guest using 2.5 GB.
+    The same testing found a macOS guest, now and then and only in the integration test, ahead of
+    the host after a resume by about the time it was frozen, though `sntp` had succeeded (cause not
+    found; a dozen restores by hand never showed it). So the clock is compared with the host's
+    after NTP, and more than 2 s off takes the host's time.
+    - A snapshot's `suspended/` is laid out like a bundle's (`SavedState`), and `snapshot.json`
+      records the time, CPUs, memory, disk size and `diskGrowPending`. It is written to
+      `snapshots/.saving-<tag>` and renamed into place; the next save or boot deletes a leftover.
+    - Restoring clones the files into the bundle's `restoring/`, so running out of space fails
+      before the VM loses anything, then renames them over the VM's, the saved state last. A live
+      snapshot's state becomes the VM's saved state, and `restore` starts the VM, so the one resume
+      path does the clock, the share remount and `start --cold`; if the resume fails the VM stays
+      suspended. A disk-only snapshot leaves it stopped. The snapshot stays, to restore again.
+      Fusion's GUI also resumes running, though its `vmrun revertToSnapshot` leaves that to `start`.
+    - Over a running or suspended VM, `restore` refuses without `--force`, which powers it off or
+      discards its state: discarding memory stays explicit (decision 11), but a guest about to be
+      thrown away isn't worth a graceful shutdown. A stopped VM's disk is replaced with no flag.
+    - Saved state is only valid for the same CPU/memory config; after a change, restore boots from
+      the disk with a warning, keeping the current CPUs and memory. The disk's size goes back with
+      the disk (`disk` and `diskGrowPending` in `config.json`): the state still fits it, and
+      re-growing would invalidate the state for an unrelated setting.
+    - Ephemeral VMs can't have snapshots: `restore --force` must end the process, and with no
+      process and no state the rule in decision 12 deletes the VM, snapshots included.
+    - A tag follows a VM name's rules, is required, and can't be reused until deleted, since a
+      snapshot may be the only copy of a good state. `snapshot delete` works in any VM state.
+    - While a save runs, `exec`, `cp`, `suspend` and another save are refused, and a graceful stop
+      waits for it; a forced stop doesn't, so a hung save can't keep a VM up.
+    - `hobo list`'s size counts a snapshot's saved state but not its clones, whose blocks the VM's
+      files already count; what they hold once the disk has diverged is left to `df` to report.
 
 ### Architecture
 

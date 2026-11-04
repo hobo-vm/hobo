@@ -35,7 +35,7 @@ struct HoboCommand: AsyncParsableCommand {
         version: Hobo.version,
         subcommands: [
             Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self, Suspend.self, Discard.self, View.self,
-            SSH.self, Exec.self, Copy.self, IP.self, SetCommand.self, Provision.self, Clone.self, Rename.self, Delete.self, Claude.self, Usage.self,
+            SSH.self, Exec.self, Copy.self, IP.self, SetCommand.self, Provision.self, Clone.self, SnapshotCommand.self, Rename.self, Delete.self, Claude.self, Usage.self,
         ]
     )
 }
@@ -799,6 +799,128 @@ struct Clone: OutputCommand {
         let store = VMStore.standard()
         let vm = try store.cloneVM(source, to: destination, ephemeral: ephemeral, log: output.log)
         return Reply(VMSummary(vm), text: "Cloned \(source) to \(vm.name)\(ephemeral ? " (ephemeral: deleted when it stops)" : "")")
+    }
+}
+
+struct SnapshotCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "snapshot",
+        abstract: "Save a VM's state under a tag, and go back to it later.",
+        discussion: """
+            A running or suspended VM's snapshot includes its memory, so restoring returns to that running moment. \
+            A stopped VM's has only its disk. Snapshots live in the VM's bundle and are deleted with it.
+            """,
+        subcommands: [SnapshotSave.self, SnapshotRestore.self, SnapshotList.self, SnapshotDelete.self]
+    )
+}
+
+struct SnapshotSave: OutputCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "save",
+        abstract: "Snapshot a VM. A running VM pauses briefly and carries on; others aren't touched.",
+        discussion: "Ephemeral VMs can't have snapshots (hobo set --keep keeps one). A tag can't be reused until it's deleted."
+    )
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    @Argument(help: "Name for the snapshot.")
+    var tag: String
+
+    @Flag(help: "Print progress and the snapshot as JSON Lines events.")
+    var json = false
+
+    static let jsonStyle = Output.JSONStyle.events
+
+    func execute(_ output: Output) async throws -> Reply {
+        let snapshot = try await VMLifecycle(log: output.log).saveSnapshot(name, tag: tag)
+        let kind = snapshot.savedStateBytes.map { "with \(fileSize($0)) of saved state" } ?? "disk only"
+        return Reply(snapshot, text: "Saved snapshot \(snapshot.tag) of \(name) (\(kind))")
+    }
+}
+
+struct SnapshotRestore: OutputCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "restore",
+        abstract: "Return a VM to a snapshot, replacing its disk. A snapshot with memory resumes running.",
+        discussion: """
+            The disk returns to its size then. CPUs and memory stay as they are now; if they have changed, \
+            the snapshot's memory can't be used, and the VM boots from its disk with a warning. The snapshot is kept.
+            """
+    )
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    @Argument(help: "The snapshot's tag.")
+    var tag: String
+
+    @Flag(help: "Restore over a running VM, powering it off, or a suspended one, discarding its saved state.")
+    var force = false
+
+    @Flag(help: "Print progress and the outcome as JSON Lines events.")
+    var json = false
+
+    static let jsonStyle = Output.JSONStyle.events
+
+    func execute(_ output: Output) async throws -> Reply {
+        let result = try await VMLifecycle(log: output.log).restoreSnapshot(name, tag: tag, force: force)
+        let text = switch result {
+        case .stopped: "\(name) is stopped, as it was at \(tag)"
+        case .started(.resumed(let status)), .started(.started(let status)):
+            "\(name) is running\(status.ipAddress.map { " at \($0)" } ?? "")"
+        case .started(.alreadyRunning): "\(name) is running"
+        }
+        return Reply(result, text: text)
+    }
+}
+
+struct SnapshotList: OutputCommand {
+    static let configuration = CommandConfiguration(commandName: "list", abstract: "List a VM's snapshots, oldest first.")
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    @Flag(help: "Print each snapshot as JSON (sizes in bytes).")
+    var json = false
+
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        let vm = try VMStore.standard().find(name)
+        let snapshots = Snapshot.list(in: vm.bundle)
+        let rows = [["TAG", "KIND", "CREATED", "SAVED STATE"]] + snapshots.map { snapshot in
+            [
+                snapshot.tag, snapshot.isLive ? "live" : "disk",
+                snapshot.record.createdAt.formatted(date: .abbreviated, time: .shortened),
+                snapshot.savedStateBytes.map(fileSize) ?? "—",
+            ]
+        }
+        return Reply(snapshots, text: snapshots.isEmpty ? "\(vm.name) has no snapshots." : formatTable(rows))
+    }
+}
+
+struct SnapshotDelete: OutputCommand {
+    static let configuration = CommandConfiguration(commandName: "delete", abstract: "Delete a snapshot. The VM isn't touched, whatever its state.")
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    @Argument(help: "The snapshot's tag.")
+    var tag: String
+
+    @Flag(help: "Print the outcome as JSON.")
+    var json = false
+
+    private struct Result: Encodable {
+        var deleted: String
+    }
+
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        try Snapshot.delete(tag, in: try VMStore.standard().find(name).bundle)
+        return Reply(Result(deleted: tag), text: "Deleted snapshot \(tag) of \(name)")
     }
 }
 

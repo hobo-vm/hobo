@@ -124,12 +124,13 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(!FileManager.default.fileExists(atPath: savedState.path))
         #expect(try sleeperAlive())
         // The clock was set on resume: within a minute of the host's.
-        let guestNow = try output(hobo, ["exec", "itest", "--", "date", "+%s"], environment: env)
-        #expect(abs((Double(guestNow.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) - Date.now.timeIntervalSince1970) < 5, "\(guestNow)")
+        try checkGuestClock("itest", hobo: hobo, env: env)
         #expect(try output(hobo, ["suspend", "itest"], environment: env).contains("Suspended itest"))
         #expect(try output(hobo, ["start", "--cold", "itest"], environment: env).contains("itest is running"))
         #expect(!FileManager.default.fileExists(atPath: savedState.path))
         #expect(try !sleeperAlive())
+
+        try checkSnapshots(vm: "itest", dropCaches: "sudo purge", hobo: hobo, work: work, env: env)
 
         #expect(try output(hobo, ["stop", "itest"], environment: env).contains("Stopped itest"))
         #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+stopped/))
@@ -308,12 +309,15 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         Thread.sleep(forTimeInterval: 10)
         let resumed = try output(hobo, ["start", "litest"], environment: env)
         #expect(resumed.contains("litest resumed"), "\(resumed)")
-        let guestNow = try output(hobo, ["exec", "litest", "--", "date", "+%s"], environment: env)
-        #expect(abs((Double(guestNow.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) - Date.now.timeIntervalSince1970) < 5, "\(guestNow)")
+        try checkGuestClock("litest", hobo: hobo, env: env)
         #expect(try output(hobo, ["exec", "litest", "--", "cat", "\(shared)/scratch/while-suspended"], environment: env) == "added\n")
         #expect(try output(hobo, ["exec", "litest", "--", "cat", "\(shared)/kept/hello.txt"], environment: env) == "kept\n")
         #expect(try run(hobo, ["exec", "litest", "--", "sh", "-c", "echo again > \(shared)/scratch/after-resume"], in: work, environment: env) == 0)
         #expect(try String(contentsOf: scratch.appending(path: "after-resume"), encoding: .utf8) == "again\n")
+
+        try checkSnapshots(
+            vm: "litest", dropCaches: "sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'", hobo: hobo, work: work, env: env
+        )
 
         #expect(try output(hobo, ["stop", "litest"], environment: env).contains("Stopped litest"))
         // With no shares the device is still attached, so /mnt/hobo is an empty mount, not the disk.
@@ -382,6 +386,77 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
 
         #expect(try run(hobo, ["delete", "litest", "--yes"], in: work, environment: env) == 0)
         #expect(try FileManager.default.contentsOfDirectory(atPath: vms.path).isEmpty)
+    }
+
+    /// The guest's clock reads the host's time, within 5 s. The host is read both sides of the
+    /// `exec`, so a slow command isn't taken for a clock that's behind.
+    private func checkGuestClock(_ vm: String, hobo: String, env: [String: String]) throws {
+        let before = Date.now.timeIntervalSince1970
+        let text = try output(hobo, ["exec", vm, "--", "date", "+%s"], environment: env).trimmingCharacters(in: .whitespacesAndNewlines)
+        let after = Date.now.timeIntervalSince1970
+        let guest = Double(text) ?? 0
+        #expect(guest > before - 5 && guest < after + 5, "guest \(text), \(guest - before) s from the host before exec, which took \(after - before) s")
+    }
+
+    /// Decision 13 on a running VM, which it leaves running with no snapshots. A live snapshot's VM
+    /// runs on past the save, and restoring returns to that moment: the same process, the disk as it
+    /// was (read back with the guest's caches dropped, since memory alone would pass), the clock
+    /// right. A stopped VM's snapshot brings back only the disk, and stays stopped.
+    private func checkSnapshots(vm: String, dropCaches: String, hobo: String, work: URL, env: [String: String]) throws {
+        func guest(_ script: String) throws -> String {
+            try output(hobo, ["exec", vm, "--", "sh", "-c", script], environment: env).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // Not synced, so it is only as safe as a disk cloned at the moment the state was saved.
+        let sum = try guest("dd if=/dev/urandom of=$HOME/unsynced bs=1048576 count=20 2>/dev/null; echo before > $HOME/marker; cksum < $HOME/unsynced")
+        let sleeper = try guest("nohup sleep 86400 >/dev/null 2>&1 & echo $!")
+        func sleeperAlive() throws -> Bool {
+            try run(hobo, ["exec", vm, "--", "sh", "-c", "ps -p \(sleeper) -o comm= | grep -qx sleep"], in: work, environment: env) == 0
+        }
+
+        let saved = try output(hobo, ["snapshot", "save", vm, "live"], environment: env)
+        #expect(saved.contains("Saved snapshot live"), "\(saved)")
+        #expect(try sleeperAlive())
+        try checkGuestClock(vm, hobo: hobo, env: env)
+        #expect(try run(hobo, ["snapshot", "save", vm, "live"], in: work, environment: env) != 0, "tag taken")
+        #expect(try output(hobo, ["snapshot", "list", vm], environment: env).contains(/live\s+live/))
+
+        _ = try guest("echo after > $HOME/marker; rm $HOME/unsynced; kill \(sleeper); sync")
+        #expect(try run(hobo, ["snapshot", "restore", vm, "live"], in: work, environment: env) != 0, "running, without --force")
+        #expect(try guest("cat $HOME/marker") == "after")
+
+        let restored = try output(hobo, ["snapshot", "restore", "--force", vm, "live"], environment: env)
+        #expect(restored.contains("\(vm) is running"), "\(restored)")
+        #expect(try sleeperAlive())
+        try checkGuestClock(vm, hobo: hobo, env: env)
+        _ = try guest(dropCaches)
+        #expect(try guest("cat $HOME/marker") == "before")
+        #expect(try guest("cksum < $HOME/unsynced") == sum)
+
+        // Restored once, the snapshot is still there to restore again, and suspended it takes --force.
+        _ = try guest("echo again > $HOME/marker; sync")
+        #expect(try output(hobo, ["suspend", vm], environment: env).contains("Suspended \(vm)"))
+        #expect(try output(hobo, ["snapshot", "save", vm, "suspended"], environment: env).contains("Saved snapshot suspended"))
+        #expect(try output(hobo, ["list"], environment: env).contains(Regex("\(vm)\\s+suspended")))
+        #expect(try run(hobo, ["snapshot", "restore", vm, "live"], in: work, environment: env) != 0, "suspended, without --force")
+        #expect(try output(hobo, ["snapshot", "restore", "--force", vm, "live"], environment: env).contains("\(vm) is running"))
+        #expect(try guest("cat $HOME/marker") == "before")
+        #expect(try output(hobo, ["snapshot", "restore", "--force", vm, "suspended"], environment: env).contains("\(vm) is running"))
+        #expect(try guest("cat $HOME/marker") == "again")
+
+        #expect(try output(hobo, ["stop", vm], environment: env).contains("Stopped \(vm)"))
+        #expect(try output(hobo, ["snapshot", "save", vm, "cold"], environment: env).contains("disk only"))
+        #expect(try run(hobo, ["start", vm], in: work, environment: env) == 0)
+        _ = try guest("echo later > $HOME/marker; sync")
+        #expect(try output(hobo, ["stop", vm], environment: env).contains("Stopped \(vm)"))
+        #expect(try output(hobo, ["snapshot", "restore", vm, "cold"], environment: env).contains("is stopped"))
+        #expect(try output(hobo, ["list"], environment: env).contains(Regex("\(vm)\\s+stopped")))
+        #expect(try run(hobo, ["start", vm], in: work, environment: env) == 0)
+        #expect(try guest("cat $HOME/marker") == "again")
+
+        for tag in ["live", "suspended", "cold"] {
+            #expect(try run(hobo, ["snapshot", "delete", vm, tag], in: work, environment: env) == 0)
+        }
+        #expect(try output(hobo, ["snapshot", "list", vm], environment: env).contains("no snapshots"))
     }
 
     private func run(_ executable: String, _ arguments: [String], in directory: URL, environment extra: [String: String] = [:]) throws -> Int32 {

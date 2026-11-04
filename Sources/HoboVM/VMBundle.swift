@@ -43,12 +43,22 @@ extension VMBundle {
     /// until either copy changes a block), otherwise as full copies.
     func copyPlatformFiles(to destination: URL) throws {
         for name in Self.platformFiles {
-            let target = destination.appending(path: name)
-            guard copyfile(directory.appending(path: name).path, target.path, nil, copyfile_flags_t(COPYFILE_CLONE)) == 0 else {
-                throw VMError.cloneFailed(name, String(cString: strerror(errno)))
-            }
+            try cloneFile(directory.appending(path: name), to: destination.appending(path: name))
         }
     }
+}
+
+/// Copies a file as an APFS clone where it can, otherwise in full. Fails if `target` exists.
+func cloneFile(_ source: URL, to target: URL) throws {
+    guard copyfile(source.path, target.path, nil, copyfile_flags_t(COPYFILE_CLONE)) == 0 else {
+        throw VMError.cloneFailed(source.lastPathComponent, String(cString: strerror(errno)))
+    }
+}
+
+/// Exits 0 if the guest's clock is within 2 s of `date`, the host's time. POSIX sh, for any guest.
+func clockAgreesCommand(_ date: Date) -> String {
+    let difference = "$(( $(date +%s) - \(Int(date.timeIntervalSince1970)) ))"
+    return "d=\(difference); [ \"$d\" -ge -2 ] && [ \"$d\" -le 2 ]"
 }
 
 /// The bundle a VM's `config.json` says it has.
