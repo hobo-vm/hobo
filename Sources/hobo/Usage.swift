@@ -57,7 +57,7 @@ struct Usage: ParsableCommand {
         return """
             CONVENTIONS:
               VMs         Each VM is a bundle, ~/Hobo/<name>.hobovm (HOBO_VMS overrides the directory).
-                          `hobo list` shows every VM and its state.
+                          `hobo list` shows every VM, its state and its disk use.
               Recipes     `create` builds from a \(Recipe.fileName) recipe, ./\(Recipe.fileName) by default.
                           `hobo init` writes a starter (macOS, or Ubuntu with --os linux) and
                           `hobo validate` checks one. [source] ipsw makes a macOS guest, image a Linux one.

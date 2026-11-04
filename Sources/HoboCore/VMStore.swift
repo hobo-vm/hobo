@@ -53,7 +53,8 @@ public struct VMStore: Sendable {
         public var name: String
         public var bundle: URL
         public var status: Status
-        /// Bytes the bundle occupies on the host.
+        /// Bytes the VM's own files occupy on the host: its bundle without its snapshots, which
+        /// `diskUsage(of:)` measures. Blocks shared with a clone count in full.
         public var allocatedBytes: UInt64
         /// The VM's launchd job, if it is loaded.
         public var job: Launchd.Job?
@@ -301,7 +302,7 @@ public struct VMStore: Sendable {
         default: nil
         }
         if let keepLog, removeIfEphemeral(name, keepLog: keepLog) { return nil }
-        return VM(name: name, bundle: bundle, status: status, allocatedBytes: Self.bundleBytes(of: bundle), job: job)
+        return VM(name: name, bundle: bundle, status: status, allocatedBytes: Self.allocatedBytes(of: bundle, excluding: Snapshot.directoryName), job: job)
     }
 
     private func status(of bundle: URL, job: Launchd.Job?) -> Status {
@@ -333,14 +334,6 @@ public struct VMStore: Sendable {
         let start = info.kp_proc.p_starttime
         let started = Date(timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
         return started <= markerWritten
-    }
-
-    /// Bytes a VM's bundle occupies. Of its snapshots only the saved state counts: their platform
-    /// files are clones, whose blocks the VM's own files already count until they diverge. How far
-    /// they have diverged isn't something a file's size can say, so it goes uncounted.
-    static func bundleBytes(of bundle: URL) -> UInt64 {
-        allocatedBytes(of: bundle, excluding: Snapshot.directoryName)
-            + Snapshot.list(in: bundle).reduce(0) { $0 + ($1.savedStateBytes ?? 0) }
     }
 
     /// Bytes `directory` occupies on the host, leaving out any top-level entry named `excluded`.

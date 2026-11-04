@@ -17,11 +17,15 @@ public struct Snapshot: Equatable, Sendable {
     /// Bytes of the memory and device state, or nil for a disk-only snapshot. The cloned platform
     /// files don't count: they share their blocks with the VM's until either changes them.
     public var savedStateBytes: UInt64?
+    /// Bytes only this snapshot holds, which deleting it alone would free. Nil until measured
+    /// (`DiskUsage.snapshots(of:)`).
+    public var uniqueBytes: UInt64?
 
-    public init(tag: String, record: SnapshotRecord, savedStateBytes: UInt64?) {
+    public init(tag: String, record: SnapshotRecord, savedStateBytes: UInt64?, uniqueBytes: UInt64? = nil) {
         self.tag = tag
         self.record = record
         self.savedStateBytes = savedStateBytes
+        self.uniqueBytes = uniqueBytes
     }
 
     public var isLive: Bool { savedStateBytes != nil }
@@ -140,9 +144,10 @@ public struct SnapshotRecord: Codable, Equatable, Sendable {
 }
 
 /// `{"tag": …, "kind": "live" | "disk", "createdAt": …, "cpus": n, "memory": n, "disk": n,
-/// "savedStateBytes": n}`; the size is absent for a disk-only snapshot.
+/// "savedStateBytes": n, "uniqueBytes": n}`; `savedStateBytes` is absent for a disk-only snapshot,
+/// and `uniqueBytes` from a result that didn't measure it (`snapshot save`).
 extension Snapshot: Encodable {
-    private enum CodingKeys: String, CodingKey { case tag, kind, createdAt, cpus, memory, disk, savedStateBytes }
+    private enum CodingKeys: String, CodingKey { case tag, kind, createdAt, cpus, memory, disk, savedStateBytes, uniqueBytes }
 
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
@@ -153,6 +158,7 @@ extension Snapshot: Encodable {
         try container.encode(record.memory, forKey: .memory)
         try container.encode(record.disk, forKey: .disk)
         try container.encodeIfPresent(savedStateBytes, forKey: .savedStateBytes)
+        try container.encodeIfPresent(uniqueBytes, forKey: .uniqueBytes)
     }
 }
 

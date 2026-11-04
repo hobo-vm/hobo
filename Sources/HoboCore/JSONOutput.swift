@@ -23,14 +23,19 @@ public enum HoboJSON {
 }
 
 /// A VM as `--json` reports it: by `list`, and as the result of `create` and `rename`.
-public struct VMSummary: Codable, Equatable, Sendable {
+public struct VMSummary: Encodable, Equatable, Sendable {
     public enum State: String, Codable, Sendable { case stopped, running, suspended, crashed, building, failed, broken }
 
     public var name: String
     public var state: State
     public var bundle: String
-    /// Bytes the bundle occupies on the host.
+    /// Bytes the VM's own files occupy on the host, without its snapshots. Blocks shared with a
+    /// clone count in full.
     public var allocatedBytes: UInt64
+    /// Bytes its snapshots hold that its own files don't. Only from `list`.
+    public var snapshotBytes: UInt64?
+    /// Its snapshots, oldest first. Only from `list`.
+    public var snapshots: [Snapshot]?
     /// The VM process (`running`) or the build process (`building`).
     public var pid: Int32?
     /// The VM process's last exit status if `crashed`: negative for a signal.
@@ -77,6 +82,29 @@ public struct VMSummary: Codable, Equatable, Sendable {
         case .failed: state = .failed
         case .broken: state = .broken
         }
+    }
+}
+
+/// What `hobo list --json` reports. Blocks clones share count once in the totals but in full in each
+/// VM's `allocatedBytes`, so `totalBytes` can be less than the VMs' sizes add up to.
+public struct VMListing: Encodable, Equatable, Sendable {
+    public var vms: [VMSummary]
+    /// Bytes all the bundles occupy on the host, snapshots included.
+    public var totalBytes: UInt64
+    public var snapshotCount: Int
+    /// The part of `totalBytes` held only by snapshots.
+    public var totalSnapshotBytes: UInt64
+
+    public init(_ vms: [VMStore.VM], usage: DiskUsage) {
+        self.vms = vms.map { vm in
+            var summary = VMSummary(vm)
+            summary.snapshots = usage.snapshots(of: vm)
+            summary.snapshotBytes = usage.snapshotBytes[vm.name] ?? 0
+            return summary
+        }
+        totalBytes = usage.totalBytes
+        snapshotCount = self.vms.reduce(0) { $0 + ($1.snapshots?.count ?? 0) }
+        totalSnapshotBytes = usage.totalSnapshotBytes
     }
 }
 

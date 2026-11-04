@@ -468,17 +468,16 @@ import Testing
         #expect(try await lifecycle.saveSnapshot("dev", tag: "clean").tag == "clean")
     }
 
-    /// A snapshot's disk is a clone, sharing the VM's blocks: only its saved state adds to the VM's size.
-    @Test func theVMsSizeCountsOnlyASnapshotsSavedState() throws {
+    /// Snapshots are measured apart from the VM, whose own size they leave alone.
+    @Test func theVMsSizeLeavesOutItsSnapshots() throws {
         defer { cleanUp() }
         let before = try store.find("dev").allocatedBytes
         try store.snapshotAtRest(bundle, tag: "disk-only", config: config)
         #expect(try store.find("dev").allocatedBytes == before)
         try suspend(state: String(repeating: "m", count: 1 << 20))
         try store.snapshotAtRest(bundle, tag: "live", config: config)
-        let state = try #require(Snapshot.find("live", in: bundle).savedStateBytes)
         try FileManager.default.removeItem(at: SavedState.directory(in: bundle))
-        #expect(try store.find("dev").allocatedBytes == before + state)
+        #expect(try store.find("dev").allocatedBytes == before)
     }
 
     @Test func cloneLeavesSnapshotsAndRenameCarriesThem() async throws {

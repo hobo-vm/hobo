@@ -44,12 +44,12 @@ global VMs on 2026-11-01.
 4. **Commands.** VM-centric verbs, no Vagrant aliases:
    `init [--os macos|linux] [--server] [<build-or-version>] [--force]`,
    `images [--os macos|linux] [<build-or-version>] [--all]`, `validate [recipe]`,
-   `create <name> [recipe] [--hold-on-failure]`, `list`,
+   `create <name> [recipe] [--hold-on-failure]`, `list [-v]`,
    `start [--ephemeral] [--gui] [--cold] [--share path] [--idle-timeout d]`, `stop [--force]`,
    `suspend`, `discard`, `ssh <name> [--print] [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp [-r] <src>... <dst>`, `ip <name>`, `view`, `screenshot`,
    `clone <src> <dst> [--ephemeral]`, `delete <name> [--yes] [--force]`, `rename <old> <new>`,
    `set <name> --cpus/--memory/--disk/--share/--unshare/--keep`, `snapshot save|restore [--force]|list|delete <name> <tag>`,
-   `provision <name> [recipe]` (re-run steps on an existing VM), `df`, `usage`,
+   `provision <name> [recipe]` (re-run steps on an existing VM), `usage`,
    `claude install|uninstall [--project] [--force]`. A recipe argument defaults
    to `./Hobo.toml`; there is no `--from` and no `--ipsw` override (decided 2026-11-01: the recipe
    names its source). Every command supports `--json` (decided 2026-11-01): a command that finishes
@@ -313,8 +313,19 @@ global VMs on 2026-11-01.
       snapshot may be the only copy of a good state. `snapshot delete` works in any VM state.
     - While a save runs, `exec`, `cp`, `suspend` and another save are refused, and a graceful stop
       waits for it; a forced stop doesn't, so a hung save can't keep a VM up.
-    - `hobo list`'s size counts a snapshot's saved state but not its clones, whose blocks the VM's
-      files already count; what they hold once the disk has diverged is left to `df` to report.
+    - Disk usage is reported by `hobo list` (decided 2026-11-04, hobo-vqi), not a `df` command, a
+      name that on macOS means free space. `USED` is the VM's own files, in full even where a clone
+      shares them; `SNAPSHOTS` is the count and the bytes they hold that the VM's own files don't;
+      `TOTAL` counts every block once, so it can be less than the rows add up to. `list -v` and
+      `snapshot list` give each snapshot's unique bytes, what deleting it alone frees, so a VM's
+      rows can add up to less than its `SNAPSHOTS` figure when snapshots share blocks. `delete`'s
+      prompt shows `USED` plus `SNAPSHOTS`. Install images aren't reported: they sit in
+      `~/Downloads`, in plain sight.
+      All of it comes from comparing physical blocks (`F_LOG2PHYS_EXT`, per volume), because
+      nothing cheaper is exact: `ATTR_CMNEXT_PRIVATESIZE` leaves out blocks shared by some but not
+      all clones, and `ATTR_CMNEXT_CLONEID` stops matching as soon as a clone diverges (both checked
+      2026-11-04). Files whose blocks can't be looked up count as unshared. It reads only metadata:
+      a release build's whole `list` took 0.12 s over two clones of a 30 GB disk and two snapshots.
 
 ### Architecture
 
@@ -589,7 +600,7 @@ builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` ind
   `_vm-run`), `stop`, `ssh`, `exec`, `cp`, `ip`, `view`, `delete`, `rename`, `set`, `provision`,
   `usage`.
 - **M2, experiments:** `clone`, `--ephemeral`, `suspend`/resume, live and stopped snapshots,
-  `df` (it reports snapshot and saved-state sizes, so it follows them).
+  disk usage in `list` (it reports snapshot sizes, so it follows them).
 - **M3, agents:** leases, `[gui_testing]`, `exec --gui`, `screenshot`, `hobo mcp`, the Claude
   skill and `hobo claude install|uninstall`.
 - **M4, Linux guests:** done (2026-11-02): `[source] image`, cloud-init conventions, `images`/`init --os linux`.

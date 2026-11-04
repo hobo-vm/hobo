@@ -299,9 +299,19 @@ struct Create: OutputCommand {
 }
 
 struct List: OutputCommand {
-    static let configuration = CommandConfiguration(abstract: "List VMs.")
+    static let configuration = CommandConfiguration(
+        abstract: "List VMs and the disk space they use.",
+        discussion: """
+            USED is a VM's own files, in full even where a clone shares them. SNAPSHOTS is how many it \
+            has and what they hold beyond its own files. TOTAL counts every block once, snapshots \
+            included, so it can be less than the rows add up to when clones share blocks.
+            """
+    )
 
-    @Flag(help: "Print each VM's state, size and configuration as JSON (sizes in bytes).")
+    @Flag(name: .shortAndLong, help: "Also list each VM's snapshots, each with what deleting it alone would free.")
+    var verbose = false
+
+    @Flag(help: "Print each VM's state, size, snapshots and configuration, and the totals, as JSON (sizes in bytes).")
     var json = false
 
     static let jsonStyle = Output.JSONStyle.document
@@ -310,25 +320,44 @@ struct List: OutputCommand {
         let store = VMStore.standard()
         let vms = store.list()
         let lifecycle = VMLifecycle(store: store) { _ in }
-        var summaries = vms.map(VMSummary.init)
-        for index in summaries.indices where summaries[index].state == .running {
-            guard let status = await lifecycle.runStatus(summaries[index].name) else { continue }
-            summaries[index].windowShown = status.windowShown
+        var listing = VMListing(vms, usage: store.diskUsage(of: vms))
+        for index in listing.vms.indices where listing.vms[index].state == .running {
+            guard let status = await lifecycle.runStatus(listing.vms[index].name) else { continue }
+            listing.vms[index].windowShown = status.windowShown
             if status.state != .running {
-                summaries[index].phase = status.state.rawValue
-                summaries[index].phaseDetail = status.detail
+                listing.vms[index].phase = status.state.rawValue
+                listing.vms[index].phaseDetail = status.detail
             }
         }
-        return Reply(summaries, text: vms.isEmpty ? "No VMs in \(store.directory.path)." : table(vms, summaries: summaries))
+        return Reply(listing, text: vms.isEmpty ? "No VMs in \(store.directory.path)." : table(vms, listing: listing))
     }
 
-    private func table(_ vms: [VMStore.VM], summaries: [VMSummary]) -> String {
-        let rows = [["NAME", "STATE", "OS", "CPUS", "MEMORY", "DISK (USED/SIZE)"]] + zip(vms, summaries).map { vm, summary in
+    private func table(_ vms: [VMStore.VM], listing: VMListing) -> String {
+        let vmRows = zip(vms, listing.vms).map { vm, summary in
             var cells = row(vm, summary: summary)
             if summary.config?.ephemeral == true { cells[1] += ", ephemeral" }
-            return cells
+            return cells + [snapshotsCell(count: summary.snapshots?.count ?? 0, bytes: summary.snapshotBytes ?? 0)]
         }
-        return formatTable(rows)
+        let total = ["TOTAL", "", "", "", "", fileSize(listing.totalBytes), snapshotsCell(count: listing.snapshotCount, bytes: listing.totalSnapshotBytes)]
+        let rows = [["NAME", "STATE", "OS", "CPUS", "MEMORY", "DISK (USED/SIZE)", "SNAPSHOTS"]] + vmRows + [total]
+        guard verbose else { return formatTable(rows) }
+        // Each VM's line, followed by its snapshots lined up under the STATE column.
+        let indent = String(repeating: " ", count: (rows.map { $0[0].count }.max() ?? 0) + 2)
+        let lines = formatTable(rows).components(separatedBy: "\n")
+        var output = [lines[0]]
+        for (line, summary) in zip(lines.dropFirst(), listing.vms) {
+            output.append(line)
+            let snapshots = summary.snapshots ?? []
+            if snapshots.isEmpty { continue }
+            let details = formatTable(snapshots.map { [$0.tag, $0.isLive ? "live" : "disk", createdText($0), fileSize($0.uniqueBytes ?? 0)] })
+            output += details.components(separatedBy: "\n").map { indent + $0 }
+        }
+        output.append(lines[lines.count - 1])
+        return output.joined(separator: "\n")
+    }
+
+    private func snapshotsCell(count: Int, bytes: UInt64) -> String {
+        count == 0 ? "—" : "\(count) (\(fileSize(bytes)))"
     }
 
     private func row(_ vm: VMStore.VM, summary: VMSummary) -> [String] {
@@ -876,7 +905,10 @@ struct SnapshotRestore: OutputCommand {
 }
 
 struct SnapshotList: OutputCommand {
-    static let configuration = CommandConfiguration(commandName: "list", abstract: "List a VM's snapshots, oldest first.")
+    static let configuration = CommandConfiguration(
+        commandName: "list", abstract: "List a VM's snapshots, oldest first.",
+        discussion: "UNIQUE is what only that snapshot holds, which deleting it alone would free. Blocks two snapshots share are freed only once both are gone."
+    )
 
     @Argument(help: "Name of the VM.")
     var name: String
@@ -887,13 +919,13 @@ struct SnapshotList: OutputCommand {
     static let jsonStyle = Output.JSONStyle.document
 
     func execute(_ output: Output) async throws -> Reply {
-        let vm = try VMStore.standard().find(name)
-        let snapshots = Snapshot.list(in: vm.bundle)
-        let rows = [["TAG", "KIND", "CREATED", "SAVED STATE"]] + snapshots.map { snapshot in
+        let store = VMStore.standard()
+        let vm = try store.find(name)
+        let snapshots = store.diskUsage(of: store.list()).snapshots(of: vm)
+        let rows = [["TAG", "KIND", "CREATED", "SAVED STATE", "UNIQUE"]] + snapshots.map { snapshot in
             [
-                snapshot.tag, snapshot.isLive ? "live" : "disk",
-                snapshot.record.createdAt.formatted(date: .abbreviated, time: .shortened),
-                snapshot.savedStateBytes.map(fileSize) ?? "—",
+                snapshot.tag, snapshot.isLive ? "live" : "disk", createdText(snapshot),
+                snapshot.savedStateBytes.map(fileSize) ?? "—", fileSize(snapshot.uniqueBytes ?? 0),
             ]
         }
         return Reply(snapshots, text: snapshots.isEmpty ? "\(vm.name) has no snapshots." : formatTable(rows))
@@ -976,7 +1008,8 @@ struct Delete: OutputCommand {
             guard isatty(STDIN_FILENO) != 0 else {
                 throw CLIError("refusing to delete \(vm.name) without a terminal to confirm (pass --yes)")
             }
-            print("Delete VM \"\(vm.name)\" (\(fileSize(vm.allocatedBytes)))? [y/N] ", terminator: "")
+            let snapshotBytes = store.diskUsage(of: store.list()).snapshotBytes[vm.name] ?? 0
+            print("Delete VM \"\(vm.name)\" (\(fileSize(vm.allocatedBytes + snapshotBytes)))? [y/N] ", terminator: "")
             guard let answer = readLine(), ["y", "yes"].contains(answer.lowercased()) else {
                 return Reply(["deleted": String?.none], text: "Not deleted.")
             }
@@ -1057,6 +1090,10 @@ private func formatTable(_ rows: [[String]]) -> String {
         zip(row, widths).map { $0.padding(toLength: $1, withPad: " ", startingAt: 0) }.joined(separator: "  ")
             .trimmingCharacters(in: .whitespaces)
     }.joined(separator: "\n")
+}
+
+private func createdText(_ snapshot: Snapshot) -> String {
+    snapshot.record.createdAt.formatted(date: .abbreviated, time: .shortened)
 }
 
 /// Binary units, matching recipe sizes: an 8GB recipe shows as 8 GB, not 8.59 GB.

@@ -336,9 +336,6 @@ import Testing
         #expect(line.contains(#""memory":8589934592"#))
         #expect(line.contains(#""created":"2027-01-15T08:00:00Z""#))
         #expect(!line.contains("pid"))
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        #expect(try decoder.decode([VMSummary].self, from: Data(line.utf8)) == store.list().map(VMSummary.init))
     }
 
     /// Copies what `cloneVM`'s copy does, without VZ: the platform files, and a new identifier.
