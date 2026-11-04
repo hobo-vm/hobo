@@ -7,13 +7,14 @@ The output is deterministic. A sign added or removed here must also change VMIco
 """
 import math, os, random, sys
 
+# The default sweep passes 360 degrees, so a circle's ends overlap as a hand-drawn one's do.
 def circle(cx, cy, r, start=-100, sweep=375, ry=None):
     ry = ry or r
     n = 64
     return [(cx + r * math.cos(math.radians(start + sweep * i / n)),
              cy + ry * math.sin(math.radians(start + sweep * i / n))) for i in range(n + 1)]
 
-def bez(p0, p1, p2, p3, n=24):
+def bezier(p0, p1, p2, p3, n=24):
     out = []
     for i in range(n + 1):
         t = i / n; u = 1 - t
@@ -74,11 +75,11 @@ SIGNS = {
     "defend-yourself": [[(500, 150), (740, 420), (500, 690), (260, 420), (500, 150)], [(500, 690), (500, 870)]],
     "cursed-out": hatch(),
     "police": cuffs(),
-    "thieves": [bez((385, 245), (410, 110), (620, 120), (600, 260)) + [(390, 425), (620, 425)], [(280, 505), (720, 505)], [(375, 590), (375, 840)], circle(575, 715, 90, ry=125)],
+    "thieves": [bezier((385, 245), (410, 110), (620, 120), (600, 260)) + [(390, 425), (620, 425)], [(280, 505), (720, 505)], [(375, 590), (375, 840)], circle(575, 715, 90, ry=125)],
     "jail": [[(x, 170), (x, 830)] for x in (310, 500, 690)] + [[(170, y), (830, y)] for y in (310, 500, 690)],
     "courthouse": [circle(500, 500, 330), coil()],
     "work-here": shovel(310) + shovel(690),
-    "burned-house": [[(180, 490), (820, 260)], [(270, 460), (270, 800), (730, 800), (730, 300)]] + [[(270, 800), (730, 470)], [(270, 470), (730, 800)]],
+    "burned-house": [[(180, 490), (820, 260)], [(270, 460), (270, 800), (730, 800), (730, 300)], [(270, 800), (730, 470)], [(270, 470), (730, 800)]],
     "man-with-gun": [[(500, 280), (715, 780), (285, 780), (500, 280)],
                      [(395, 530), (210, 420)], [(210, 420), (100, 330)], [(210, 420), (215, 270)], [(210, 420), (75, 465)],
                      [(605, 530), (790, 420)], [(790, 420), (900, 330)], [(790, 420), (785, 270)], [(790, 420), (925, 465)]],
@@ -94,17 +95,19 @@ def densify(points, step=18):
     return out
 
 def wobbled(points, rng, amp):
-    p1, p2, p3, p4 = [rng.uniform(0, 2 * math.pi) for _ in range(4)]
-    w1, w2 = rng.uniform(170, 320), rng.uniform(70, 130)
-    out, s = [], 0.0
+    """Offsets x and y by a long wave plus a fainter short one, measured along the stroke."""
+    x_long, x_short, y_long, y_short = [rng.uniform(0, 2 * math.pi) for _ in range(4)]
+    long_wave, short_wave = rng.uniform(170, 320), rng.uniform(70, 130)
+    out, travelled = [], 0.0
     prev = points[0]
     for x, y in points:
-        s += math.hypot(x - prev[0], y - prev[1]); prev = (x, y)
-        out.append((x + amp * (math.sin(s / w1 + p1) + 0.4 * math.sin(s / w2 + p2)),
-                    y + amp * (math.sin(s / w1 + p3) + 0.4 * math.sin(s / w2 + p4))))
+        travelled += math.hypot(x - prev[0], y - prev[1]); prev = (x, y)
+        out.append((x + amp * (math.sin(travelled / long_wave + x_long) + 0.4 * math.sin(travelled / short_wave + x_short)),
+                    y + amp * (math.sin(travelled / long_wave + y_long) + 0.4 * math.sin(travelled / short_wave + y_short))))
     return out
 
 CHALK = "#F5F0E4"
+# Stroke width, wobble amplitude and opacity of each time a stroke is laid down.
 PASSES = [(46, 8, 1.0), (44, 7, 0.9), (38, 6, 0.75)]
 
 def svg(name, strokes):
