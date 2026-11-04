@@ -48,7 +48,16 @@ KEEP=0
 ATTENDED=1
 [ -t 0 ] || ATTENDED=0
 
+usage_error() {
+    echo "$1" >&2
+    usage >&2
+    exit 2
+}
+
 while [ $# -gt 0 ]; do
+    case "$1" in
+        --source|--gap|--old-hobo|--only) [ $# -ge 2 ] || usage_error "$1 needs a value" ;;
+    esac
     case "$1" in
         --source) SOURCE=$2; shift 2 ;;
         --gap) GAP_MINUTES=$2; shift 2 ;;
@@ -57,9 +66,15 @@ while [ $# -gt 0 ]; do
         --unattended) ATTENDED=0; shift ;;
         --keep) KEEP=1; shift ;;
         -h|--help) usage; exit 0 ;;
-        *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
+        *) usage_error "unknown option: $1" ;;
     esac
 done
+
+# Checked now, since a bad gap would end the run at its last test, and an --only that matches
+# nothing would run no tests and report success.
+[[ "$GAP_MINUTES" =~ ^(0|[1-9][0-9]*)$ ]] || usage_error "--gap takes whole minutes, not: $GAP_MINUTES"
+[ -z "$ONLY" ] || [[ "$(echo "$ONLY" | tr -d ' ')" =~ ^((10|[1-9]),)*(10|[1-9])$ ]] \
+    || usage_error "--only takes test numbers from 1 to 10, separated by commas, not: $ONLY"
 
 HOBO=$REPO/.build/release/hobo
 BUNDLE=${HOBO_VMS:-$HOME/Hobo}/$VM.hobovm
