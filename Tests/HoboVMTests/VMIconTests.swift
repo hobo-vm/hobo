@@ -1,5 +1,5 @@
 import AppKit
-import HoboVM
+@testable import HoboVM
 import Testing
 
 @MainActor struct VMIconTests {

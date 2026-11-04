@@ -3,7 +3,7 @@ import CryptoKit
 
 /// A VM's icon for the Dock and ⌘Tab: a hobo sign in chalk on a dark tile, with the VM's name under
 /// it. The name picks the sign and the color, so a VM's icon never changes and needs no state.
-public enum VMIcon {
+enum VMIcon {
     /// Compiled in, since the binary isn't an app bundle. `assets/draw_signs.py` draws them. Changing
     /// this list or `tileColors` moves VMs to other icons, which costs nothing but familiarity.
     private static let signs: [[UInt8]] = [
@@ -20,8 +20,8 @@ public enum VMIcon {
         0x3A4A5C, 0x7A2E2A, 0x2F5240, 0x22375E, 0x54305A, 0x86491F, 0x1F5558, 0x45413C,
     ]
 
-    public static var signCount: Int { signs.count }
-    public static var colorCount: Int { tileColors.count }
+    static var signCount: Int { signs.count }
+    static var colorCount: Int { tileColors.count }
 
     // The icon's layout, in pixels of its 1024 px canvas, matching the logo's tile.
     private static let canvas = 1024
@@ -37,7 +37,7 @@ public enum VMIcon {
     private static let chalkFleckCount = 14000
 
     /// Which sign and color `name` gets. A SHA-256 rather than `Hasher`, which differs per process.
-    public static func assignment(for name: String) -> (sign: Int, color: Int) {
+    static func assignment(for name: String) -> (sign: Int, color: Int) {
         let digest = Array(SHA256.hash(data: Data(name.utf8)))
         return (
             sign: (Int(digest[0]) << 8 | Int(digest[1])) % signs.count,
@@ -47,7 +47,7 @@ public enum VMIcon {
 
     /// The largest size at which `name` fits; failing that, the smallest size with the name's middle
     /// cut, since clones differ only in their last characters.
-    public static func fittedName(_ name: String) -> (text: String, pointSize: CGFloat) {
+    static func fittedName(_ name: String) -> (text: String, pointSize: CGFloat) {
         for pointSize in stride(from: namePointSizes.upperBound, through: namePointSizes.lowerBound, by: -2) {
             if nameWidth(name, pointSize: pointSize) <= nameMaxWidth { return (name, pointSize) }
         }
@@ -60,7 +60,7 @@ public enum VMIcon {
     }
 
     /// The icon for the VM called `name`, or nil if it can't be drawn, which leaves the default icon.
-    @MainActor public static func image(for name: String) -> NSImage? {
+    @MainActor static func image(for name: String) -> NSImage? {
         let (sign, color) = assignment(for: name)
         guard let chalk = signImage(at: sign), let bitmap = newBitmap() else { return nil }
         let tileColor = nsColor(tileColors[color])
@@ -80,7 +80,7 @@ public enum VMIcon {
     }
 
     /// One sign with chalk grain knocked out of it, or nil if its SVG doesn't decode.
-    @MainActor public static func signImage(at index: Int) -> NSImage? {
+    @MainActor static func signImage(at index: Int) -> NSImage? {
         guard let svg = NSImage(data: Data(signs[index])), svg.isValid, let bitmap = newBitmap() else { return nil }
         let bounds = NSRect(x: 0, y: 0, width: canvas, height: canvas)
         drawing(in: bitmap) {
