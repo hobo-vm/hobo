@@ -12,15 +12,20 @@ import Testing
     final class FakeLaunchctl: Sendable {
         let label: Mutex<String> = Mutex("")
         let pid: Mutex<Int32?> = Mutex(nil)
+        let lastExitStatus: Mutex<Int32> = Mutex(0)
 
         var launchd: Launchd {
             Launchd { arguments in
                 switch arguments.first {
                 case "list":
                     let pid = self.pid.withLock { $0 }.map(String.init) ?? "-"
-                    return (0, "PID\tStatus\tLabel\n\(pid)\t0\t\(self.label.withLock { $0 })\n")
+                    return (0, "PID\tStatus\tLabel\n\(pid)\t\(self.lastExitStatus.withLock { $0 })\t\(self.label.withLock { $0 })\n")
                 case "kill":
                     self.pid.withLock { $0 = nil }
+                    return (0, "")
+                case "bootout":
+                    self.pid.withLock { $0 = nil }
+                    self.lastExitStatus.withLock { $0 = 0 }
                     return (0, "")
                 default:
                     return (0, "")
@@ -136,6 +141,13 @@ import Testing
         }
     }
 
+    @Test func aVMProcessThatDoesntAnswerIsReportedUnresponsive() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 123 }
+        let error = await #expect(throws: LifecycleError.self) { _ = try await lifecycle.saveSnapshot("dev", tag: "clean") }
+        guard case .unresponsive("dev", _) = error else { Issue.record("got \(String(describing: error))"); return }
+    }
+
     /// Stopping would delete it and its snapshots, so restoring could never work.
     @Test func anEphemeralVMCantBeSnapshotted() async throws {
         defer { cleanUp() }
@@ -220,6 +232,41 @@ import Testing
         #expect(try savedState(in: bundle) == "later")
         #expect(try await lifecycle.restoreSnapshot("dev", tag: "clean", force: true) == .stopped)
         #expect(SavedState.load(in: bundle) == nil, "a disk-only snapshot has no memory to go with its disk")
+    }
+
+    /// A crash leaves nothing to lose, so no force; and the restored VM must not still show the crash.
+    @Test func aCrashedVMCanBeSnapshottedAndRestoredAndThenShowsStopped() async throws {
+        defer { cleanUp() }
+        launchctl.lastExitStatus.withLock { $0 = 1 }
+        guard case .crashed = try store.find("dev").status else { Issue.record("not crashed"); return }
+        #expect(try await !lifecycle.saveSnapshot("dev", tag: "clean").isLive)
+        try writeDisk("now")
+        #expect(try await lifecycle.restoreSnapshot("dev", tag: "clean", force: false) == .stopped)
+        #expect(try platformFilesAll(say: "then", in: bundle))
+        guard case .stopped = try store.find("dev").status else { Issue.record("not stopped"); return }
+    }
+
+    private func expectSaveAndRestoreRefused(
+        with error: some Error & Equatable, sourceLocation: SourceLocation = #_sourceLocation
+    ) async {
+        await #expect(throws: error, sourceLocation: sourceLocation) { _ = try await lifecycle.saveSnapshot("dev", tag: "other") }
+        await #expect(throws: error, sourceLocation: sourceLocation) { _ = try await lifecycle.restoreSnapshot("dev", tag: "clean", force: true) }
+    }
+
+    @Test func aVMWithoutAUsableBundleRefusesSnapshots() async throws {
+        defer { cleanUp() }
+        _ = try await lifecycle.saveSnapshot("dev", tag: "clean")
+        let marker = bundle.appending(path: VMStore.buildingMarker)
+
+        try String(getpid()).write(to: marker, atomically: true, encoding: .utf8)
+        await expectSaveAndRestoreRefused(with: VMStoreError.busy("dev", reason: "being built"))
+
+        try Data("no pid".utf8).write(to: marker)
+        await expectSaveAndRestoreRefused(with: SnapshotError.notSnapshottable("dev", "its build failed (hobo delete dev)"))
+
+        try FileManager.default.removeItem(at: marker)
+        try Data("not json".utf8).write(to: bundle.appending(path: VMStore.configFile))
+        await expectSaveAndRestoreRefused(with: SnapshotError.notSnapshottable("dev", "its bundle has no valid config.json"))
     }
 
     /// Everything is gathered before anything is replaced, so the VM keeps its disk and saved state.
@@ -316,6 +363,16 @@ import Testing
         #expect(logged.withLock { $0.contains { $0.contains("hobo set --disk") } })
     }
 
+    /// A grow that hadn't reached the guest when the snapshot was taken is still owed to its disk.
+    @Test func aDiskGrowPendingThenIsPendingAgain() async throws {
+        defer { cleanUp() }
+        try writeConfig { $0.diskGrowPending = true }
+        _ = try await lifecycle.saveSnapshot("dev", tag: "clean")
+        try writeConfig { $0.diskGrowPending = false }
+        _ = try await lifecycle.restoreSnapshot("dev", tag: "clean", force: false)
+        #expect(try storedConfig.diskGrowPending)
+    }
+
     /// Other settings changed since (shares, `--keep`) aren't part of what a snapshot records.
     @Test func restoringKeepsOtherSettings() async throws {
         defer { cleanUp() }
@@ -336,6 +393,21 @@ import Testing
         try Snapshot.delete("B", in: bundle)
         #expect(Snapshot.list(in: bundle).map(\.tag) == ["c", "a"])
         #expect(throws: SnapshotError.notFound("dev", "b")) { try Snapshot.delete("b", in: bundle) }
+        #expect(try Snapshot.find("C", in: bundle).tag == "c")
+    }
+
+    /// It can't be listed or restored, but its tag stays taken until `delete`, which still reaches it.
+    @Test func aSnapshotWhoseRecordWontDecodeIsHiddenUntilDeleted() async throws {
+        defer { cleanUp() }
+        _ = try await lifecycle.saveSnapshot("dev", tag: "clean")
+        try Data("not json".utf8).write(to: Snapshot.directory("clean", in: bundle).appending(path: Snapshot.recordFile))
+        #expect(Snapshot.list(in: bundle).isEmpty)
+        await #expect(throws: SnapshotError.notFound("dev", "clean")) {
+            _ = try await lifecycle.restoreSnapshot("dev", tag: "clean", force: false)
+        }
+        await #expect(throws: SnapshotError.exists("dev", "clean")) { _ = try await lifecycle.saveSnapshot("dev", tag: "clean") }
+        try Snapshot.delete("clean", in: bundle)
+        #expect(try await lifecycle.saveSnapshot("dev", tag: "clean").tag == "clean")
     }
 
     /// A snapshot's disk is a clone, sharing the VM's blocks: only its saved state adds to the VM's size.
