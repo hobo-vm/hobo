@@ -482,9 +482,9 @@ import Testing
         try madeWithDisk("dev")
         for name in ["fresh", "up", "down", "crashed"] { _ = try clone("dev", to: name, ephemeral: true) }
         for name in ["up", "down", "crashed"] { try markStarted(name) }
-        let logs = ["down", "crashed"].map { store.job(for: $0).log }
+        let downLog = store.job(for: "down").log, crashedLog = store.job(for: "crashed").log
         try FileManager.default.createDirectory(at: store.home.root, withIntermediateDirectories: true)
-        for log in logs { try Data("x".utf8).write(to: log) }
+        for log in [downLog, crashedLog] { try Data("x".utf8).write(to: log) }
         launchctl.list = """
         PID\tStatus\tLabel
         4242\t0\t\(store.job(for: "up").label)
@@ -494,8 +494,8 @@ import Testing
         #expect(throws: VMStoreError.notFound("down")) { try store.find("down") }
         // Not yet booted, or still running: kept.
         #expect(store.list().map(\.name) == ["dev", "fresh", "up"])
-        #expect(!FileManager.default.fileExists(atPath: logs[0].path))
-        #expect(FileManager.default.fileExists(atPath: logs[1].path))
+        #expect(!FileManager.default.fileExists(atPath: downLog.path))
+        #expect(FileManager.default.fileExists(atPath: crashedLog.path))
     }
 }
 
