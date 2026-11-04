@@ -89,7 +89,6 @@ TEST_UNCHECKED=0
 TEST_INCONCLUSIVE=
 ANY_FAILED=0
 SAVE_PID=
-: > "$RESULTS"
 
 # --- Output and results ---------------------------------------------------------------------------
 
@@ -501,10 +500,6 @@ echo "Log: $LOG"
 echo "Building this checkout..."
 if ! make -C "$REPO" sign >> "$LOG" 2>&1; then
     echo "make sign failed; see the log." >&2
-    exit 2
-fi
-if ! "$HOBO" snapshot --help 2>&1 | grep -q "hobo snapshot"; then
-    echo "$HOBO has no snapshot command." >&2
     exit 2
 fi
 if "$HOBO" list | grep -Eq "^$VM +"; then
