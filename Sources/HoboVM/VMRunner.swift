@@ -283,7 +283,7 @@ public final class VMRunner {
         return await Task { await suspend(guest, reply: reply) }.value
     }
 
-    /// `snapshot save` on a running VM. Not while it is starting, for the reason `suspend` gives.
+    /// `snapshot save` on a running VM. Not while it is starting, for the reason `beginSuspend` gives.
     private func beginSnapshot(_ tag: String) async -> ControlResponse {
         guard status.state != .stopping else { return .error("\(name) is shutting down") }
         guard status.state == .running, let guest else {

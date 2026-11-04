@@ -195,8 +195,8 @@ import Testing
         #expect(try savedState(in: bundle) == "memory")
     }
 
-    /// A live snapshot lays its state down as the VM's, and starting it is the ordinary resume.
-    /// The test binary lacks the entitlement, so that start fails, having shown what it would resume.
+    /// A live snapshot lays its state down as the VM's, leaving it suspended for the ordinary resume.
+    /// This stops short of that start, which needs the entitlement the test binary lacks.
     @Test func aLiveRestoreLeavesSavedStateForTheResume() throws {
         defer { cleanUp() }
         try suspend()
@@ -309,7 +309,6 @@ import Testing
         #expect(try store.find("dev").allocatedBytes == before + state)
     }
 
-    /// Clones and renames leave a snapshot behind or carry it, as decision 13 and 12 say.
     @Test func cloneLeavesSnapshotsAndRenameCarriesThem() async throws {
         defer { cleanUp() }
         _ = try await lifecycle.saveSnapshot("dev", tag: "clean")

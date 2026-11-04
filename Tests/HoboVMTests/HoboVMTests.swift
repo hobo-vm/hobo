@@ -123,7 +123,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(resumed.contains("itest resumed"), "\(resumed)")
         #expect(!FileManager.default.fileExists(atPath: savedState.path))
         #expect(try sleeperAlive())
-        // The clock was set on resume: within a minute of the host's.
+        // The clock was set on resume.
         try checkGuestClock("itest", hobo: hobo, env: env)
         #expect(try output(hobo, ["suspend", "itest"], environment: env).contains("Suspended itest"))
         #expect(try output(hobo, ["start", "--cold", "itest"], environment: env).contains("itest is running"))

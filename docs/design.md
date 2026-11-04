@@ -279,8 +279,8 @@ global VMs on 2026-11-01.
     the VM. A running VM is paused, its state saved (`saveMachineStateTo`), its disk cloned at the
     same instant, and resumed (`.snapshot` on the control socket); its guest clock, which stood
     still, is then set over SSH, as a resume does, though its shares need no remount, since the
-    device never restarts. A suspended VM's state and disk are cloned as they lie, also a live
-    snapshot. Stopped VMs get disk-only snapshots. (Replaces the earlier DiskImageKit overlay plan.)
+    device never restarts. A suspended VM's state and disk are cloned as they lie, which also makes
+    a live snapshot. Stopped VMs get disk-only snapshots. (Replaces the earlier DiskImageKit overlay plan.)
     Decided 2026-11-03 (hobo-di8), and checked then on a 27.2 guest and host: a VM runs on normally
     after `saveMachineStateTo`, and a disk cloned while it is paused matches the state, even for
     unsynced writes read back with the guest's caches dropped. A save took about 9 s and a
