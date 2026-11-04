@@ -158,6 +158,16 @@ public struct VMLifecycle: Sendable {
         return (try? store.find(vm.name)) == nil ? .deleted : .stopped
     }
 
+    /// `hobo delete`: deletes `name` and its bundle. With `force`, a running VM is powered off first
+    /// (as by `stop` with `force`) rather than refused. A VM being built is always refused.
+    public func delete(_ name: String, force: Bool) async throws {
+        let vm = try store.find(name)
+        try store.checkStopped(vm, allowSuspended: true, allowRunning: force)
+        // Stopping an ephemeral VM deletes it, leaving nothing more to do.
+        if vm.job?.pid != nil, try await stop(vm.name, force: true) == .deleted { return }
+        try store.delete(vm.name)
+    }
+
     public enum SuspendResult: Equatable, Sendable {
         case suspended(savedStateBytes: UInt64)
         case alreadySuspended(savedStateBytes: UInt64)

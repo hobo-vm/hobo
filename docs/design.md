@@ -47,7 +47,7 @@ global VMs on 2026-11-01.
    `create <name> [recipe] [--hold-on-failure]`, `list`,
    `start [--ephemeral] [--gui] [--cold] [--share path] [--idle-timeout d]`, `stop [--force]`,
    `suspend`, `discard`, `ssh <name> [--print] [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp [-r] <src>... <dst>`, `ip <name>`, `view`, `screenshot`,
-   `clone <src> <dst> [--ephemeral]`, `delete <name> [--yes]`, `rename <old> <new>`,
+   `clone <src> <dst> [--ephemeral]`, `delete <name> [--yes] [--force]`, `rename <old> <new>`,
    `set <name> --cpus/--memory/--disk/--share/--unshare/--keep`, `snapshot save|restore|list|delete`,
    `provision <name> [recipe]` (re-run steps on an existing VM), `df`, `usage`,
    `claude install|uninstall [--project] [--force]`. A recipe argument defaults
@@ -76,10 +76,12 @@ global VMs on 2026-11-01.
    e.g. for an external SSD), holding the disk, aux and identifier files, `config.json`, the recipe
    it was built from (`recipe.toml`, verbatim), `snapshots/`, and any saved state. Finder shows
    sizes and can move or delete bundles; a vanished bundle is a deleted VM, and Hobo refuses to
-   start, rename or delete a bundle that is being built or whose VM process is still running.
+   start, rename or delete a bundle that is being built or whose VM process is still running
+   (`delete --force` powers a running VM off first, as `stop --force` does).
    Names match `[A-Za-z0-9][A-Za-z0-9._-]{0,62}` (a filename, launchd label and socket name) and
    collide case-insensitively; `create` and `rename` refuse a taken name, with no `--force`.
-   `delete` asks for confirmation on a terminal, refuses without one unless `--yes`, and `rename`
+   `delete` asks for confirmation on a terminal, refuses without one unless `--yes` (`--force`
+   doesn't imply it: one says what may be lost, the other that nobody need be asked), and `rename`
    is a directory move (nothing inside the bundle records the name). `~/.hobo/` holds only small
    state: the IPSW index, logs, sockets, launchd plists.
    A macOS guest's Apple ID identity derives from the host's Secure Enclave and host user, so a

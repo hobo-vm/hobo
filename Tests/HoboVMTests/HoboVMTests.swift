@@ -345,8 +345,9 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(!cloneIP.isEmpty && cloneIP != sourceIP)
         #expect(try output(hobo, ["exec", "lclone", "--", "whoami"], environment: env) == "vagrant\n")
         #expect(try output(hobo, ["exec", "litest", "--", "whoami"], environment: env) == "vagrant\n")
-        #expect(try output(hobo, ["stop", "lclone"], environment: env).contains("Stopped lclone"))
-        #expect(try run(hobo, ["delete", "lclone", "--yes"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["delete", "lclone", "--yes"], in: work, environment: env) != 0, "running")
+        #expect(try output(hobo, ["delete", "lclone", "--force", "--yes"], environment: env).contains("Deleted lclone"))
+        #expect(!FileManager.default.fileExists(atPath: vms.appending(path: "lclone.hobovm").path))
 
         // start --ephemeral: a new auto-named clone, deleted when it stops unless set --keep.
         #expect(try run(hobo, ["start", "litest", "--ephemeral"], in: work, environment: env) != 0, "running")

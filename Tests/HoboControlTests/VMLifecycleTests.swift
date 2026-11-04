@@ -150,6 +150,67 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: log.path))
     }
 
+    @Test func deleteRefusesARunningVMWithoutForce() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        await #expect(throws: VMStoreError.busy("dev", reason: "running (hobo stop dev)")) { try await lifecycle.delete("dev", force: false) }
+        #expect(!launchctl.called("kill"))
+        #expect(FileManager.default.fileExists(atPath: store.bundle(for: "dev").path))
+    }
+
+    @Test func forceDeleteStopsARunningVMAndDeletesIt() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        // Stops only for a forced stop: the VM's guest isn't given a chance to shut down.
+        let server = try ControlServer(path: store.job(for: "dev").socket) { [launchctl] request, _ in
+            guard case .stop(force: true) = request else { return .error("expected a forced stop") }
+            launchctl.pid.withLock { $0 = nil }
+            return .accepted
+        }
+        defer { server.close() }
+        try await lifecycle.delete("dev", force: true)
+        #expect(!launchctl.called("kill"))
+        #expect(!FileManager.default.fileExists(atPath: store.bundle(for: "dev").path))
+    }
+
+    @Test func forceDeleteKillsASilentProcess() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        try await lifecycle.delete("dev", force: true)
+        #expect(launchctl.called("kill"))
+        #expect(!FileManager.default.fileExists(atPath: store.bundle(for: "dev").path))
+    }
+
+    /// Stopping it deleted it, which mustn't then fail as "not found".
+    @Test func forceDeleteOfAnEphemeralVM() async throws {
+        defer { cleanUp() }
+        try makeEphemeralAndStarted()
+        launchctl.pid.withLock { $0 = 4242 }
+        try await lifecycle.delete("dev", force: true)
+        #expect(!FileManager.default.fileExists(atPath: store.bundle(for: "dev").path))
+    }
+
+    @Test func forceDeleteOfAStoppedVMStopsNothing() async throws {
+        defer { cleanUp() }
+        try await lifecycle.delete("dev", force: true)
+        #expect(!launchctl.called("kill"))
+        #expect(!FileManager.default.fileExists(atPath: store.bundle(for: "dev").path))
+    }
+
+    @Test func forceDeleteOfASuspendedVM() async throws {
+        defer { cleanUp() }
+        try suspend()
+        try await lifecycle.delete("dev", force: true)
+        #expect(!FileManager.default.fileExists(atPath: store.bundle(for: "dev").path))
+    }
+
+    @Test func forceDeleteRefusesAVMBeingBuilt() async throws {
+        defer { cleanUp() }
+        _ = try store.beginCreate("new")
+        await #expect(throws: VMStoreError.busy("new", reason: "being built")) { try await lifecycle.delete("new", force: true) }
+        #expect(FileManager.default.fileExists(atPath: store.bundle(for: "new").path))
+    }
+
     @Test func forceKillsARefusingProcess() async throws {
         defer { cleanUp() }
         launchctl.pid.withLock { $0 = 4242 }

@@ -832,6 +832,9 @@ struct Delete: OutputCommand {
     @Flag(name: .shortAndLong, help: "Don't ask for confirmation.")
     var yes = false
 
+    @Flag(help: "If the VM is running, power it off at once first, killing its VM process if it isn't answering.")
+    var force = false
+
     @Flag(help: "Print the deleted VM's name as JSON. Needs --yes.")
     var json = false
 
@@ -844,18 +847,19 @@ struct Delete: OutputCommand {
     func execute(_ output: Output) async throws -> Reply {
         let store = VMStore.standard()
         let vm = try store.find(name)
-        try store.checkStopped(vm, allowSuspended: true)
+        try store.checkStopped(vm, allowSuspended: true, allowRunning: force)
         // The prompt is text only: validate() requires --yes with --json.
         if !yes {
             guard isatty(STDIN_FILENO) != 0 else {
                 throw CLIError("refusing to delete \(vm.name) without a terminal to confirm (pass --yes)")
             }
-            print("Delete VM \"\(vm.name)\" (\(fileSize(vm.allocatedBytes)))? [y/N] ", terminator: "")
+            let action = vm.job?.pid != nil ? "Power off and delete running VM" : "Delete VM"
+            print("\(action) \"\(vm.name)\" (\(fileSize(vm.allocatedBytes)))? [y/N] ", terminator: "")
             guard let answer = readLine(), ["y", "yes"].contains(answer.lowercased()) else {
                 return Reply(["deleted": String?.none], text: "Not deleted.")
             }
         }
-        try store.delete(vm.name)
+        try await VMLifecycle(store: store, log: output.log).delete(vm.name, force: force)
         return Reply(["deleted": vm.name], text: "Deleted \(vm.name)")
     }
 }

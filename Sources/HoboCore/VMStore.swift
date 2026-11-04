@@ -142,11 +142,12 @@ public struct VMStore: Sendable {
     /// Throws if `vm` is being built, running, or (unless `allowSuspended`) holding saved state.
     /// Saved state fits only the disk, configuration and platform identity it was saved with, so
     /// anything that changes those must refuse a suspended VM. Only operations that move or remove
-    /// the bundle as a unit (delete, rename, discard) pass `allowSuspended`.
-    public func checkStopped(_ vm: VM, allowSuspended: Bool = false) throws {
+    /// the bundle as a unit (delete, rename, discard) pass `allowSuspended`. `allowRunning` is for a
+    /// caller about to power the VM off (`delete --force`).
+    public func checkStopped(_ vm: VM, allowSuspended: Bool = false, allowRunning: Bool = false) throws {
         if case .building = vm.status { throw VMStoreError.busy(vm.name, reason: "being built") }
         // The job, not the status: a running VM whose config.json has gone bad still runs.
-        if vm.job?.pid != nil { throw VMStoreError.busy(vm.name, reason: "running (hobo stop \(vm.name))") }
+        if !allowRunning, vm.job?.pid != nil { throw VMStoreError.busy(vm.name, reason: "running (hobo stop \(vm.name))") }
         if !allowSuspended, case .suspended = vm.status {
             throw VMStoreError.busy(vm.name, reason: "suspended (hobo discard \(vm.name) throws its saved state away)")
         }
