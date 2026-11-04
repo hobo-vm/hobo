@@ -39,8 +39,9 @@ import Testing
     }
 
     @Test func mediumNameShrinksBeforeLosingAnything() {
-        let fitted = VMIcon.fittedName("hobo-code-1")
-        #expect(fitted.text == "hobo-code-1")
+        let fitted = VMIcon.fittedName("ubuntu2604-a3f1")
+        #expect(fitted.text == "ubuntu2604-a3f1")
+        #expect(fitted.pointSize < 112)
     }
 
     /// Clones of one source differ only in their last characters, which must survive.
@@ -58,6 +59,8 @@ import Testing
         let name = String(repeating: "W", count: 63)
         let fitted = VMIcon.fittedName(name)
         #expect(fitted.text.hasPrefix("W"))
+        // Without this, the suffix-only fallback would pass too: it also starts with a W.
+        #expect(fitted.text.contains("…"))
         #expect(fitted.text.count < name.count)
     }
 }
