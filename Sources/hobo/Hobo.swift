@@ -336,22 +336,21 @@ struct List: OutputCommand {
         let vmRows = zip(vms, listing.vms).map { vm, summary in
             var cells = row(vm, summary: summary)
             if summary.config?.ephemeral == true { cells[1] += ", ephemeral" }
-            return cells + [snapshotsCell(count: summary.snapshots?.count ?? 0, bytes: summary.snapshotBytes ?? 0)]
+            return cells + [Self.snapshotsCell(count: summary.snapshots?.count ?? 0, bytes: summary.snapshotBytes ?? 0)]
         }
-        let total = ["TOTAL", "", "", "", "", fileSize(listing.totalBytes), snapshotsCell(count: listing.snapshotCount, bytes: listing.totalSnapshotBytes)]
+        let total = ["TOTAL", "", "", "", "", fileSize(listing.totalBytes), Self.snapshotsCell(count: listing.snapshotCount, bytes: listing.totalSnapshotBytes)]
         let rows = [["NAME", "STATE", "OS", "CPUS", "MEMORY", "DISK (USED/SIZE)", "SNAPSHOTS"]] + vmRows + [total]
-        return verbose ? tableWithSnapshots(rows, summaries: listing.vms) : formatTable(rows)
+        return verbose ? Self.tableWithSnapshots(rows, snapshots: listing.vms.map { $0.snapshots ?? [] }) : formatTable(rows)
     }
 
     /// The table of `rows` (a header, a row per VM, the total), with each VM's snapshots after its
     /// line, lined up under the STATE column.
-    private func tableWithSnapshots(_ rows: [[String]], summaries: [VMSummary]) -> String {
+    static func tableWithSnapshots(_ rows: [[String]], snapshots: [[Snapshot]]) -> String {
         let indent = String(repeating: " ", count: (rows.map { $0[0].count }.max() ?? 0) + 2)
         let lines = formatTable(rows).components(separatedBy: "\n")
         var output = [lines[0]]
-        for (line, summary) in zip(lines.dropFirst(), summaries) {
+        for (line, snapshots) in zip(lines.dropFirst(), snapshots) {
             output.append(line)
-            let snapshots = summary.snapshots ?? []
             if snapshots.isEmpty { continue }
             let details = formatTable(snapshots.map { [$0.tag, $0.isLive ? "live" : "disk", createdText($0), fileSize($0.uniqueBytes ?? 0)] })
             output += details.components(separatedBy: "\n").map { indent + $0 }
@@ -360,7 +359,7 @@ struct List: OutputCommand {
         return output.joined(separator: "\n")
     }
 
-    private func snapshotsCell(count: Int, bytes: UInt64) -> String {
+    static func snapshotsCell(count: Int, bytes: UInt64) -> String {
         // Bytes with no snapshot to list are what a failed save left behind, which still count.
         count == 0 && bytes == 0 ? "—" : "\(count) (\(fileSize(bytes)))"
     }
