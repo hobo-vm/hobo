@@ -33,16 +33,16 @@ public struct DiskUsage: Equatable, Sendable {
     /// Adds `bytes` held by exactly `holders`.
     mutating func count(_ bytes: UInt64, heldBy holders: some Collection<Holder>) {
         totalBytes += bytes
-        var ownedByVM: Set<String> = []
+        var heldByVM: Set<String> = []
         var inSnapshotOf: Set<String> = []
         for holder in holders {
             switch holder {
-            case .vm(let name): ownedByVM.insert(name)
+            case .vm(let name): heldByVM.insert(name)
             case .snapshot(let name, _): inSnapshotOf.insert(name)
             }
         }
-        if ownedByVM.isEmpty, !inSnapshotOf.isEmpty { totalSnapshotBytes += bytes }
-        for name in inSnapshotOf.subtracting(ownedByVM) { snapshotBytes[name, default: 0] += bytes }
+        if heldByVM.isEmpty, !inSnapshotOf.isEmpty { totalSnapshotBytes += bytes }
+        for name in inSnapshotOf.subtracting(heldByVM) { snapshotBytes[name, default: 0] += bytes }
         if holders.count == 1, case .snapshot(let name, let tag) = holders.first {
             uniqueBytes[name, default: [:]][tag, default: 0] += bytes
         }
@@ -52,25 +52,25 @@ public struct DiskUsage: Equatable, Sendable {
     /// track of who holds the stretch it's in. Blocks are compared only within a volume.
     static func measure(_ holdings: [(holder: Holder, extents: FileExtents)]) -> DiskUsage {
         var usage = DiskUsage()
-        // A holder's own files may share blocks, hence a count of how many of its extents are open.
         struct Edge { var device: Int32, offset: Int64, change: Int, holder: Holder }
         var edges: [Edge] = []
         for (holder, extents) in holdings {
             if extents.unmappedBytes > 0 { usage.count(extents.unmappedBytes, heldBy: [holder]) }
-            for extent in extents.extents {
+            for extent in extents.mapped {
                 edges.append(Edge(device: extent.device, offset: extent.range.lowerBound, change: 1, holder: holder))
                 edges.append(Edge(device: extent.device, offset: extent.range.upperBound, change: -1, holder: holder))
             }
         }
         edges.sort { ($0.device, $0.offset) < ($1.device, $1.offset) }
-        var open: [Holder: Int] = [:]
+        // A holder's own files may share blocks, hence a count per holder rather than a set.
+        var openExtents: [Holder: Int] = [:]
         var previous: Edge?
         for edge in edges {
-            if let previous, previous.device == edge.device, edge.offset > previous.offset, !open.isEmpty {
-                usage.count(UInt64(edge.offset - previous.offset), heldBy: open.keys)
+            if let previous, previous.device == edge.device, edge.offset > previous.offset, !openExtents.isEmpty {
+                usage.count(UInt64(edge.offset - previous.offset), heldBy: openExtents.keys)
             }
-            open[edge.holder, default: 0] += edge.change
-            if open[edge.holder] == 0 { open[edge.holder] = nil }
+            openExtents[edge.holder, default: 0] += edge.change
+            if openExtents[edge.holder] == 0 { openExtents[edge.holder] = nil }
             previous = edge
         }
         return usage
@@ -84,7 +84,7 @@ struct FileExtents: Equatable, Sendable {
         var range: Range<Int64>
     }
 
-    var extents: [Extent] = []
+    var mapped: [Extent] = []
     /// Bytes of files whose blocks can't be looked up, such as on a volume without the call. No
     /// clones are told apart there, so these count as unshared.
     var unmappedBytes: UInt64 = 0
@@ -93,7 +93,7 @@ struct FileExtents: Equatable, Sendable {
         var info = stat()
         guard lstat(file.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { return }
         if let found = Self.lookUp(file, device: info.st_dev) {
-            extents += found
+            mapped += found
         } else {
             unmappedBytes += UInt64(info.st_blocks) * 512
         }
@@ -107,21 +107,23 @@ struct FileExtents: Equatable, Sendable {
         var found: [Extent] = []
         var position: off_t = 0
         while true {
-            let data = lseek(descriptor, position, SEEK_DATA)
-            if data < 0 { return errno == ENXIO ? found : nil } // ENXIO: no more data.
-            let hole = lseek(descriptor, data, SEEK_HOLE)
-            guard hole > data else { return nil }
-            var offset = data
-            while offset < hole {
+            let dataStart = lseek(descriptor, position, SEEK_DATA)
+            if dataStart < 0 { return errno == ENXIO ? found : nil } // ENXIO: no more data.
+            let holeStart = lseek(descriptor, dataStart, SEEK_HOLE)
+            guard holeStart > dataStart else { return nil }
+            var offset = dataStart
+            while offset < holeStart {
+                // The call takes the logical offset and length, and replaces them with the physical
+                // offset and how far the blocks there run contiguously.
                 var mapping = log2phys()
-                mapping.l2p_contigbytes = hole - offset
+                mapping.l2p_contigbytes = holeStart - offset
                 mapping.l2p_devoffset = offset
                 guard fcntl(descriptor, F_LOG2PHYS_EXT, &mapping) == 0, mapping.l2p_contigbytes > 0, mapping.l2p_devoffset >= 0 else { return nil }
                 let start = mapping.l2p_devoffset
                 found.append(Extent(device: device, range: start..<(start + mapping.l2p_contigbytes)))
                 offset += mapping.l2p_contigbytes
             }
-            position = hole
+            position = holeStart
         }
     }
 }
@@ -130,19 +132,22 @@ extension VMStore {
     /// The disk usage of `vms`, which should be every VM (`list()`), since what a VM's snapshot
     /// alone holds depends on what the others share with it.
     public func diskUsage(of vms: [VM]) -> DiskUsage {
-        DiskUsage.measure(vms.flatMap { vm -> [(holder: DiskUsage.Holder, extents: FileExtents)] in
-            var own = FileExtents()
-            for file in Self.files(in: vm.bundle, excluding: Snapshot.directoryName) { own.add(file: file) }
-            let root = Snapshot.root(in: vm.bundle)
-            let entries = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
-            return [(.vm(vm.name), own)] + entries.map { entry in
-                let item = root.appending(path: entry)
-                var extents = FileExtents()
-                extents.add(file: item)
-                for file in Self.files(in: item) { extents.add(file: file) }
-                return (.snapshot(vm: vm.name, tag: entry), extents)
-            }
-        })
+        DiskUsage.measure(vms.flatMap(Self.holdings))
+    }
+
+    /// The VM's own files, and each entry under its `snapshots/`, with where their data lies.
+    private static func holdings(of vm: VM) -> [(holder: DiskUsage.Holder, extents: FileExtents)] {
+        var own = FileExtents()
+        for file in files(in: vm.bundle, excluding: Snapshot.directoryName) { own.add(file: file) }
+        let root = Snapshot.root(in: vm.bundle)
+        let entries = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
+        return [(.vm(vm.name), own)] + entries.map { entry in
+            let item = root.appending(path: entry)
+            var extents = FileExtents()
+            extents.add(file: item) // An entry is normally a directory, but a stray file counts too.
+            for file in files(in: item) { extents.add(file: file) }
+            return (.snapshot(vm: vm.name, tag: entry), extents)
+        }
     }
 
     /// Everything under `directory`, leaving out any top-level entry named `excluded`.

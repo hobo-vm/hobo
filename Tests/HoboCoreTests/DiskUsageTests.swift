@@ -6,7 +6,7 @@ import Testing
     private typealias Holder = DiskUsage.Holder
 
     private func extents(_ ranges: Range<Int64>..., device: Int32 = 1, unmapped: UInt64 = 0) -> FileExtents {
-        FileExtents(extents: ranges.map { .init(device: device, range: $0) }, unmappedBytes: unmapped)
+        FileExtents(mapped: ranges.map { .init(device: device, range: $0) }, unmappedBytes: unmapped)
     }
 
     // MARK: Counting, on made-up extents
