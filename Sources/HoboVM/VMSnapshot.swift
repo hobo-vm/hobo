@@ -35,12 +35,11 @@ extension VMLifecycle {
             // The answer comes once the VM is running again, which takes a while for a large memory.
             response = try await ControlClient.send(.snapshot(tag: tag), to: store.job(for: name).socket, timeout: timeout)
         } catch {
-            if await hasStopped(name) {
-                // A snapshot in place is complete; the process died after that, resuming the guest.
-                if !tagWasTaken, (try? Snapshot.find(tag, in: bundle)) != nil { return }
-                throw SnapshotError.stoppedWhileSaving(name, tag: tag)
-            }
-            throw LifecycleError.unresponsive(name, String(describing: error))
+            guard await hasStopped(name) else { throw LifecycleError.unresponsive(name, String(describing: error)) }
+            // The snapshot goes in place before the guest resumes, so the process can die with the save
+            // done. A tag that was already taken says nothing about this save.
+            if !tagWasTaken, (try? Snapshot.find(tag, in: bundle)) != nil { return }
+            throw SnapshotError.stoppedWhileSaving(name, tag: tag)
         }
         switch response {
         case .accepted: return
