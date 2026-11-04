@@ -525,10 +525,21 @@ global VMs on 2026-11-01.
     depot) was dropped on 2026-11-01: the recipe is plain `Hobo.toml`.
 26. **Logo.** A bindle, a stick with a tied red bandana bag, on a cream macOS icon tile (decided
     2026-11-03). `assets/icon.svg` is the master and `assets/icon-small.svg` the simplified drawing
-    for 16-32 px; `swift assets/render.swift` regenerates everything else from them. The binary isn't
-    an app bundle and `make install` copies only the binary, so `HoboVM` compiles in a 512 px PNG
-    (`.embedInCode`), which `VMWindow` sets as the application icon right after the process turns
-    regular and appears in the Dock (the Dock ignores one set earlier). `assets/Hobo.icns` is for the planned GUI wrapper; nothing uses it yet.
+    for 16-32 px; `swift assets/render.swift` regenerates everything else from them. `assets/Hobo.icns`
+    is for the planned GUI wrapper; nothing uses it yet, and the bindle is that app's icon alone.
+    **VM icons.** Each VM window has its own icon, to find it among several in the Dock and ⌘Tab and to
+    tell it from the GUI app (decided 2026-11-04): a hobo sign in chalk on a dark tile, with the VM's
+    name in white under it. A SHA-256 of the name picks one of 24 signs and, from separate bits, one of
+    8 colors, so a VM's icon never changes and needs no state, and a clone gets its own. Two VMs can
+    share a sign or a color, and the name settles it. Long names shrink, then lose their middle, since
+    clones differ only in their last characters. The binary isn't an app bundle and `make install` copies
+    only the binary, so `HoboVM` compiles in the signs (`.embedInCode`, from `assets/draw_signs.py`).
+    `VMIcon` draws the icon, and `VMWindow` sets it right after the process turns regular and appears
+    in the Dock (the Dock ignores one set earlier). The name stays even though it's unreadable in a
+    small Dock: ⌘Tab shows icons at about 128 pt, where it reads well, and a process has one image, so
+    the two can't differ (2026-11-04: of an image's sizes the Dock shows only the largest, and
+    `NSDockTile`'s custom view changes ⌘Tab as well). The drawings are our own, and whether hobos ever
+    used these signs is doubtful, so they aren't presented as history.
 
 ## Milestones
 

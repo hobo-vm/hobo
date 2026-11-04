@@ -11,6 +11,8 @@ final class VMWindow: NSObject, NSWindowDelegate {
     private let view = VZVirtualMachineView()
     private let machine: VZVirtualMachine
     private let name: String
+    /// The VM's own icon, which tells this VM from others in the Dock and ⌘Tab.
+    private let icon: NSImage?
     private let log: (String) -> Void
     /// Called when the user picks Shut Down in the close dialog.
     var onShutDown: (() -> Void)?
@@ -28,8 +30,10 @@ final class VMWindow: NSObject, NSWindowDelegate {
     /// for a guest that doesn't scale its own UI, in points.
     private let hiDPI: Bool
 
-    init(guest: GuestVM, title: String, log: @escaping (String) -> Void) {
+    /// `vmName` picks the icon, so it stays the same whatever `title` says.
+    init(guest: GuestVM, vmName: String, title: String, log: @escaping (String) -> Void) {
         machine = guest.machine
+        icon = VMIcon.image(for: vmName)
         hiDPI = type(of: guest.bundle).hiDPIDisplay
         name = title
         self.log = log
@@ -64,7 +68,7 @@ final class VMWindow: NSObject, NSWindowDelegate {
         // active app, and it had no ⌘Tab entry or full-screen Space.
         NSApp.setActivationPolicy(.regular)
         // After the policy change: the Dock keeps the generic icon if this is set before it.
-        NSApp.applicationIconImage = AppIcon.image
+        NSApp.applicationIconImage = icon
         // Rebuilt on every show: its items target this window, and a process can show more than
         // one over its life (create's recoveryOS step opens a new one on each try).
         NSApp.mainMenu = makeMenu()

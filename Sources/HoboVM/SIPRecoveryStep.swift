@@ -17,7 +17,7 @@ enum SIPRecoveryStep {
     /// Shows the window and panel for `guest` (already booted into recovery) until it stops or the
     /// person cancels. `notice` heads the panel, e.g. after a try that left SIP on.
     static func run(_ guest: GuestVM, name: String, notice: String?, log: @escaping (String) -> Void) async -> Outcome {
-        let window = VMWindow(guest: guest, title: "\(name) — recoveryOS", log: log)
+        let window = VMWindow(guest: guest, vmName: name, title: "\(name) — recoveryOS", log: log)
         let panel = InstructionsPanel(notice: notice)
         let cancel = CancelFlag()
         window.onCancelBuild = { cancel.isSet = true }

@@ -22,7 +22,7 @@ let package = Package(
             name: "HoboVM",
             dependencies: ["HoboCore", "HoboControl"],
             // Compiled in: `make install` copies only the binary, so a resource bundle wouldn't follow it.
-            resources: [.embedInCode("Resources/AppIcon.png")]
+            resources: [.embedInCode("Resources/Signs")]
         ),
         .target(name: "HoboMCP", dependencies: ["HoboCore", "HoboControl"]),
         .executableTarget(

@@ -247,7 +247,7 @@ public final class VMRunner {
 
     private func showWindow(_ guest: GuestVM) {
         if window == nil {
-            let window = VMWindow(guest: guest, title: name, log: log)
+            let window = VMWindow(guest: guest, vmName: name, title: name, log: log)
             window.onShutDown = { [weak self] in self?.beginStop(force: false) }
             window.onSuspend = { [weak self] in
                 guard let self else { return nil }
