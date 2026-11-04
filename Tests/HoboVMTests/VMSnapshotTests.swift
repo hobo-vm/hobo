@@ -222,6 +222,34 @@ import Testing
         #expect(SavedState.load(in: bundle) == nil, "a disk-only snapshot has no memory to go with its disk")
     }
 
+    /// Everything is gathered before anything is replaced, so the VM keeps its disk and saved state.
+    @Test func aRestoreThatCantGatherItsFilesLeavesTheVMAsItWas() async throws {
+        defer { cleanUp() }
+        _ = try await lifecycle.saveSnapshot("dev", tag: "clean")
+        try writeDisk("now")
+        try suspend(state: "later")
+        try FileManager.default.removeItem(at: Snapshot.directory("clean", in: bundle).appending(path: "aux.img"))
+        await #expect(throws: (any Error).self) { _ = try await lifecycle.restoreSnapshot("dev", tag: "clean", force: true) }
+        #expect(try platformFilesAll(say: "now", in: bundle))
+        #expect(try savedState(in: bundle) == "later")
+        #expect(!FileManager.default.fileExists(atPath: bundle.appending(path: VMStore.restoringDirectory).path))
+    }
+
+    /// What a restore or suspend that died partway left doesn't stop the next restore, which clears it.
+    @Test func aRestoreClearsWhatADeadRestoreOrSuspendLeft() async throws {
+        defer { cleanUp() }
+        _ = try await lifecycle.saveSnapshot("dev", tag: "clean")
+        let leftovers = [bundle.appending(path: VMStore.restoringDirectory), SavedState.partialDirectory(in: bundle)]
+        for leftover in leftovers {
+            try FileManager.default.createDirectory(at: leftover, withIntermediateDirectories: false)
+            try Data("stale".utf8).write(to: leftover.appending(path: "aux.img"))
+        }
+        try writeDisk("now")
+        #expect(try await lifecycle.restoreSnapshot("dev", tag: "clean", force: false) == .stopped)
+        #expect(try platformFilesAll(say: "then", in: bundle))
+        for leftover in leftovers { #expect(!FileManager.default.fileExists(atPath: leftover.path)) }
+    }
+
     /// A saved state left in place would resume onto the restored disk, which it doesn't match.
     @Test func aSavedStateThatCantBeRemovedStopsTheRestoreBeforeTheDiskChanges() async throws {
         defer { cleanUp() }
