@@ -398,8 +398,10 @@ test_9() {
     if [ -z "$OLD_HOBO" ]; then
         OLD_HOBO=$(git -C "$REPO" worktree list --porcelain | sed -n '1s/^worktree //p')/.build/release/hobo
     fi
-    if [ ! -x "$OLD_HOBO" ] || "$OLD_HOBO" snapshot --help 2>&1 | grep -q "hobo snapshot"; then
-        TEST_INCONCLUSIVE="$OLD_HOBO isn't a hobo from before snapshots (pass --old-hobo)"
+    # A plain `swift build -c release` leaves it unsigned, and that would look like a failed start.
+    if [ ! -x "$OLD_HOBO" ] || "$OLD_HOBO" snapshot --help 2>&1 | grep -q "hobo snapshot" \
+        || ! codesign -d --entitlements - "$OLD_HOBO" 2>&1 | grep -q com.apple.security.virtualization; then
+        TEST_INCONCLUSIVE="$OLD_HOBO isn't a signed hobo from before snapshots (pass --old-hobo)"
         return
     fi
     ensure_stopped
