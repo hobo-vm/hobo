@@ -224,11 +224,14 @@ public struct VMStore: Sendable {
         return try find(destination)
     }
 
+    /// The length of what `ephemeralName` adds to the source's name, `-` and 4 hex digits: all that
+    /// tells clones of one source apart.
+    public static let ephemeralSuffixLength = 5
+
     /// A free name for an ephemeral clone of `source`: `<source>-<4 hex digits>`, the source's name
     /// shortened if need be to stay within a name's 63 characters.
     public func ephemeralName(for source: String) throws -> String {
-        let suffixLength = 5
-        let base = String(source.prefix(63 - suffixLength))
+        let base = String(source.prefix(63 - Self.ephemeralSuffixLength))
         for _ in 0..<100 {
             let name = "\(base)-\(String(format: "%04x", UInt16.random(in: .min ... .max)))"
             if existingName(matching: name) == nil { return name }

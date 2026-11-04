@@ -4,8 +4,8 @@
 //     swift assets/render.swift
 //
 // icon.svg is the master and icon-small.svg the simplified drawing for 16-32 px. The output is
-// Hobo.icns, the two README headers, and the PNG compiled into HoboVM for the Dock. The renderer
-// is NSImage's SVG support, which has no blur filter, so the drawings don't use one.
+// Hobo.icns and the two README headers. The renderer is NSImage's SVG support, which has no blur
+// filter, so the drawings don't use one. VM icons come from draw_signs.py instead.
 import AppKit
 
 let assets = URL(filePath: #filePath).deletingLastPathComponent()
@@ -71,10 +71,6 @@ if arguments.first == "--preview", let directory = arguments.dropFirst().first {
 let icon = try String(contentsOf: master, encoding: .utf8)
 try header(icon: icon, ink: "#3B2A1A").write(to: assets.appending(path: "logo-light.svg"), atomically: true, encoding: .utf8)
 try header(icon: icon, ink: "#F3E7D0").write(to: assets.appending(path: "logo-dark.svg"), atomically: true, encoding: .utf8)
-
-let dock = assets.deletingLastPathComponent().appending(path: "Sources/HoboVM/Resources/AppIcon.png")
-try fileManager.createDirectory(at: dock.deletingLastPathComponent(), withIntermediateDirectories: true)
-try renderPNG(svg: master, width: 512, height: 512, to: dock)
 
 let temporary = fileManager.temporaryDirectory.appending(path: "Hobo-\(UUID().uuidString).iconset")
 try fileManager.createDirectory(at: temporary, withIntermediateDirectories: true)
