@@ -348,15 +348,12 @@ struct List: OutputCommand {
     static func tableWithSnapshots(_ rows: [[String]], snapshots: [[Snapshot]]) -> String {
         let indent = String(repeating: " ", count: (rows.map { $0[0].count }.max() ?? 0) + 2)
         let lines = formatTable(rows).components(separatedBy: "\n")
-        var output = [lines[0]]
-        for (line, snapshots) in zip(lines.dropFirst(), snapshots) {
-            output.append(line)
-            if snapshots.isEmpty { continue }
+        let snapshotsUnderLines = [[]] + snapshots + [[]] // Neither the header nor the total has any.
+        return zip(lines, snapshotsUnderLines).flatMap { line, snapshots -> [String] in
+            guard !snapshots.isEmpty else { return [line] }
             let details = formatTable(snapshots.map { [$0.tag, $0.isLive ? "live" : "disk", createdText($0), fileSize($0.uniqueBytes ?? 0)] })
-            output += details.components(separatedBy: "\n").map { indent + $0 }
-        }
-        output.append(lines[lines.count - 1]) // The total, which the zip stopped short of.
-        return output.joined(separator: "\n")
+            return [line] + details.components(separatedBy: "\n").map { indent + $0 }
+        }.joined(separator: "\n")
     }
 
     static func snapshotsCell(count: Int, bytes: UInt64) -> String {
