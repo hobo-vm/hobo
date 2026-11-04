@@ -141,9 +141,13 @@ import Testing
     @Test func forceDeletesAKilledEphemeralVM() async throws {
         defer { cleanUp() }
         try makeEphemeralAndStarted()
+        let log = store.job(for: "dev").log
+        try Data("x".utf8).write(to: log)
         launchctl.pid.withLock { $0 = 4242 }
         #expect(try await lifecycle.stop("dev", force: true) == .deleted)
         #expect(!FileManager.default.fileExists(atPath: store.bundle(for: "dev").path))
+        // As after any failed run, its log stays.
+        #expect(FileManager.default.fileExists(atPath: log.path))
     }
 
     @Test func forceKillsARefusingProcess() async throws {

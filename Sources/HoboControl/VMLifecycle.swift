@@ -132,6 +132,7 @@ public struct VMLifecycle: Sendable {
             store.launchd.bootout(job.label)
             return .wasNotRunning
         }
+        var killed = false
         do {
             let response = try await ControlClient.send(.stop(force: force), to: job.socket)
             switch response {
@@ -146,8 +147,12 @@ public struct VMLifecycle: Sendable {
             // A refusal (e.g. a VM process from an older hobo) gets the same fallback as silence.
             log("The VM process isn't answering (\(error)); killing it")
             try store.launchd.kill(job.label, signal: "SIGKILL")
+            killed = true
         }
         try await waitForExit(vm.name, job: job, timeout: timeout)
+        // Its bootout makes a killed run look stopped rather than crashed, so finding it would
+        // delete its log too; it is kept here, as after any failed run.
+        if killed { store.removeIfEphemeral(vm.name, keepLog: true) }
         // Finding it again deletes an ephemeral VM whose killed process couldn't (`removeIfEphemeral`).
         return (try? store.find(vm.name)) == nil ? .deleted : .stopped
     }
