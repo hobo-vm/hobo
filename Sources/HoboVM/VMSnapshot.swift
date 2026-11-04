@@ -43,10 +43,10 @@ extension VMLifecycle {
         }
         switch response {
         case .accepted: return
-        case .error(let message):
-            // A process from before snapshots can't decode the request, and answers with that error.
-            if message.hasPrefix(String(describing: ControlError.badMessage(""))) { throw SnapshotError.startedByOlderHobo(name) }
-            throw LifecycleError.refused(name, message)
+        // A process from before snapshots can't decode the request, and answers with that error.
+        case .error(let message) where message.hasPrefix(String(describing: ControlError.badMessage(""))):
+            throw SnapshotError.startedByOlderHobo(name)
+        case .error(let message): throw LifecycleError.refused(name, message)
         default: throw ControlError.badMessage("expected an acknowledgement, got \(response)")
         }
     }
