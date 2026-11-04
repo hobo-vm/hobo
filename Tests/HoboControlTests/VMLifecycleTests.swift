@@ -8,10 +8,11 @@ import Testing
 /// when the VM process answers, refuses, or is silent.
 @Suite struct VMLifecycleTests {
     /// Stands in for `launchctl`: one job, `dev`'s, whose process runs while `pid` is set.
-    /// `kill` ends the process, and every call is recorded.
+    /// `kill` ends the process unless `killFails`, and every call is recorded.
     final class FakeLaunchctl: Sendable {
         let label: Mutex<String> = Mutex("")
         let pid: Mutex<Int32?> = Mutex(nil)
+        let killFails: Mutex<Bool> = Mutex(false)
         let calls: Mutex<[[String]]> = Mutex([])
 
         var launchd: Launchd {
@@ -22,6 +23,7 @@ import Testing
                     let pid = self.pid.withLock { $0 }.map(String.init) ?? "-"
                     return (0, "PID\tStatus\tLabel\n\(pid)\t0\t\(self.label.withLock { $0 })\n")
                 case "kill":
+                    if self.killFails.withLock({ $0 }) { return (1, "no such process") }
                     self.pid.withLock { $0 = nil }
                     return (0, "")
                 default:
@@ -179,6 +181,15 @@ import Testing
         try await lifecycle.delete("dev", force: true)
         #expect(launchctl.called("kill"))
         #expect(!FileManager.default.fileExists(atPath: store.bundle(for: "dev").path))
+    }
+
+    /// The bundle must outlive a process that may still be using it, and the error must say why.
+    @Test func forceDeleteKeepsAVMItCouldNotStop() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        launchctl.killFails.withLock { $0 = true }
+        await #expect(throws: LaunchdError.self) { try await lifecycle.delete("dev", force: true) }
+        #expect(FileManager.default.fileExists(atPath: store.bundle(for: "dev").path))
     }
 
     /// Stopping it deleted it, which mustn't then fail as "not found". The kill keeps the log for a
