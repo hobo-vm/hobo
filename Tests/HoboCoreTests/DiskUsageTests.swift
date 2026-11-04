@@ -81,12 +81,13 @@ import Testing
     private func made(_ name: String, in store: VMStore, megabytes: Int) throws -> URL {
         let bundle = try store.beginCreate(name)
         try store.finishCreate(name, config: Self.config, recipe: Data("cpus = 4\n".utf8))
-        if megabytes > 0 { try write(megabytes, to: bundle.appending(path: "disk"), at: nil) }
+        if megabytes > 0 { try write(megabytes, to: bundle.appending(path: "disk")) }
         return bundle
     }
 
-    /// Random, so nothing compresses it, and flushed, so its blocks are allocated.
-    private func write(_ megabytes: Int, to file: URL, at offset: UInt64?) throws {
+    /// Into `file` at `offset`, or as a new file without one. Random, so nothing compresses it, and
+    /// flushed, so its blocks are allocated.
+    private func write(_ megabytes: Int, to file: URL, at offset: UInt64? = nil) throws {
         if offset == nil { #expect(FileManager.default.createFile(atPath: file.path, contents: nil)) }
         let handle = try FileHandle(forWritingTo: file)
         defer { try? handle.close() }
@@ -169,7 +170,7 @@ import Testing
         let bundle = try made("dev", in: store, megabytes: 1)
         let partial = Snapshot.root(in: bundle).appending(path: ".saving-x")
         try FileManager.default.createDirectory(at: partial, withIntermediateDirectories: true)
-        try write(2, to: partial.appending(path: "disk"), at: nil)
+        try write(2, to: partial.appending(path: "disk"))
         let vms = store.list()
         let listing = VMListing(vms, usage: store.diskUsage(of: vms))
         #expect(listing.snapshotCount == 0)
