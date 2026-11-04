@@ -94,6 +94,18 @@ import Testing
         try config.write(to: file)
     }
 
+    /// Makes the VM running, with a process that exits a moment after the client's request has failed,
+    /// as launchd only says so a moment after the connection closes. `lastAct` is its last work.
+    func processExitsShortly(after lastAct: @escaping @Sendable () throws -> Void = {}) -> Task<Void, any Error> {
+        launchctl.pid.withLock { $0 = 123 }
+        let launchctl = launchctl
+        return Task {
+            try await Task.sleep(for: .milliseconds(300))
+            try lastAct()
+            launchctl.pid.withLock { $0 = nil }
+        }
+    }
+
     var storedConfig: VMConfig { get throws { try VMConfig.load(from: bundle.appending(path: VMStore.configFile)) } }
 
     @Test func aStoppedVMsSnapshotIsDiskOnlyAndLeavesItStopped() async throws {
@@ -151,12 +163,7 @@ import Testing
     /// The connection closes as the process exits, and launchd only says so a moment later.
     @Test func aVMThatStopsDuringTheSaveIsReportedAsStopped() async throws {
         defer { cleanUp() }
-        launchctl.pid.withLock { $0 = 123 }
-        let launchctl = launchctl
-        let exit = Task {
-            try await Task.sleep(for: .milliseconds(300))
-            launchctl.pid.withLock { $0 = nil }
-        }
+        let exit = processExitsShortly()
         defer { exit.cancel() }
         await #expect(throws: SnapshotError.stoppedWhileSaving("dev", tag: "clean")) {
             _ = try await lifecycle.saveSnapshot("dev", tag: "clean")
@@ -166,13 +173,10 @@ import Testing
     /// The snapshot is in place before the process resumes the guest, so it can die with the save done.
     @Test func aVMThatStopsAfterTheSaveFinishedStillReportsTheSnapshot() async throws {
         defer { cleanUp() }
-        launchctl.pid.withLock { $0 = 123 }
-        let (launchctl, bundle, config) = (launchctl, bundle, config)
-        let exit = Task {
-            try await Task.sleep(for: .milliseconds(300))
+        let (bundle, config) = (bundle, config)
+        let exit = processExitsShortly {
             let partial = try Snapshot.begin("clean", in: bundle)
             try Snapshot.finish("clean", partial: partial, in: bundle, config: config)
-            launchctl.pid.withLock { $0 = nil }
         }
         defer { exit.cancel() }
         #expect(try await lifecycle.saveSnapshot("dev", tag: "clean").tag == "clean")
@@ -183,12 +187,7 @@ import Testing
         defer { cleanUp() }
         let partial = try Snapshot.begin("clean", in: bundle)
         try Snapshot.finish("clean", partial: partial, in: bundle, config: config)
-        launchctl.pid.withLock { $0 = 123 }
-        let launchctl = launchctl
-        let exit = Task {
-            try await Task.sleep(for: .milliseconds(300))
-            launchctl.pid.withLock { $0 = nil }
-        }
+        let exit = processExitsShortly()
         defer { exit.cancel() }
         await #expect(throws: SnapshotError.stoppedWhileSaving("dev", tag: "clean")) {
             _ = try await lifecycle.saveSnapshot("dev", tag: "clean")

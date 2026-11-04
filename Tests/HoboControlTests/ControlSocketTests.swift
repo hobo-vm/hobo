@@ -7,6 +7,17 @@ import HoboCore
     /// Short, since socket paths are capped at 103 bytes and the temp directory is long.
     let socket = URL(filePath: "/tmp/hobo-test-\(UUID().uuidString.prefix(8)).sock")
 
+    /// A connection to the server with no `ControlClient` in the way, to send what it never would.
+    func connectedSocket() throws -> Int32 {
+        let fd = try ControlSocket.makeSocket()
+        var address = try ControlSocket.address(socket.path)
+        let connected = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        try #require(connected == 0)
+        return fd
+    }
+
     @Test func requestsAreOneJSONLineWithTheVersion() throws {
         let data = try ControlSocket.encode(ControlEnvelope(version: ControlProtocol.version, request: .stop(force: true)))
         let text = String(decoding: data, as: UTF8.self)
@@ -94,12 +105,7 @@ import HoboCore
             return .exited(0)
         }
         defer { server.close() }
-        let fd = try ControlSocket.makeSocket()
-        var address = try ControlSocket.address(socket.path)
-        let connected = withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
-        }
-        try #require(connected == 0)
+        let fd = try connectedSocket()
         try ControlSocket.writeAll(fd, ControlSocket.encode(ControlEnvelope(version: ControlProtocol.version, request: .exec(command: ["sleep", "60"]))))
         try await Task.sleep(for: .milliseconds(200))
         close(fd)
@@ -118,13 +124,8 @@ import HoboCore
     @Test func serverRefusesOtherProtocolVersions() throws {
         let server = try ControlServer(path: socket) { _, _ in .accepted }
         defer { server.close() }
-        let fd = try ControlSocket.makeSocket()
+        let fd = try connectedSocket()
         defer { close(fd) }
-        var address = try ControlSocket.address(socket.path)
-        let connected = withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
-        }
-        try #require(connected == 0)
         // A request this version doesn't know must still get the version error, not a decoding one.
         try ControlSocket.writeAll(fd, Data("{\"version\":\(ControlProtocol.version + 1),\"request\":{\"view\":{}}}\n".utf8))
         var reader = LineReader(fd: fd)
@@ -137,13 +138,8 @@ import HoboCore
     @Test func serverAnswersARequestItDoesntKnowWithABadMessage() throws {
         let server = try ControlServer(path: socket) { _, _ in .accepted }
         defer { server.close() }
-        let fd = try ControlSocket.makeSocket()
+        let fd = try connectedSocket()
         defer { close(fd) }
-        var address = try ControlSocket.address(socket.path)
-        let connected = withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
-        }
-        try #require(connected == 0)
         try ControlSocket.writeAll(fd, Data("{\"version\":\(ControlProtocol.version),\"request\":{\"fromTheFuture\":{}}}\n".utf8))
         var reader = LineReader(fd: fd)
         let response = try ControlSocket.decode(ControlResponse.self, from: try #require(try reader.next()))
