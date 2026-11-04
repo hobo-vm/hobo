@@ -1,5 +1,6 @@
 import AppKit
 import CryptoKit
+import HoboCore
 
 /// A VM's icon for the Dock and ⌘Tab: a hobo sign in chalk on a dark tile, with the VM's name under
 /// it. The name picks the sign and the color, so a VM's icon never changes and needs no state.
@@ -32,8 +33,8 @@ enum VMIcon {
     /// The width that clears the tile's rounded corners at the name's height.
     private static let nameMaxWidth: CGFloat = 720
     private static let namePointSizes: ClosedRange<CGFloat> = 86...112
-    /// The characters a shortened name always keeps: `-` and the 4 hex digits that tell clones apart.
-    private static let keptSuffixLength = 5
+    /// The characters a shortened name always keeps, so clones of one source stay distinct.
+    private static let keptSuffixLength = VMStore.ephemeralSuffixLength
     private static let chalkFleckCount = 14000
 
     /// Which sign and color `name` gets. A SHA-256 rather than `Hasher`, which differs per process.

@@ -3,6 +3,16 @@ import AppKit
 import Testing
 
 @MainActor struct VMIconTests {
+    /// Swift can't list embedded resources, so `VMIcon.signs` is written by hand; a sign left out of
+    /// it would never appear, without any error.
+    @Test func everySignFileIsListed() throws {
+        let directory = URL(filePath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Sources/HoboVM/Resources/Signs")
+        let files = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        #expect(files.filter { $0.hasSuffix(".svg") }.count == VMIcon.signCount)
+    }
+
     /// The bytes compiled into the binary decode to an icon big enough for ⌘Tab.
     @Test func iconDraws() throws {
         let image = try #require(VMIcon.image(for: "ubuntu2604"))
