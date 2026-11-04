@@ -306,6 +306,7 @@ test_5() {
     SAVE_PID=
     note "the save said: $(tr '\n' ' ' < "$WORK/save.txt")"
     if [ $rc -ne 0 ]; then ok "the interrupted save reported failure"; else bad "the interrupted save exited 0"; fi
+    if grep -q "stopped before the snapshot finished" "$WORK/save.txt"; then ok "it said the VM stopped"; else bad "it didn't say the VM stopped"; fi
     check "the VM is stopped" is_stopped
     if tag_listed forced; then bad "the interrupted snapshot is listed"; else ok "the interrupted snapshot isn't listed"; fi
 
@@ -416,7 +417,7 @@ test_9() {
     check "the VM is still running" is_running
     check "the guest answers" guest_answers
     if tag_listed t9; then bad "a snapshot was listed"; else ok "no snapshot was listed"; fi
-    ask "Does the message above tell you what's wrong and what to do?"
+    if echo "$OUT" | grep -q "started by an older hobo"; then ok "it said to restart the VM"; else bad "it didn't say to restart the VM"; fi
     ensure_stopped
 }
 

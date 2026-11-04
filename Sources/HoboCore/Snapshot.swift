@@ -163,6 +163,8 @@ public enum SnapshotError: Error, Equatable, CustomStringConvertible {
     case ephemeral(String)
     case notSnapshottable(String, String)
     case needsForce(String, tag: String, state: String)
+    case stoppedWhileSaving(String, tag: String)
+    case startedByOlderHobo(String)
 
     public var description: String {
         switch self {
@@ -175,6 +177,9 @@ public enum SnapshotError: Error, Equatable, CustomStringConvertible {
         case .notSnapshottable(let name, let reason): "can't use snapshots of \(name): \(reason)"
         case .needsForce(let name, let tag, let state):
             "\(name) is \(state), and restoring would lose that (hobo snapshot restore --force \(name) \(tag))"
+        case .stoppedWhileSaving(let name, let tag): "\(name) stopped before the snapshot finished, so \"\(tag)\" wasn't saved"
+        case .startedByOlderHobo(let name):
+            "\(name) was started by an older hobo that can't take snapshots; restart it with this one (hobo stop \(name), then hobo start \(name))"
         }
     }
 }

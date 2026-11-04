@@ -148,6 +148,33 @@ import Testing
         guard case .unresponsive("dev", _) = error else { Issue.record("got \(String(describing: error))"); return }
     }
 
+    /// The connection closes as the process exits, and launchd only says so a moment later.
+    @Test func aVMThatStopsDuringTheSaveIsReportedAsStopped() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 123 }
+        let launchctl = launchctl
+        let exit = Task {
+            try await Task.sleep(for: .milliseconds(300))
+            launchctl.pid.withLock { $0 = nil }
+        }
+        defer { exit.cancel() }
+        await #expect(throws: SnapshotError.stoppedWhileSaving("dev", tag: "clean")) {
+            _ = try await lifecycle.saveSnapshot("dev", tag: "clean")
+        }
+    }
+
+    /// What a VM process from before snapshots answers, unable to decode the request.
+    @Test func aVMProcessFromAnOlderHoboIsToldApart() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 123 }
+        let undecodable = String(describing: ControlError.badMessage("DecodingError.typeMismatch"))
+        let server = try ControlServer(path: store.job(for: "dev").socket) { _, _ in .error(undecodable) }
+        defer { server.close() }
+        await #expect(throws: SnapshotError.startedByOlderHobo("dev")) {
+            _ = try await lifecycle.saveSnapshot("dev", tag: "clean")
+        }
+    }
+
     /// Stopping would delete it and its snapshots, so restoring could never work.
     @Test func anEphemeralVMCantBeSnapshotted() async throws {
         defer { cleanUp() }

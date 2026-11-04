@@ -33,13 +33,27 @@ extension VMLifecycle {
             // The answer comes once the VM is running again, which takes a while for a large memory.
             response = try await ControlClient.send(.snapshot(tag: tag), to: store.job(for: name).socket, timeout: timeout)
         } catch {
+            if await hasStopped(name) { throw SnapshotError.stoppedWhileSaving(name, tag: tag) }
             throw LifecycleError.unresponsive(name, String(describing: error))
         }
         switch response {
         case .accepted: return
-        case .error(let message): throw LifecycleError.refused(name, message)
+        case .error(let message):
+            // A process from before snapshots can't decode the request, and answers with that error.
+            if message.hasPrefix(String(describing: ControlError.badMessage(""))) { throw SnapshotError.startedByOlderHobo(name) }
+            throw LifecycleError.refused(name, message)
         default: throw ControlError.badMessage("expected an acknowledgement, got \(response)")
         }
+    }
+
+    /// Whether a VM whose process just stopped answering is gone, rather than stuck. The connection
+    /// closes as the process exits, a moment before launchd can say so, so this gives it 2 s.
+    private func hasStopped(_ name: String) async -> Bool {
+        for _ in 0..<20 {
+            guard let vm = try? store.find(name), case .running = vm.status else { return true }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return false
     }
 
     /// What `snapshot restore` left the VM doing.
