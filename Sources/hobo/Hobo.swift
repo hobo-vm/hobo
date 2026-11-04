@@ -357,7 +357,8 @@ struct List: OutputCommand {
     }
 
     private func snapshotsCell(count: Int, bytes: UInt64) -> String {
-        count == 0 ? "—" : "\(count) (\(fileSize(bytes)))"
+        // Bytes with no snapshot to list are what a failed save left behind, which still count.
+        count == 0 && bytes == 0 ? "—" : "\(count) (\(fileSize(bytes)))"
     }
 
     private func row(_ vm: VMStore.VM, summary: VMSummary) -> [String] {
