@@ -321,7 +321,8 @@ global VMs on 2026-11-01.
       (Dock, ⌘Tab, its own menu bar, a full-screen Space): as `.accessory` it never owned the menu
       bar, so clicking it sent the window behind the active app. Hidden, it goes back to `.accessory`.
       Its menu has Keep Running in Background, Suspend and Shut Down, but no Quit, which would kill
-      the VM. `hobo list` shows `running (window)` while it shows.
+      the VM. `hobo list` shows `running (window)` while it shows, and what the VM process is doing
+      when it isn't plainly running, such as `stopping (saving state)` during a suspend.
     - Closing it asks: Keep Running (hides it; the next `view` re-shows the same window), Suspend
       (the `suspend` sequence; the window hides while the state saves, and comes back with the
       reason if the save fails), Shut Down (the `stop` sequence), or Cancel. The dialog is a sheet,

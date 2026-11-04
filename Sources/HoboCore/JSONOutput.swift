@@ -44,6 +44,11 @@ public struct VMSummary: Codable, Equatable, Sendable {
     /// Whether the VM's window is showing (`hobo view`). Only for a `running` VM whose process
     /// answered; filled in by the client, since only the VM process knows.
     public var windowShown: Bool?
+    /// What a `running` VM's process says it is doing, when that isn't plainly running: `starting`
+    /// or `stopping` (a suspend is `stopping`, detail `saving state`). Filled in by the client.
+    public var phase: String?
+    /// The VM process's detail for `phase`, e.g. `booting` or `shutting down over SSH`.
+    public var phaseDetail: String?
 
     public init(_ vm: VMStore.VM) {
         name = vm.name
