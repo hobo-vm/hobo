@@ -70,11 +70,9 @@ public struct Snapshot: Equatable, Sendable {
     }
 
     /// Records what `config` says the VM was as this snapshot was taken, and puts it in place.
-    @discardableResult
-    public static func finish(_ tag: String, partial: URL, in bundle: URL, config: VMConfig, createdAt: Date = .now) throws -> Snapshot {
+    public static func finish(_ tag: String, partial: URL, in bundle: URL, config: VMConfig, createdAt: Date = .now) throws {
         try SnapshotRecord(config: config, createdAt: createdAt).write(to: partial.appending(path: recordFile))
         try FileManager.default.moveItem(at: partial, to: directory(tag, in: bundle))
-        return try find(tag, in: bundle)
     }
 
     /// Deletes a save that died partway. A save racing this one fails, and says so, rather than
