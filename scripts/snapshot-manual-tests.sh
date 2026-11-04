@@ -267,7 +267,8 @@ test_5() {
     background_save forced
     sleep 2
     if ! kill -0 "$CHILD" 2> /dev/null; then
-        wait "$CHILD"
+        wait "$CHILD" || bad "the save failed: $(tr '\n' ' ' < "$WORK/save.txt")"
+        CHILD=
         INCONCLUSIVE_HERE="the save finished in under 2 s, before the forced stop"
         drop_snapshot forced
         return
@@ -304,7 +305,8 @@ test_6() {
     background_save interrupted
     sleep 2
     if ! kill -0 "$CHILD" 2> /dev/null; then
-        wait "$CHILD"
+        wait "$CHILD" || bad "the save failed: $(tr '\n' ' ' < "$WORK/save.txt")"
+        CHILD=
         INCONCLUSIVE_HERE="the save finished in under 2 s, before the Ctrl-C"
         drop_snapshot interrupted
         return
