@@ -49,13 +49,13 @@ public struct LinuxVMBundle: VMBundle {
         return bundle
     }
 
-    /// `shares` go on one virtio-fs tag, which the guest's fstab (from the cloud-init seed) mounts
-    /// at `/mnt/hobo`, so each appears at `/mnt/hobo/<name>`. The device is attached even with no
-    /// shares, so the mount never fails and nothing written there lands on the guest's disk.
     public func writeNewMachineIdentifier() throws {
         try VZGenericMachineIdentifier().dataRepresentation.write(to: machineIdentifier, options: .atomic)
     }
 
+    /// `shares` go on one virtio-fs tag, which the guest's fstab (from the cloud-init seed) mounts
+    /// at `/mnt/hobo`, so each appears at `/mnt/hobo/<name>`. The device is attached even with no
+    /// shares, so the mount never fails and nothing written there lands on the guest's disk.
     public func configuration(
         cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare]
     ) throws -> VZVirtualMachineConfiguration {

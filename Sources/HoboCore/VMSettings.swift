@@ -1,8 +1,9 @@
 import Foundation
 
 /// A `hobo set` change to a VM's `config.json`: each setting to change, nil for those left alone.
-/// Only `keep` may change a running or suspended VM; the rest need it stopped. The disk only grows (decision 9): its ASIF image already returns freed blocks to the
-/// host, so a smaller size would save nothing.
+/// Only `keep` may change a running or suspended VM; the rest need it stopped. The disk only
+/// grows (decision 9): its ASIF image already returns freed blocks to the host, so a smaller size
+/// would save nothing.
 public struct VMSettings: Equatable, Sendable {
     public var cpus: Int?
     public var memory: ByteSize?
