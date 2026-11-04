@@ -188,6 +188,54 @@ import Testing
         expect(store.diskUsage(of: store.list()).totalBytes, megabytes: 2)
     }
 
+    /// VM disks are sparse: only the data counts, whatever the file's length.
+    @Test func aSparseFilesHolesDoNotCount() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let bundle = try made("dev", in: store, megabytes: 1)
+        let disk = bundle.appending(path: "disk")
+        try write(1, to: disk, at: 64 << 20)
+        let handle = try FileHandle(forWritingTo: disk)
+        try handle.truncate(atOffset: 128 << 20) // So it ends in a hole too.
+        try handle.close()
+        expect(store.diskUsage(of: store.list()).totalBytes, megabytes: 2)
+    }
+
+    @Test func aStrayFileInSnapshotsCounts() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let bundle = try made("dev", in: store, megabytes: 0)
+        let root = Snapshot.root(in: bundle)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try write(2, to: root.appending(path: "stray"))
+        let usage = store.diskUsage(of: store.list())
+        expect(usage.snapshotBytes["dev"], megabytes: 2)
+        expect(usage.uniqueBytes["dev"]?["stray"], megabytes: 2)
+    }
+
+    @Test func aFileThatCannotBeReadCountsAsUnmapped() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let file = try made("dev", in: store, megabytes: 2).appending(path: "disk")
+        #expect(chmod(file.path, 0) == 0)
+        var extents = FileExtents()
+        extents.add(file: file)
+        #expect(extents.mapped.isEmpty)
+        expect(extents.unmappedBytes, megabytes: 2)
+    }
+
+    /// A symlink's target is someone else's to count, and a file can vanish while a VM runs.
+    @Test func onlyRegularFilesAddExtents() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let bundle = try made("dev", in: store, megabytes: 2)
+        let link = bundle.appending(path: "link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: bundle.appending(path: "disk"))
+        var extents = FileExtents()
+        for file in [link, bundle, bundle.appending(path: "gone")] { extents.add(file: file) }
+        #expect(extents == FileExtents())
+    }
+
     @Test func listingJSONHasTotalsAndSnapshots() throws {
         let store = temporaryStore()
         defer { try? FileManager.default.removeItem(at: store.directory) }
