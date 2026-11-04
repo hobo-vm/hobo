@@ -4,8 +4,9 @@
 # judge about the window. It builds this checkout, so the binary on your PATH doesn't matter.
 #
 # It works on its own clone of a stopped macOS VM and deletes that clone when it ends. It refuses
-# to run if a VM with the clone's name already exists, and touches no other VM. It boots one macOS
-# guest, so stop anything that would make a third, and don't run it alongside `make integration-test`.
+# to run if a VM with the clone's name already exists, and touches no other VM. A host runs at most
+# two macOS guests and this boots one, so leave room for it, and don't run it alongside
+# `make integration-test`.
 
 usage() {
     cat <<EOF
@@ -65,12 +66,12 @@ BUNDLE=${HOBO_VMS:-$HOME/Hobo}/$VM.hobovm
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/hobo-snapshot-tests.XXXXXX")
 LOG=$WORK/log.txt
 RESULTS=$WORK/results.txt
-CREATED=0
-FAILED_HERE=0
-UNCHECKED_HERE=0
-INCONCLUSIVE_HERE=
+CLONED=0
+TEST_FAILED=0
+TEST_UNCHECKED=0
+TEST_INCONCLUSIVE=
 ANY_FAILED=0
-CHILD=
+SAVE_PID=
 : > "$RESULTS"
 
 # --- Output and results ---------------------------------------------------------------------------
@@ -80,7 +81,7 @@ ok() { echo "  ok    $*"; echo "ok: $*" >> "$LOG"; }
 bad() {
     echo "  FAIL  $*"
     echo "FAIL: $*" >> "$LOG"
-    FAILED_HERE=1
+    TEST_FAILED=1
     ANY_FAILED=1
 }
 # check <description> <command...>: passes if the command does.
@@ -94,7 +95,7 @@ check() {
 ask() {
     if [ "$ATTENDED" = 0 ]; then
         note "not checked (unattended): $1"
-        UNCHECKED_HERE=$((UNCHECKED_HERE + 1))
+        TEST_UNCHECKED=$((TEST_UNCHECKED + 1))
         return
     fi
     local answer
@@ -126,10 +127,10 @@ hobo() {
 guest() { "$HOBO" exec "$VM" -- sh -c "$1" 2>> "$LOG"; }
 guest_answers() { "$HOBO" exec "$VM" -- true >> "$LOG" 2>&1; }
 
-row() { "$HOBO" list 2>> "$LOG" | grep -E "^$VM +"; }
-is_running() { row | grep -Eq "^$VM +running"; }
-is_stopped() { row | grep -Eq "^$VM +stopped"; }
-window_shown() { row | grep -Eq "^$VM +running \(window\)"; }
+list_row() { "$HOBO" list 2>> "$LOG" | grep -E "^$VM +"; }
+is_running() { list_row | grep -Eq "^$VM +running"; }
+is_stopped() { list_row | grep -Eq "^$VM +stopped"; }
+window_shown() { list_row | grep -Eq "^$VM +running \(window\)"; }
 tag_listed() { "$HOBO" snapshot list "$VM" 2>> "$LOG" | grep -Eq "^$1 "; }
 no_partial_left() { ! ls -d "$BUNDLE"/snapshots/.saving-* > /dev/null 2>&1; }
 config_value() { sed -n "s/.*\"$1\"[^0-9]*\([0-9]*\).*/\1/p" "$BUNDLE/config.json" | head -1; }
@@ -191,12 +192,12 @@ wait_for_guest() {
 
 drop_snapshot() { hobo snapshot delete "$VM" "$1"; }
 
-# Starts a save in the background, leaving its pid in CHILD and its output in $WORK/save.txt. With
+# Starts a save in the background, leaving its pid in SAVE_PID and its output in $WORK/save.txt. With
 # job control on, the shell doesn't make it ignore SIGINT as it would any background job.
 background_save() {
     set -m
     "$HOBO" snapshot save "$VM" "$1" > "$WORK/save.txt" 2>&1 &
-    CHILD=$!
+    SAVE_PID=$!
     set +m
 }
 
@@ -266,17 +267,17 @@ test_5() {
     ensure_running || return
     background_save forced
     sleep 2
-    if ! kill -0 "$CHILD" 2> /dev/null; then
-        wait "$CHILD" || bad "the save failed: $(tr '\n' ' ' < "$WORK/save.txt")"
-        CHILD=
-        INCONCLUSIVE_HERE="the save finished in under 2 s, before the forced stop"
+    if ! kill -0 "$SAVE_PID" 2> /dev/null; then
+        wait "$SAVE_PID" || bad "the save failed: $(tr '\n' ' ' < "$WORK/save.txt")"
+        SAVE_PID=
+        TEST_INCONCLUSIVE="the save finished in under 2 s, before the forced stop"
         drop_snapshot forced
         return
     fi
     hobo stop --force "$VM" || bad "the forced stop failed: $OUT"
-    wait "$CHILD"
+    wait "$SAVE_PID"
     local rc=$?
-    CHILD=
+    SAVE_PID=
     note "the save said: $(tr '\n' ' ' < "$WORK/save.txt")"
     [ $rc -ne 0 ] && ok "the interrupted save reported failure" || bad "the interrupted save exited 0"
     check "the VM is stopped" is_stopped
@@ -304,17 +305,17 @@ test_6() {
     sleeper=$(start_sleeper)
     background_save interrupted
     sleep 2
-    if ! kill -0 "$CHILD" 2> /dev/null; then
-        wait "$CHILD" || bad "the save failed: $(tr '\n' ' ' < "$WORK/save.txt")"
-        CHILD=
-        INCONCLUSIVE_HERE="the save finished in under 2 s, before the Ctrl-C"
+    if ! kill -0 "$SAVE_PID" 2> /dev/null; then
+        wait "$SAVE_PID" || bad "the save failed: $(tr '\n' ' ' < "$WORK/save.txt")"
+        SAVE_PID=
+        TEST_INCONCLUSIVE="the save finished in under 2 s, before the Ctrl-C"
         drop_snapshot interrupted
         return
     fi
-    kill -INT "$CHILD"
-    wait "$CHILD"
+    kill -INT "$SAVE_PID"
+    wait "$SAVE_PID"
     note "the client exited $? and said: $(tr '\n' ' ' < "$WORK/save.txt")"
-    CHILD=
+    SAVE_PID=
     # The VM process finishes the save without the client, and exec is refused until it has.
     check "the guest answers again: the VM isn't left paused" wait_for_guest
     check "the VM is still running" is_running
@@ -360,7 +361,7 @@ test_8() {
     ensure_stopped
     local disk grown
     disk=$(config_value disk)
-    grown=$((disk / 1073741824 + 4))GB
+    grown=$((disk / (1024 * 1024 * 1024) + 4))GB
     hobo snapshot save "$VM" t8 || bad "the save failed: $OUT"
     hobo set "$VM" --disk "$grown" || bad "hobo set --disk failed: $OUT"
     ensure_running || return
@@ -387,7 +388,7 @@ test_9() {
         OLD_HOBO=$(git -C "$REPO" worktree list --porcelain | sed -n '1s/^worktree //p')/.build/release/hobo
     fi
     if [ ! -x "$OLD_HOBO" ] || "$OLD_HOBO" snapshot --help 2>&1 | grep -q "hobo snapshot"; then
-        INCONCLUSIVE_HERE="$OLD_HOBO isn't a hobo from before snapshots (pass --old-hobo)"
+        TEST_INCONCLUSIVE="$OLD_HOBO isn't a hobo from before snapshots (pass --old-hobo)"
         return
     fi
     ensure_stopped
@@ -447,20 +448,20 @@ wanted() {
 
 run_test() {
     wanted "$1" || return 0
-    FAILED_HERE=0
-    UNCHECKED_HERE=0
-    INCONCLUSIVE_HERE=
+    TEST_FAILED=0
+    TEST_UNCHECKED=0
+    TEST_INCONCLUSIVE=
     echo
     echo "=== $1. $(title "$1")"
     echo "=== $1. $(title "$1")" >> "$LOG"
     "test_$1"
     local verdict=PASS
-    if [ "$FAILED_HERE" = 1 ]; then
+    if [ "$TEST_FAILED" = 1 ]; then
         verdict=FAIL
-    elif [ -n "$INCONCLUSIVE_HERE" ]; then
-        verdict="INCONCLUSIVE: $INCONCLUSIVE_HERE"
-    elif [ "$UNCHECKED_HERE" -gt 0 ]; then
-        verdict="PASS, with $UNCHECKED_HERE thing(s) for a person not checked"
+    elif [ -n "$TEST_INCONCLUSIVE" ]; then
+        verdict="INCONCLUSIVE: $TEST_INCONCLUSIVE"
+    elif [ "$TEST_UNCHECKED" -gt 0 ]; then
+        verdict="PASS, with $TEST_UNCHECKED thing(s) for a person not checked"
     fi
     echo "  -> $verdict"
     printf '%3s. %-46s %s\n' "$1" "$(title "$1")" "$verdict" >> "$RESULTS"
@@ -469,8 +470,8 @@ run_test() {
 # --- Setup and cleanup ----------------------------------------------------------------------------
 
 cleanup() {
-    [ -n "$CHILD" ] && kill "$CHILD" 2> /dev/null
-    [ "$CREATED" = 1 ] || return 0
+    [ -n "$SAVE_PID" ] && kill "$SAVE_PID" 2> /dev/null
+    [ "$CLONED" = 1 ] || return 0
     if [ "$KEEP" = 1 ]; then
         echo "Kept $VM. Delete it with: $HOBO stop --force $VM; $HOBO delete $VM --yes"
         return 0
@@ -514,8 +515,9 @@ if ! hobo clone "$SOURCE" "$VM"; then
     echo "The clone failed: $OUT" >&2
     exit 2
 fi
-CREATED=1
+CLONED=1
 
+# Test 4 goes last so its gap holds up nothing else.
 for number in 1 2 3 5 6 7 8 9 10 4; do
     run_test "$number"
 done
