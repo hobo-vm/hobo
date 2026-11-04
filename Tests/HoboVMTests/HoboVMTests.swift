@@ -440,13 +440,11 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try !windowShown())
         #expect(try run(hobo, ["view", vm], in: work, environment: env) == 0)
         #expect(try output(hobo, ["snapshot", "restore", "--force", vm, "live"], environment: env).contains("\(vm) is running"))
-        var windowCameBack = false
-        for _ in 0..<30 {
-            windowCameBack = try windowShown()
-            if windowCameBack { break }
+        let deadline = Date.now.addingTimeInterval(30)
+        while try !windowShown(), Date.now < deadline {
             Thread.sleep(forTimeInterval: 1)
         }
-        #expect(windowCameBack)
+        #expect(try windowShown())
 
         // Restored once, the snapshot is still there to restore again, and suspended it takes --force.
         _ = try guest("echo again > $HOME/marker; sync")
