@@ -78,6 +78,8 @@ public final class VMRunner {
         // Left by a suspend that died partway; `suspended/` appears only once a save is complete.
         try? FileManager.default.removeItem(at: SavedState.partialDirectory(in: vm.bundle))
         Snapshot.removePartials(in: vm.bundle)
+        // Left by a restore that died partway; `restore` itself finishes before it starts the VM.
+        try? FileManager.default.removeItem(at: vm.bundle.appending(path: VMStore.restoringDirectory))
         let saved = SavedState.load(in: vm.bundle)
         if let saved {
             // The saved state fits only the run it came from, shares and all.

@@ -293,7 +293,8 @@ global VMs on 2026-11-01.
       records the time, CPUs, memory, disk size and `diskGrowPending`. It is written to
       `snapshots/.saving-<tag>` and renamed into place; the next save or boot deletes a leftover.
     - Restoring clones the files into the bundle's `restoring/`, so running out of space fails
-      before the VM loses anything, then renames them over the VM's, the saved state last. A live
+      before the VM loses anything, then renames them over the VM's, the saved state last; the next
+      restore or boot deletes what a restore that died left in that folder. A live
       snapshot's state becomes the VM's saved state, and `restore` starts the VM, so the one resume
       path does the clock, the share remount and `start --cold`; if the resume fails the VM stays
       suspended. A disk-only snapshot leaves it stopped. The snapshot stays, to restore again.
