@@ -85,3 +85,11 @@ struct InitOptionTests {
         _ = try Init.parse(["--os", "linux", "--server"])
     }
 }
+
+struct DeleteOptionTests {
+    @Test func jsonNeedsSomethingThatSkipsThePrompt() throws {
+        #expect(throws: (any Error).self) { try Delete.parse(["dev", "--json"]) }
+        _ = try Delete.parse(["dev", "--json", "--yes"])
+        _ = try Delete.parse(["dev", "--json", "--force"])
+    }
+}
