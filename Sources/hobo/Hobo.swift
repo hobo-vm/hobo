@@ -832,14 +832,14 @@ struct Delete: OutputCommand {
     @Flag(name: .shortAndLong, help: "Don't ask for confirmation.")
     var yes = false
 
-    @Flag(help: "If the VM is running, power it off at once first, killing its VM process if it isn't answering.")
+    @Flag(help: "Don't ask for confirmation, and if the VM is running, power it off at once first, killing its VM process if it isn't answering.")
     var force = false
 
-    @Flag(help: "Print the deleted VM's name as JSON. Needs --yes.")
+    @Flag(help: "Print the deleted VM's name as JSON. Needs --yes or --force.")
     var json = false
 
     func validate() throws {
-        if json && !yes { throw ValidationError("--json can't ask for confirmation; pass --yes too") }
+        if json && !yes && !force { throw ValidationError("--json can't ask for confirmation; pass --yes too") }
     }
 
     static let jsonStyle = Output.JSONStyle.document
@@ -848,13 +848,12 @@ struct Delete: OutputCommand {
         let store = VMStore.standard()
         let vm = try store.find(name)
         try store.checkStopped(vm, allowSuspended: true, allowRunning: force)
-        // The prompt is text only: validate() requires --yes with --json.
-        if !yes {
+        // The prompt is text only: validate() requires --yes or --force with --json.
+        if !yes && !force {
             guard isatty(STDIN_FILENO) != 0 else {
                 throw CLIError("refusing to delete \(vm.name) without a terminal to confirm (pass --yes)")
             }
-            let action = vm.job?.pid != nil ? "Power off and delete running VM" : "Delete VM"
-            print("\(action) \"\(vm.name)\" (\(fileSize(vm.allocatedBytes)))? [y/N] ", terminator: "")
+            print("Delete VM \"\(vm.name)\" (\(fileSize(vm.allocatedBytes)))? [y/N] ", terminator: "")
             guard let answer = readLine(), ["y", "yes"].contains(answer.lowercased()) else {
                 return Reply(["deleted": String?.none], text: "Not deleted.")
             }

@@ -59,7 +59,7 @@ global VMs on 2026-11-01.
    with exit status 1; usage errors stay text on stderr. Sizes are bytes, dates ISO 8601, and the
    shapes (`VMSummary`, `RecipeSummary`, the lifecycle results) live in the core so `hobo mcp` returns
    the same ones. A CLI command gets all of this by conforming to `OutputCommand`, returning its
-   result rather than printing it. `delete --json` needs `--yes`, since it can't prompt. `ip --json`
+   result rather than printing it. `delete --json` needs `--yes` or `--force`, since it can't prompt. `ip --json`
    gives the name and IP; `exec --json` and `cp --json` send the guest's output (or scp's) to stderr
    and print `{"exitStatus":…}`, still exiting with that status. `ssh` has no `--json`: it hands the
    terminal to ssh, and `exec` is the scriptable way to run a command. `usage` has no `--json`
@@ -80,8 +80,8 @@ global VMs on 2026-11-01.
    (`delete --force` powers a running VM off first, as `stop --force` does).
    Names match `[A-Za-z0-9][A-Za-z0-9._-]{0,62}` (a filename, launchd label and socket name) and
    collide case-insensitively; `create` and `rename` refuse a taken name, with no `--force`.
-   `delete` asks for confirmation on a terminal, refuses without one unless `--yes` (`--force`
-   doesn't imply it: one says what may be lost, the other that nobody need be asked), and `rename`
+   `delete` asks for confirmation on a terminal, refuses without one unless `--yes` or `--force`
+   (which implies `--yes`), and `rename`
    is a directory move (nothing inside the bundle records the name). `~/.hobo/` holds only small
    state: the IPSW index, logs, sockets, launchd plists.
    A macOS guest's Apple ID identity derives from the host's Secure Enclave and host user, so a
