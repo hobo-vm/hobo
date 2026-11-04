@@ -10,12 +10,8 @@ extension VMLifecycle {
         let vm = try store.find(name)
         try Snapshot.validate(tag)
         let config: VMConfig
-        var running = false
         switch vm.status {
-        case .running(let stored, _):
-            config = stored
-            running = true
-        case .stopped(let stored), .crashed(let stored, _), .suspended(let stored, _):
+        case .running(let stored, _), .stopped(let stored), .crashed(let stored, _), .suspended(let stored, _):
             config = stored
         case .building: throw VMStoreError.busy(vm.name, reason: "being built")
         case .failed: throw SnapshotError.notSnapshottable(vm.name, "its build failed (hobo delete \(vm.name))")
@@ -23,7 +19,7 @@ extension VMLifecycle {
         }
         // Stopping would delete it, and its snapshots with it, so restore could never work.
         if config.ephemeral { throw SnapshotError.ephemeral(vm.name) }
-        if running {
+        if case .running = vm.status {
             try await askProcessToSnapshot(vm.name, tag: tag, timeout: timeout)
         } else {
             try store.snapshotAtRest(vm.bundle, tag: tag, config: config)
