@@ -149,18 +149,4 @@ extension VMStore {
             return (.snapshot(vm: vm.name, tag: entry), extents)
         }
     }
-
-    /// Everything under `directory`, leaving out any top-level entry named `excluded`.
-    private static func files(in directory: URL, excluding excluded: String? = nil) -> [URL] {
-        guard let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil) else { return [] }
-        var found: [URL] = []
-        for case let file as URL in files {
-            if files.level == 1, file.lastPathComponent == excluded {
-                files.skipDescendants()
-            } else {
-                found.append(file)
-            }
-        }
-        return found
-    }
 }

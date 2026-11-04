@@ -338,17 +338,23 @@ public struct VMStore: Sendable {
 
     /// Bytes `directory` occupies on the host, leaving out any top-level entry named `excluded`.
     static func allocatedBytes(of directory: URL, excluding excluded: String? = nil) -> UInt64 {
-        let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey]
-        guard let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: keys) else { return 0 }
-        var total: UInt64 = 0
+        files(in: directory, excluding: excluded).reduce(0) { total, file in
+            total + UInt64((try? file.resourceValues(forKeys: [.totalFileAllocatedSizeKey]).totalFileAllocatedSize) ?? 0)
+        }
+    }
+
+    /// Everything under `directory`, leaving out any top-level entry named `excluded`.
+    static func files(in directory: URL, excluding excluded: String? = nil) -> [URL] {
+        guard let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil) else { return [] }
+        var found: [URL] = []
         for case let file as URL in files {
             if files.level == 1, file.lastPathComponent == excluded {
                 files.skipDescendants()
-                continue
+            } else {
+                found.append(file)
             }
-            total += UInt64((try? file.resourceValues(forKeys: Set(keys)).totalFileAllocatedSize) ?? 0)
         }
-        return total
+        return found
     }
 }
 
