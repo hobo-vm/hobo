@@ -63,7 +63,9 @@ extension VMLifecycle {
         switch vm.status {
         case .running:
             guard force else { throw SnapshotError.needsForce(vm.name, tag: snapshot.tag, state: "running") }
-            windowWasShown = (try? await ControlClient.status(at: store.job(for: vm.name).socket))?.windowShown ?? false
+            // A process too stuck to answer is about to be powered off anyway, and restores windowless.
+            let status = try? await ControlClient.status(at: store.job(for: vm.name).socket)
+            windowWasShown = status?.windowShown ?? false
             _ = try await stop(vm.name, force: true)
         case .suspended:
             guard force else { throw SnapshotError.needsForce(vm.name, tag: snapshot.tag, state: "suspended") }

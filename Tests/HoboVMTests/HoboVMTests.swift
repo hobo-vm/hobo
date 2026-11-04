@@ -434,13 +434,17 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
 
         // A restore opens no window of its own, but one that was showing comes back with the VM. It
         // opens just after the guest answers SSH, so it may be a moment behind the restore.
-        #expect(try !output(hobo, ["list"], environment: env).contains(Regex("\(vm)\\s+running \\(window\\)")))
+        func windowShown() throws -> Bool {
+            try output(hobo, ["list"], environment: env).contains(Regex("\(vm)\\s+running \\(window\\)"))
+        }
+        #expect(try !windowShown())
         #expect(try run(hobo, ["view", vm], in: work, environment: env) == 0)
         #expect(try output(hobo, ["snapshot", "restore", "--force", vm, "live"], environment: env).contains("\(vm) is running"))
         var windowCameBack = false
-        for _ in 0..<30 where !windowCameBack {
-            windowCameBack = try output(hobo, ["list"], environment: env).contains(Regex("\(vm)\\s+running \\(window\\)"))
-            if !windowCameBack { Thread.sleep(forTimeInterval: 1) }
+        for _ in 0..<30 {
+            windowCameBack = try windowShown()
+            if windowCameBack { break }
+            Thread.sleep(forTimeInterval: 1)
         }
         #expect(windowCameBack)
 
