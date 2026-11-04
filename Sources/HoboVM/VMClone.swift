@@ -33,8 +33,13 @@ extension VMLifecycle {
             return (name, try await start(name, gui: gui, shares: shares, timeout: timeout))
         } catch {
             // Its VM process deletes it as it exits; one that never ran (a bad share, say) is
-            // deleted here. One that is still booting after a timeout is left to run.
-            if case .stopped = try? store.find(name).status { try? store.delete(name) }
+            // deleted here, as is one killed by a signal before it could delete itself (its log
+            // stays, as after any failed run). One still booting after a timeout is left to run.
+            switch try? store.find(name).status {
+            case .stopped?: try? store.delete(name)
+            case .crashed?: store.removeIfEphemeral(name, keepLog: true)
+            default: break
+            }
             throw error
         }
     }
