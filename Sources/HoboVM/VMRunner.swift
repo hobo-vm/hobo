@@ -197,14 +197,7 @@ public final class VMRunner {
             beginStop(force: force)
             return .accepted
         case .suspend:
-            guard status.state != .stopping else { return .error("\(name) is shutting down") }
-            // Not while starting: a failed save would hand the VM back as starting after the boot
-            // sequence had stopped watching it, and a resumed guest may be mid clock or share fix-up.
-            guard status.state == .running, let guest else {
-                return .error("\(name) is still starting; try again once it is running")
-            }
-            // Its own task, so a client that hangs up can't cancel the save halfway.
-            return await Task { await suspend(guest, reply: reply) }.value
+            return await beginSuspend(reply: reply)
         case .view:
             guard status.state != .stopping else { return .error("\(name) is shutting down") }
             guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
@@ -249,15 +242,32 @@ public final class VMRunner {
         if window == nil {
             let window = VMWindow(guest: guest, title: name, log: log)
             window.onShutDown = { [weak self] in self?.beginStop(force: false) }
+            window.onSuspend = { [weak self] in
+                guard let self else { return nil }
+                if case .error(let message) = await beginSuspend(reply: nil) { return message }
+                return nil
+            }
             self.window = window
         }
         window?.show()
     }
 
+    /// `suspend` from a client or the window's close dialog (which has no client to answer).
+    private func beginSuspend(reply: ControlReply?) async -> ControlResponse {
+        guard status.state != .stopping else { return .error("\(name) is shutting down") }
+        // Not while starting: a failed save would hand the VM back as starting after the boot
+        // sequence had stopped watching it, and a resumed guest may be mid clock or share fix-up.
+        guard status.state == .running, let guest else {
+            return .error("\(name) is still starting; try again once it is running")
+        }
+        // Its own task, so a client that hangs up can't cancel the save halfway.
+        return await Task { await suspend(guest, reply: reply) }.value
+    }
+
     /// Decision 11: pauses the VM, saves its state into `suspending/` and renames that into
     /// place, then powers the paused VM off and exits; the guest never runs past the save, so the
     /// disk stays as the state expects. A failed save is cleaned up and the VM resumed.
-    private func suspend(_ guest: GuestVM, reply: ControlReply) async -> ControlResponse {
+    private func suspend(_ guest: GuestVM, reply: ControlReply?) async -> ControlResponse {
         let previous = (state: status.state, detail: status.detail)
         status.state = .stopping
         status.detail = "saving state"
@@ -289,7 +299,7 @@ public final class VMRunner {
         }
         log("Saved the VM's state; powering it off")
         // Answered now: once the process exits, the return value below can't be.
-        try? reply.send(.accepted)
+        try? reply?.send(.accepted)
         do {
             try await guest.forceStop()
         } catch {

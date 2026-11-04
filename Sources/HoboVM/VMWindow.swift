@@ -2,7 +2,7 @@ import AppKit
 import Virtualization
 
 /// The on-demand window onto a running guest (`hobo view`, `start --gui`). Closing it asks
-/// whether to keep the VM running headless or shut it down; the window is only ever hidden, so
+/// whether to keep the VM running headless, suspend it or shut it down; the window is only ever hidden, so
 /// the next `show` brings back the same one. While it shows, the process is a regular app (Dock,
 /// ⌘Tab, its own menu bar, full screen); hidden, it goes back to `.accessory`.
 @MainActor
@@ -14,8 +14,11 @@ final class VMWindow: NSObject, NSWindowDelegate {
     private let log: (String) -> Void
     /// Called when the user picks Shut Down in the close dialog.
     var onShutDown: (() -> Void)?
+    /// Called when the user picks Suspend; returns why the suspend failed, or nil once the state
+    /// is saved (the process then exits).
+    var onSuspend: (() async -> String?)?
     /// Set while `create` waits on the window (the recoveryOS step): closing the window, or the
-    /// menu's Cancel Build, offers to cancel the build instead of Keep Running and Shut Down.
+    /// menu's Cancel Build, offers to cancel the build instead of Keep Running, Suspend and Shut Down.
     var onCancelBuild: (() -> Void)?
     /// Whether the window is showing, as opposed to hidden by Keep Running or a shutdown.
     private(set) var isShown = false
@@ -121,13 +124,14 @@ final class VMWindow: NSObject, NSWindowDelegate {
     }
 
     /// The menu bar the window gets while it shows. No Quit: quitting would kill the VM, and the
-    /// close dialog already offers Keep Running and Shut Down.
+    /// close dialog already offers Keep Running, Suspend and Shut Down.
     private func makeMenu() -> NSMenu {
         let appMenu = NSMenu()
         if onCancelBuild != nil {
             appMenu.addItem(withTitle: "Cancel Building \(name)", action: #selector(confirmCancelBuild), keyEquivalent: "").target = self
         } else {
             appMenu.addItem(withTitle: "Keep \(name) Running in Background", action: #selector(keepRunning), keyEquivalent: "").target = self
+            appMenu.addItem(withTitle: "Suspend \(name)", action: #selector(suspend), keyEquivalent: "").target = self
             appMenu.addItem(withTitle: "Shut Down \(name)", action: #selector(shutDown), keyEquivalent: "").target = self
         }
 
@@ -154,6 +158,20 @@ final class VMWindow: NSObject, NSWindowDelegate {
         onShutDown?()
     }
 
+    /// Hides the window while the state saves; a failed save brings it back with the reason.
+    @objc private func suspend() {
+        guard let onSuspend else { return }
+        hide()
+        Task { [weak self] in
+            guard let failure = await onSuspend(), let self else { return }
+            show()
+            let alert = NSAlert()
+            alert.messageText = "Couldn't suspend \(name)"
+            alert.informativeText = failure
+            alert.beginSheetModal(for: window, completionHandler: nil)
+        }
+    }
+
     @objc private func confirmCancelBuild() {
         let alert = NSAlert()
         alert.messageText = "Cancel building \(name)?"
@@ -172,8 +190,9 @@ final class VMWindow: NSObject, NSWindowDelegate {
         }
         let alert = NSAlert()
         alert.messageText = "Keep \(name) running?"
-        alert.informativeText = "Keep Running hides the window and leaves the VM running headless; hobo view \(name) shows it again."
+        alert.informativeText = "Keep Running hides the window and leaves the VM running headless; hobo view \(name) shows it again. Suspend saves its state, and hobo start \(name) resumes it."
         alert.addButton(withTitle: "Keep Running")
+        alert.addButton(withTitle: "Suspend")
         alert.addButton(withTitle: "Shut Down")
         alert.addButton(withTitle: "Cancel")
         // A sheet, not a modal loop, so the control socket keeps being served while it is up.
@@ -183,6 +202,8 @@ final class VMWindow: NSObject, NSWindowDelegate {
             case .alertFirstButtonReturn:
                 hide()
             case .alertSecondButtonReturn:
+                suspend()
+            case .alertThirdButtonReturn:
                 shutDown()
             default:
                 break

@@ -320,10 +320,12 @@ global VMs on 2026-11-01.
       (⌘Tab, ⌘Space go to the guest). While the window shows, the process switches to `.regular`
       (Dock, ⌘Tab, its own menu bar, a full-screen Space): as `.accessory` it never owned the menu
       bar, so clicking it sent the window behind the active app. Hidden, it goes back to `.accessory`.
-      Its menu has Keep Running in Background and Shut Down, but no Quit, which would kill the VM.
-      `hobo list` shows `running (window)` while it shows.
-    - Closing it asks: Keep Running (hides it; the next `view` re-shows the same window), Shut Down
-      (the `stop` sequence), or Cancel. The dialog is a sheet, so the socket keeps being served.
+      Its menu has Keep Running in Background, Suspend and Shut Down, but no Quit, which would kill
+      the VM. `hobo list` shows `running (window)` while it shows.
+    - Closing it asks: Keep Running (hides it; the next `view` re-shows the same window), Suspend
+      (the `suspend` sequence; the window hides while the state saves, and comes back with the
+      reason if the save fails), Shut Down (the `stop` sequence), or Cancel. The dialog is a sheet,
+      so the socket keeps being served.
     - The guest display follows the window's size while it shows, and is set back to the configured
       1920×1200 when it is hidden, so headless runs and screenshots always see that size unless
       someone is watching. `[gui_testing]` may turn resizing off if that matters.
