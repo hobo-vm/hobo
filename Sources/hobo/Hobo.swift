@@ -319,9 +319,9 @@ struct List: OutputCommand {
 
     private func table(_ vms: [VMStore.VM], summaries: [VMSummary]) -> String {
         let rows = [["NAME", "STATE", "OS", "CPUS", "MEMORY", "DISK (USED/SIZE)"]] + zip(vms, summaries).map { vm, summary in
-            var row = row(vm, summary: summary)
-            if summary.config?.ephemeral == true { row[1] += ", ephemeral" }
-            return row
+            var cells = row(vm, summary: summary)
+            if summary.config?.ephemeral == true { cells[1] += ", ephemeral" }
+            return cells
         }
         return formatTable(rows)
     }
