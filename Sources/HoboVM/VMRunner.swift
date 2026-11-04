@@ -137,11 +137,14 @@ public final class VMRunner {
             status.detail = "waiting for SSH on \(ip)"
             let guestSSH = try ssh(ip)
             try await guestSSH.waitUntilReachable(timeout: Self.bootTimeout)
+            let platform = type(of: guest.bundle)
             if resumed {
-                await setClock(guestSSH)
-                if !shares.isEmpty { await remountShares(guestSSH) }
+                await setClock(guestSSH, platform: platform)
+                if !shares.isEmpty, let command = platform.remountSharesCommand {
+                    await remountShares(guestSSH, command: command)
+                }
             }
-            await growContainerIfPending(guestSSH)
+            await growDiskIfPending(guestSSH, platform: platform)
             guard status.state == .starting else { return }
             status.state = .running
             status.detail = nil
@@ -153,65 +156,43 @@ public final class VMRunner {
         }
     }
 
-    /// A resumed guest's clock is behind by however long it was suspended. NTP first, then the
-    /// host's clock if the guest can't reach a time server; either failing only warns.
-    private func setClock(_ ssh: GuestSSH) async {
+    /// A resumed guest's clock is behind by however long it was suspended. NTP first where the
+    /// guest has it, then the host's clock; either failing only warns.
+    private func setClock(_ ssh: GuestSSH, platform: any VMBundle.Type) async {
         status.detail = "setting the guest's clock"
-        if (try? await ssh.run("sudo -n sntp -sS time.apple.com", quiet: true)) == 0 { return }
+        if let ntp = platform.ntpClockCommand, (try? await ssh.run(ntp, quiet: true)) == 0 { return }
         do {
-            try await ssh.check(Self.setDateCommand(.now), what: "setting the guest's clock")
+            try await ssh.check(platform.setClockCommand(.now), what: "setting the guest's clock")
         } catch {
             log("warning: \(error); the guest's clock may be behind")
         }
     }
 
-    /// A restored VM's virtio-fs device starts afresh on the host, so the guest's handles into
-    /// the shares are stale: lookups fail with ENOENT (checked 2026-11-02 on 27.2) until the
-    /// mount is replaced. Files the guest had open in a share are lost either way.
-    private func remountShares(_ ssh: GuestSSH) async {
+    private func remountShares(_ ssh: GuestSSH, command: String) async {
         status.detail = "remounting the shared folders"
         do {
-            try await ssh.check(Self.remountSharesCommand, what: "remounting the shared folders")
+            try await ssh.check(command, what: "remounting the shared folders")
         } catch {
             log("warning: \(error); the guest may not see its shared folders until it restarts")
         }
     }
 
-    static let remountSharesCommand = {
-        let mountPoint = shellQuote(MacVMBundle.sharesMountPoint)
-        return "sudo -n umount -f \(mountPoint); sudo -n mkdir -p \(mountPoint) && "
-            + "sudo -n mount -t virtiofs \(VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag) \(mountPoint)"
-    }()
-
-    /// Sets the guest's clock to `date`, passed in date(1)'s `mmddHHMMccyy.ss` form.
-    nonisolated static func setDateCommand(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        formatter.dateFormat = "MMddHHmmyyyy.ss"
-        return "sudo -n date -u \(formatter.string(from: date)) >/dev/null"
-    }
-
     /// Decision 9's second step: `hobo set --disk` grew the image while the VM was stopped, and
-    /// the guest's APFS container grows into the new space live. A failure leaves the flag set,
+    /// the guest's root filesystem grows into the new space live. A failure leaves the flag set,
     /// so the next boot tries again; the VM runs either way.
-    private func growContainerIfPending(_ ssh: GuestSSH) async {
+    private func growDiskIfPending(_ ssh: GuestSSH, platform: any VMBundle.Type) async {
         let file = store.bundle(for: name).appending(path: VMStore.configFile)
         guard var config = try? VMConfig.load(from: file), config.diskGrowPending else { return }
-        status.detail = "growing the guest's APFS container"
-        log("Growing the guest's APFS container into the larger disk")
+        status.detail = "growing the guest's filesystem"
+        log("Growing the guest's filesystem into the larger disk")
         do {
-            try await ssh.check(Self.growContainerCommand, what: "growing the APFS container")
+            try await ssh.check(platform.growDiskCommand, what: "growing the guest's filesystem")
             config.diskGrowPending = false
             try config.write(to: file)
         } catch {
             log("warning: \(error); the next start tries again")
         }
     }
-
-    /// Grows the boot volume's container (looked up, not assumed to be `disk0s2`) to fill its disk.
-    static let growContainerCommand =
-        #"sudo -n diskutil apfs resizeContainer "$(diskutil info / | awk '/APFS Physical Store:/ { print $NF }')" 0"#
 
     private func handle(_ request: ControlRequest, reply: ControlReply) async -> ControlResponse {
         switch request {
@@ -223,14 +204,7 @@ public final class VMRunner {
             beginStop(force: force)
             return .accepted
         case .suspend:
-            guard status.state != .stopping else { return .error("\(name) is shutting down") }
-            // Not while starting: a failed save would hand the VM back as starting after the boot
-            // sequence had stopped watching it, and a resumed guest may be mid clock or share fix-up.
-            guard status.state == .running, let guest else {
-                return .error("\(name) is still starting; try again once it is running")
-            }
-            // Its own task, so a client that hangs up can't cancel the save halfway.
-            return await Task { await suspend(guest, reply: reply) }.value
+            return await beginSuspend(reply: reply)
         case .view:
             guard status.state != .stopping else { return .error("\(name) is shutting down") }
             guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
@@ -275,15 +249,32 @@ public final class VMRunner {
         if window == nil {
             let window = VMWindow(guest: guest, title: name, log: log)
             window.onShutDown = { [weak self] in self?.beginStop(force: false) }
+            window.onSuspend = { [weak self] in
+                guard let self else { return nil }
+                if case .error(let message) = await beginSuspend(reply: nil) { return message }
+                return nil
+            }
             self.window = window
         }
         window?.show()
     }
 
+    /// `suspend` from a client or the window's close dialog (which has no client to answer).
+    private func beginSuspend(reply: ControlReply?) async -> ControlResponse {
+        guard status.state != .stopping else { return .error("\(name) is shutting down") }
+        // Not while starting: a failed save would hand the VM back as starting after the boot
+        // sequence had stopped watching it, and a resumed guest may be mid clock or share fix-up.
+        guard status.state == .running, let guest else {
+            return .error("\(name) is still starting; try again once it is running")
+        }
+        // Its own task, so a client that hangs up can't cancel the save halfway.
+        return await Task { await suspend(guest, reply: reply) }.value
+    }
+
     /// Decision 11: pauses the VM, saves its state into `suspending/` and renames that into
     /// place, then powers the paused VM off and exits; the guest never runs past the save, so the
     /// disk stays as the state expects. A failed save is cleaned up and the VM resumed.
-    private func suspend(_ guest: GuestVM, reply: ControlReply) async -> ControlResponse {
+    private func suspend(_ guest: GuestVM, reply: ControlReply?) async -> ControlResponse {
         let previous = (state: status.state, detail: status.detail)
         status.state = .stopping
         status.detail = "saving state"
@@ -315,7 +306,7 @@ public final class VMRunner {
         }
         log("Saved the VM's state; powering it off")
         // Answered now: once the process exits, the return value below can't be.
-        try? reply.send(.accepted)
+        try? reply?.send(.accepted)
         do {
             try await guest.forceStop()
         } catch {

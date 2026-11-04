@@ -11,6 +11,30 @@ public struct MacVMBundle: VMBundle {
     /// Where a macOS guest mounts the automount-tagged shares.
     static let sharesMountPoint = "/Volumes/My Shared Files"
 
+    public static let ntpClockCommand: String? = "sudo -n sntp -sS time.apple.com"
+
+    /// `date` in its `mmddHHMMccyy.ss` form, in UTC: BSD `date` has no `-s`.
+    public static func setClockCommand(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "MMddHHmmyyyy.ss"
+        return "sudo -n date -u \(formatter.string(from: date)) >/dev/null"
+    }
+
+    /// A restored VM's virtio-fs device starts afresh on the host, and a macOS guest's handles into
+    /// the shares go stale: lookups fail with ENOENT (checked 2026-11-02 on 27.2) until the mount
+    /// is replaced. Files the guest had open in a share are lost either way.
+    public static let remountSharesCommand: String? = {
+        let mountPoint = shellQuote(sharesMountPoint)
+        return "sudo -n umount -f \(mountPoint); sudo -n mkdir -p \(mountPoint) && "
+            + "sudo -n mount -t virtiofs \(VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag) \(mountPoint)"
+    }()
+
+    /// Grows the boot volume's container (looked up, not assumed to be `disk0s2`) to fill its disk.
+    public static let growDiskCommand =
+        #"sudo -n diskutil apfs resizeContainer "$(diskutil info / | awk '/APFS Physical Store:/ { print $NF }')" 0"#
+
     public var directory: URL
 
     public init(directory: URL) { self.directory = directory }

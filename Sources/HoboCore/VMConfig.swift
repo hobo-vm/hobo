@@ -24,7 +24,7 @@ public struct VMConfig: Codable, Equatable, Sendable {
     @MissingAsTrue public var sip: Bool
     /// AppleMobileFileIntegrity, as checked in the guest at the end of create (`[security]`).
     @MissingAsTrue public var amfi: Bool
-    /// Set by `hobo set --disk` once the image has grown: the guest's APFS container still has to
+    /// Set by `hobo set --disk` once the image has grown: the guest's filesystem still has to
     /// grow into the new space, which the VM process does at the next boot (decision 9).
     @MissingAsFalse public var diskGrowPending: Bool
     /// Persistent shares (`hobo set --share`), names unique case-insensitively.

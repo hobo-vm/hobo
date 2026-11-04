@@ -312,7 +312,12 @@ struct List: OutputCommand {
         let lifecycle = VMLifecycle(store: store) { _ in }
         var summaries = vms.map(VMSummary.init)
         for index in summaries.indices where summaries[index].state == .running {
-            summaries[index].windowShown = await lifecycle.runStatus(summaries[index].name)?.windowShown
+            guard let status = await lifecycle.runStatus(summaries[index].name) else { continue }
+            summaries[index].windowShown = status.windowShown
+            if status.state != .running {
+                summaries[index].phase = status.state.rawValue
+                summaries[index].phaseDetail = status.detail
+            }
         }
         return Reply(summaries, text: vms.isEmpty ? "No VMs in \(store.directory.path)." : table(vms, summaries: summaries))
     }
@@ -332,7 +337,7 @@ struct List: OutputCommand {
         case .stopped(let config):
             return [vm.name, "stopped"] + columns(config, used: used)
         case .running(let config, _):
-            return [vm.name, summary.windowShown == true ? "running (window)" : "running"] + columns(config, used: used)
+            return [vm.name, runningState(summary)] + columns(config, used: used)
         case .suspended(let config, let saved):
             return [vm.name, "suspended (\(fileSize(saved.bytes)))"] + columns(config, used: used)
         case .crashed(let config, let status):
@@ -341,6 +346,13 @@ struct List: OutputCommand {
         case .failed: return [vm.name, "failed", "—", "—", "—", "\(used) / —"]
         case .broken: return [vm.name, "broken", "—", "—", "—", "\(used) / —"]
         }
+    }
+
+    /// `running`, `running (window)`, or what the process is doing instead, e.g.
+    /// `stopping (saving state)` during a suspend.
+    private func runningState(_ summary: VMSummary) -> String {
+        if let phase = summary.phase { return phase + (summary.phaseDetail.map { " (\($0))" } ?? "") }
+        return summary.windowShown == true ? "running (window)" : "running"
     }
 
     private func columns(_ config: VMConfig, used: String) -> [String] {
@@ -666,7 +678,7 @@ struct SetCommand: OutputCommand {
         commandName: "set",
         abstract: "Change a stopped VM's CPUs, memory, disk size or shared folders, or keep an ephemeral VM.",
         discussion: """
-            The disk only grows. Its image grows now, and the guest's APFS container grows into the new space \
+            The disk only grows. Its image grows now, and the guest's filesystem grows into the new space \
             at the next hobo start.
 
             A shared folder appears in the guest at /Volumes/My Shared Files/<folder name> (macOS) or \
