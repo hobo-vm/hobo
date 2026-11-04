@@ -33,7 +33,8 @@ public enum VMIcon {
     private static let nameMaxWidth: CGFloat = 720
     private static let namePointSizes: ClosedRange<CGFloat> = 86...112
     /// The characters a shortened name always keeps: `-` and the 4 hex digits that tell clones apart.
-    private static let keptSuffix = 5
+    private static let keptSuffixLength = 5
+    private static let chalkFleckCount = 14000
 
     /// Which sign and color `name` gets. A SHA-256 rather than `Hasher`, which differs per process.
     public static func assignment(for name: String) -> (sign: Int, color: Int) {
@@ -47,17 +48,15 @@ public enum VMIcon {
     /// The largest size at which `name` fits; failing that, the smallest size with the name's middle
     /// cut, since clones differ only in their last characters.
     public static func fittedName(_ name: String) -> (text: String, pointSize: CGFloat) {
-        var pointSize = namePointSizes.upperBound
-        while pointSize >= namePointSizes.lowerBound {
+        for pointSize in stride(from: namePointSizes.upperBound, through: namePointSizes.lowerBound, by: -2) {
             if nameWidth(name, pointSize: pointSize) <= nameMaxWidth { return (name, pointSize) }
-            pointSize -= 2
         }
         let smallest = namePointSizes.lowerBound
-        for head in stride(from: name.count - keptSuffix - 1, to: 0, by: -1) {
-            let text = "\(name.prefix(head))…\(name.suffix(keptSuffix))"
+        for headLength in stride(from: name.count - keptSuffixLength - 1, to: 0, by: -1) {
+            let text = "\(name.prefix(headLength))…\(name.suffix(keptSuffixLength))"
             if nameWidth(text, pointSize: smallest) <= nameMaxWidth { return (text, smallest) }
         }
-        return (String(name.suffix(keptSuffix)), smallest)
+        return (String(name.suffix(keptSuffixLength)), smallest)
     }
 
     /// The icon for the VM called `name`, or nil if it can't be drawn, which leaves the default icon.
@@ -77,7 +76,7 @@ public enum VMIcon {
             let size = label.size()
             label.draw(at: NSPoint(x: tile.midX - size.width / 2, y: nameCenterY - size.height / 2))
         }
-        return image(bitmap)
+        return image(wrapping: bitmap)
     }
 
     /// One sign with chalk grain knocked out of it, or nil if its SVG doesn't decode.
@@ -86,21 +85,26 @@ public enum VMIcon {
         let bounds = NSRect(x: 0, y: 0, width: canvas, height: canvas)
         drawing(in: bitmap) {
             svg.draw(in: bounds)
-            NSGraphicsContext.current?.compositingOperation = .destinationOut
-            // A fixed seed: a VM's icon is the same every time.
-            var state: UInt64 = 0x9E37_79B9_7F4A_7C15
-            func random() -> CGFloat {
-                state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-                return CGFloat(state >> 40) / CGFloat(1 << 24)
-            }
-            for _ in 0..<14000 {
-                NSColor(white: 0, alpha: 0.25 + 0.5 * random()).setFill()
-                let diameter = 1 + 3.5 * random()
-                let x = random() * bounds.width, y = random() * bounds.height
-                NSBezierPath(ovalIn: NSRect(x: x, y: y, width: diameter, height: diameter)).fill()
-            }
+            knockOutChalkGrain(in: bounds)
         }
-        return image(bitmap)
+        return image(wrapping: bitmap)
+    }
+
+    /// Erases small, partly transparent flecks from what's already drawn, so solid strokes look chalky.
+    private static func knockOutChalkGrain(in bounds: NSRect) {
+        NSGraphicsContext.current?.compositingOperation = .destinationOut
+        // A linear congruential generator with a fixed seed: a VM's icon is the same every time.
+        var state: UInt64 = 0x9E37_79B9_7F4A_7C15
+        func random() -> CGFloat {
+            state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return CGFloat(state >> 40) / CGFloat(1 << 24)
+        }
+        for _ in 0..<chalkFleckCount {
+            NSColor(white: 0, alpha: 0.25 + 0.5 * random()).setFill()
+            let diameter = 1 + 3.5 * random()
+            let x = random() * bounds.width, y = random() * bounds.height
+            NSBezierPath(ovalIn: NSRect(x: x, y: y, width: diameter, height: diameter)).fill()
+        }
     }
 
     private static func nameWidth(_ text: String, pointSize: CGFloat) -> CGFloat {
@@ -134,7 +138,7 @@ public enum VMIcon {
         body()
     }
 
-    private static func image(_ bitmap: NSBitmapImageRep) -> NSImage {
+    private static func image(wrapping bitmap: NSBitmapImageRep) -> NSImage {
         let image = NSImage(size: NSSize(width: canvas, height: canvas))
         image.addRepresentation(bitmap)
         return image

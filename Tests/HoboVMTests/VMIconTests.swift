@@ -54,8 +54,8 @@ import Testing
         #expect(second.hasSuffix("-7c02"))
     }
 
-    /// The longest name a VM can have still fits, with some of its start.
-    @Test func longestNameFits() {
+    /// The longest name a VM can have is shortened, but keeps some of its start.
+    @Test func longestNameKeepsSomeOfItsStart() {
         let name = String(repeating: "W", count: 63)
         let fitted = VMIcon.fittedName(name)
         #expect(fitted.text.hasPrefix("W"))
