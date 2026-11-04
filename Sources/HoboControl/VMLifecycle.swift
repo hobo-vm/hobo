@@ -150,10 +150,11 @@ public struct VMLifecycle: Sendable {
             killed = true
         }
         try await waitForExit(vm.name, job: job, timeout: timeout)
-        // Its bootout makes a killed run look stopped rather than crashed, so finding it would
-        // delete its log too; it is kept here, as after any failed run.
+        // A killed process couldn't delete its ephemeral VM, so it is deleted here, keeping the log
+        // as after any failed run. Left to `find`, the log would go too: after the bootout, a killed
+        // run looks stopped rather than crashed.
         if killed { store.removeIfEphemeral(vm.name, keepLog: true) }
-        // Finding it again deletes an ephemeral VM whose killed process couldn't (`removeIfEphemeral`).
+        // An ephemeral VM is gone by now, deleted by its process as it exited or by the line above.
         return (try? store.find(vm.name)) == nil ? .deleted : .stopped
     }
 

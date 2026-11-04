@@ -288,7 +288,8 @@ public struct VMStore: Sendable {
         let bundle = bundle(for: name)
         let job = jobs[job(for: name).label]
         let status = status(of: bundle, job: job)
-        // Only with no process and no saved state; a crash's log is kept, as its process would.
+        // Stopped or crashed means no process and no saved state, so an ephemeral VM that has booted
+        // is deleted here, keeping a crash's log as its process would have.
         let keepLog: Bool? = switch status {
         case .stopped: false
         case .crashed: true
