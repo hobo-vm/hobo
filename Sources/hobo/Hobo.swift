@@ -318,23 +318,13 @@ struct List: OutputCommand {
 
     func execute(_ output: Output) async throws -> Reply {
         let store = VMStore.standard()
-        let vms = store.list()
-        let lifecycle = VMLifecycle(store: store) { _ in }
-        var listing = VMListing(vms, usage: store.diskUsage(of: vms))
-        for index in listing.vms.indices where listing.vms[index].state == .running {
-            guard let status = await lifecycle.runStatus(listing.vms[index].name) else { continue }
-            listing.vms[index].windowShown = status.windowShown
-            if status.state != .running {
-                listing.vms[index].phase = status.state.rawValue
-                listing.vms[index].phaseDetail = status.detail
-            }
-        }
-        return Reply(listing, text: vms.isEmpty ? "No VMs in \(store.directory.path)." : table(vms, listing: listing))
+        let listing = await VMLifecycle(store: store) { _ in }.listing()
+        return Reply(listing, text: listing.vms.isEmpty ? "No VMs in \(store.directory.path)." : table(listing))
     }
 
-    private func table(_ vms: [VMStore.VM], listing: VMListing) -> String {
-        let vmRows = zip(vms, listing.vms).map { vm, summary in
-            var cells = row(vm, summary: summary)
+    private func table(_ listing: VMListing) -> String {
+        let vmRows = listing.vms.map { summary in
+            var cells = row(summary)
             if summary.config?.ephemeral == true { cells[1] += ", ephemeral" }
             return cells + [Self.snapshotsCell(count: summary.snapshots?.count ?? 0, bytes: summary.snapshotBytes ?? 0)]
         }
@@ -361,21 +351,21 @@ struct List: OutputCommand {
         count == 0 && bytes == 0 ? "—" : "\(count) (\(fileSize(bytes)))"
     }
 
-    private func row(_ vm: VMStore.VM, summary: VMSummary) -> [String] {
-        let used = fileSize(vm.allocatedBytes)
-        switch vm.status {
-        case .stopped(let config):
-            return [vm.name, "stopped"] + columns(config, used: used)
-        case .running(let config, _):
-            return [vm.name, runningState(summary)] + columns(config, used: used)
-        case .suspended(let config, let saved):
-            return [vm.name, "suspended (\(fileSize(saved.bytes)))"] + columns(config, used: used)
-        case .crashed(let config, let status):
-            return [vm.name, "crashed (\(status < 0 ? "signal \(-status)" : "exit \(status)"))"] + columns(config, used: used)
-        case .building: return [vm.name, "building", "—", "—", "—", "\(used) / —"]
-        case .failed: return [vm.name, "failed", "—", "—", "—", "\(used) / —"]
-        case .broken: return [vm.name, "broken", "—", "—", "—", "\(used) / —"]
+    private func row(_ summary: VMSummary) -> [String] {
+        let used = fileSize(summary.allocatedBytes)
+        // Building, failed and broken VMs have no config.
+        guard let config = summary.config else { return [summary.name, summary.state.rawValue, "—", "—", "—", "\(used) / —"] }
+        let state = switch summary.state {
+        case .running: runningState(summary)
+        case .suspended: "suspended (\(fileSize(summary.savedStateBytes ?? 0)))"
+        case .crashed: crashedState(exitStatus: summary.exitStatus ?? 0)
+        case .stopped, .building, .failed, .broken: summary.state.rawValue
         }
+        return [summary.name, state] + columns(config, used: used)
+    }
+
+    private func crashedState(exitStatus status: Int32) -> String {
+        "crashed (\(status < 0 ? "signal \(-status)" : "exit \(status)"))"
     }
 
     /// `running`, `running (window)`, or what the process is doing instead, e.g.
@@ -922,7 +912,7 @@ struct SnapshotList: OutputCommand {
     func execute(_ output: Output) async throws -> Reply {
         let store = VMStore.standard()
         let vm = try store.find(name)
-        let snapshots = store.diskUsage(of: store.list()).snapshots(of: vm)
+        let snapshots = store.snapshots(of: vm)
         let rows = [["TAG", "KIND", "CREATED", "SAVED STATE", "UNIQUE"]] + snapshots.map { snapshot in
             [
                 snapshot.tag, snapshot.isLive ? "live" : "disk", createdText(snapshot),
@@ -1009,7 +999,7 @@ struct Delete: OutputCommand {
             guard isatty(STDIN_FILENO) != 0 else {
                 throw CLIError("refusing to delete \(vm.name) without a terminal to confirm (pass --yes)")
             }
-            let snapshotBytes = store.diskUsage(of: store.list()).snapshotBytes[vm.name] ?? 0
+            let snapshotBytes = store.diskUsage().snapshotBytes[vm.name] ?? 0
             print("Delete VM \"\(vm.name)\" (\(fileSize(vm.allocatedBytes + snapshotBytes)))? [y/N] ", terminator: "")
             guard let answer = readLine(), ["y", "yes"].contains(answer.lowercased()) else {
                 return Reply(["deleted": String?.none], text: "Not deleted.")

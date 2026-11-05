@@ -47,10 +47,10 @@ public struct VMSummary: Encodable, Equatable, Sendable {
     /// Absent while `building`, or when `failed` or `broken`.
     public var config: VMConfig?
     /// Whether the VM's window is showing (`hobo view`). Only for a `running` VM whose process
-    /// answered; filled in by the client, since only the VM process knows.
+    /// answered; only the VM process knows, so only `VMLifecycle.listing()` fills it in.
     public var windowShown: Bool?
     /// What a `running` VM's process says it is doing, when that isn't plainly running: `starting`
-    /// or `stopping` (a suspend is `stopping`, detail `saving state`). Filled in by the client.
+    /// or `stopping` (a suspend is `stopping`, detail `saving state`). Filled in as `windowShown` is.
     public var phase: String?
     /// The VM process's detail for `phase`, e.g. `booting` or `shutting down over SSH`.
     public var phaseDetail: String?
@@ -95,7 +95,7 @@ public struct VMListing: Encodable, Equatable, Sendable {
     /// The part of `totalBytes` held only by snapshots.
     public var totalSnapshotBytes: UInt64
 
-    public init(_ vms: [VMStore.VM], usage: DiskUsage) {
+    init(_ vms: [VMStore.VM], usage: DiskUsage) {
         self.vms = vms.map { vm in
             var summary = VMSummary(vm)
             summary.snapshots = usage.snapshots(of: vm)

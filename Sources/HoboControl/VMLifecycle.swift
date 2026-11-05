@@ -244,6 +244,21 @@ public struct VMLifecycle: Sendable {
         throw LifecycleError.stopTimedOut(name)
     }
 
+    /// What `hobo list` reports: every VM with its disk usage and, for a running VM whose process
+    /// answers, what that process says it is doing.
+    public func listing() async -> VMListing {
+        var listing = store.listing()
+        for index in listing.vms.indices where listing.vms[index].state == .running {
+            guard let status = await runStatus(listing.vms[index].name) else { continue }
+            listing.vms[index].windowShown = status.windowShown
+            if status.state != .running {
+                listing.vms[index].phase = status.state.rawValue
+                listing.vms[index].phaseDetail = status.detail
+            }
+        }
+        return listing
+    }
+
     /// What a running VM's process reports, or nil if it doesn't answer within `timeout`. Short by
     /// default, so one wedged VM process can't stall a listing.
     public func runStatus(_ name: String, timeout: Duration = .seconds(1)) async -> VMRunStatus? {

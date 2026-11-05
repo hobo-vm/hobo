@@ -71,6 +71,44 @@ import Testing
         }
     }
 
+    @Test func listingSaysWhatARunningVMsProcessIsDoing() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let server = try serve(.status(VMRunStatus(state: .stopping, pid: 4242, detail: "saving state", windowShown: true)))
+        defer { server.close() }
+        let summary = try #require(await lifecycle.listing().vms.first)
+        #expect(summary.state == .running)
+        #expect(summary.windowShown == true)
+        #expect(summary.phase == "stopping" && summary.phaseDetail == "saving state")
+    }
+
+    @Test func listingGivesNoPhaseForAVMPlainlyRunning() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let server = try serve(.status(VMRunStatus(state: .running, pid: 4242)))
+        defer { server.close() }
+        let summary = try #require(await lifecycle.listing().vms.first)
+        #expect(summary.windowShown == false)
+        #expect(summary.phase == nil && summary.phaseDetail == nil)
+    }
+
+    @Test func listingStillShowsARunningVMWhoseProcessIsSilent() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let summary = try #require(await lifecycle.listing().vms.first)
+        #expect(summary.state == .running)
+        #expect(summary.windowShown == nil && summary.phase == nil)
+    }
+
+    @Test func listingHasTheDiskUsage() async throws {
+        defer { cleanUp() }
+        let listing = await lifecycle.listing()
+        #expect(listing.vms.map(\.name) == ["dev"])
+        #expect(listing.vms.first?.snapshots == [])
+        #expect(listing.vms.first?.snapshotBytes == 0)
+        #expect(listing.totalBytes > 0)
+    }
+
     @Test func notRunningClearsTheJob() async throws {
         defer { cleanUp() }
         #expect(try await lifecycle.stop("dev", force: false) == .wasNotRunning)

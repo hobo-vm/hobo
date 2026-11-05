@@ -18,7 +18,7 @@ public struct Snapshot: Equatable, Sendable {
     /// files don't count: they share their blocks with the VM's until either changes them.
     public var savedStateBytes: UInt64?
     /// Bytes only this snapshot holds, which deleting it alone would free. Nil until measured
-    /// (`DiskUsage.snapshots(of:)`).
+    /// (`VMStore.snapshots(of:)`).
     public var uniqueBytes: UInt64?
 
     public init(tag: String, record: SnapshotRecord, savedStateBytes: UInt64?, uniqueBytes: UInt64? = nil) {

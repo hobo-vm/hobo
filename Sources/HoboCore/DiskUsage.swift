@@ -15,7 +15,7 @@ public struct DiskUsage: Equatable, Sendable {
     public var uniqueBytes: [String: [String: UInt64]] = [:]
 
     /// `vm`'s snapshots, oldest first, each with what it alone holds.
-    public func snapshots(of vm: VMStore.VM) -> [Snapshot] {
+    func snapshots(of vm: VMStore.VM) -> [Snapshot] {
         Snapshot.list(in: vm.bundle).map { snapshot in
             var snapshot = snapshot
             snapshot.uniqueBytes = uniqueBytes[vm.name]?[snapshot.tag] ?? 0
@@ -129,10 +129,27 @@ struct FileExtents: Equatable, Sendable {
 }
 
 extension VMStore {
-    /// The disk usage of `vms`, which should be every VM (`list()`), since what a VM's snapshot
-    /// alone holds depends on what the others share with it.
-    public func diskUsage(of vms: [VM]) -> DiskUsage {
+    /// The disk usage of every VM. It can't be measured for one alone: what a VM's snapshot alone
+    /// holds depends on what the others share with it.
+    public func diskUsage() -> DiskUsage {
+        diskUsage(of: list())
+    }
+
+    /// `diskUsage()`, for a caller that has just read `list()` and so needn't read it again.
+    func diskUsage(of vms: [VM]) -> DiskUsage {
         DiskUsage.measure(vms.flatMap(Self.holdings))
+    }
+
+    /// `vm`'s snapshots, oldest first, each with what it alone holds.
+    public func snapshots(of vm: VM) -> [Snapshot] {
+        diskUsage().snapshots(of: vm)
+    }
+
+    /// Every VM with its disk usage, as far as the store can tell. A client wants
+    /// `VMLifecycle.listing()`, which adds what only the running VMs' processes know.
+    public func listing() -> VMListing {
+        let vms = list()
+        return VMListing(vms, usage: diskUsage(of: vms))
     }
 
     /// The VM's own files, and each entry under its `snapshots/`, with where their data lies.

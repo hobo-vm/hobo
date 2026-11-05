@@ -326,6 +326,8 @@ global VMs on 2026-11-01.
       all clones, and `ATTR_CMNEXT_CLONEID` stops matching as soon as a clone diverges (both checked
       2026-11-04). Files whose blocks can't be looked up count as unshared. It reads only metadata:
       a release build's whole `list` took 0.12 s over two clones of a 30 GB disk and two snapshots.
+      `VMLifecycle.listing()` and `VMStore.snapshots(of:)` produce these results, so `hobo mcp` gets
+      the same ones: usage is only ever measured over every VM, and a frontend only renders.
 
 ### Architecture
 

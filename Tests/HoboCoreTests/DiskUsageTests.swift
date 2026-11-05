@@ -270,6 +270,34 @@ import Testing
         #expect(DiskUsage().snapshots(of: try #require(vms.first { $0.name == "one" })).map(\.uniqueBytes) == [0])
     }
 
+    /// Measuring `a` alone would call the snapshot's old blocks its own, though `b` holds them too.
+    @Test func aVMsMeasuredSnapshotsAllowForWhatOtherVMsShare() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let a = try made("a", in: store, megabytes: 4)
+        let b = try made("b", in: store, megabytes: 0)
+        try snapshot("s", of: a)
+        try clone(a.appending(path: "disk"), to: b.appending(path: "disk"))
+        try write(4, to: a.appending(path: "disk"), at: 0)
+        let measured = store.snapshots(of: try store.find("a"))
+        #expect(measured.map(\.tag) == ["s"])
+        expect(measured.first?.uniqueBytes, megabytes: 0)
+        #expect(measured.first?.uniqueBytes != nil)
+        expect(store.diskUsage().snapshotBytes["a"], megabytes: 4)
+    }
+
+    @Test func theStoresListingCoversEveryVM() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let a = try made("a", in: store, megabytes: 1)
+        _ = try made("b", in: store, megabytes: 1)
+        try snapshot("s", of: a)
+        let listing = store.listing()
+        #expect(listing.vms.map(\.name) == ["a", "b"])
+        #expect(listing.snapshotCount == 1)
+        expect(listing.totalBytes, megabytes: 2)
+    }
+
     @Test func listingJSONHasTotalsAndSnapshots() throws {
         let store = temporaryStore()
         defer { try? FileManager.default.removeItem(at: store.directory) }
