@@ -214,6 +214,17 @@ import Testing
         }
     }
 
+    /// Nothing printed, so blaming a shell startup file would send someone the wrong way.
+    @Test func anEmptyCaptureSaysSo() async throws {
+        defer { cleanUp() }
+        let channel = channel
+        let server = try serve { _, _ in .exited(0) }
+        defer { server.close() }
+        await #expect(throws: GuestChannelError.screenshotFailed("dev", "the capture came back empty")) {
+            try await offPool { try channel.screenshot("dev") }
+        }
+    }
+
     @Test func aScreenshotRefusedByTheVMProcessIsTheRefusal() async throws {
         defer { cleanUp() }
         let channel = channel

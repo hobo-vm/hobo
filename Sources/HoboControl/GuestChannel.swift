@@ -58,6 +58,8 @@ public struct GuestChannel: Sendable {
             let reason = String(decoding: errors, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             throw GuestChannelError.screenshotFailed(vm.name, reason.isEmpty ? "the capture exited with status \(status)" : reason)
         }
+        // The script's temp file starts out empty, so a `screencapture` that succeeds without writing sends nothing.
+        guard !png.isEmpty else { throw GuestChannelError.screenshotFailed(vm.name, "the capture came back empty") }
         guard png.starts(with: GuestScreenshot.pngSignature) else {
             throw GuestChannelError.screenshotFailed(vm.name, "the guest's output isn't a PNG (does a shell startup file print something?)")
         }
