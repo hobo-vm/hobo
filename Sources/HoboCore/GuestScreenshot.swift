@@ -35,13 +35,15 @@ public struct GuestScreenshot: Equatable, Sendable {
     public func save(
         to path: String?, in directory: URL = .currentDirectory(), date: Date = .now
     ) throws -> URL {
-        if let path {
-            // Not `URL(filePath:relativeTo:)`: it drops the base's last component when the base has
-            // no trailing slash, which would write beside `directory` rather than in it.
-            let file = (path.hasPrefix("/") ? URL(filePath: path) : directory.appending(path: path)).standardizedFileURL
-            try png.write(to: file)
-            return file
-        }
+        guard let path else { return try saveUnderANewName(in: directory, date: date) }
+        // Not `URL(filePath:relativeTo:)`: it drops the base's last component when the base has
+        // no trailing slash, which would write beside `directory` rather than in it.
+        let file = (path.hasPrefix("/") ? URL(filePath: path) : directory.appending(path: path)).standardizedFileURL
+        try png.write(to: file)
+        return file
+    }
+
+    private func saveUnderANewName(in directory: URL, date: Date) throws -> URL {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
