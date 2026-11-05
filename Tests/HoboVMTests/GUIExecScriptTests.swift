@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import HoboVM
 
-/// `exec --gui`'s shell line, with the guest's `stat`, `launchctl`, `sudo` and `sleep` stubbed by
+/// `exec --gui`'s script, with the guest's `stat`, `launchctl`, `sudo` and `sleep` stubbed by
 /// PATH. On a real guest the session is up by the time a test could ask, so waiting for it is only
 /// reachable here. Needs no VM.
 @Suite struct GUIExecScriptTests {

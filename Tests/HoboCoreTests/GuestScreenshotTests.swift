@@ -65,8 +65,9 @@ import Testing
     // The capture script, with the guest's tools stubbed by PATH. The integration test covers it on
     // a real guest, but only with the grant: its refusal would take a VM built without one.
 
-    /// Runs the script with `osascript` answering `granted`, and a `screencapture` that notes the
-    /// file it was given, in `tempFile`, then runs `screencapture`, where `$last` is that file.
+    /// Runs the script with `osascript` answering `granted`. The stubbed `screencapture` notes the
+    /// file it was given, returned as `tempFile`, then runs the `screencapture` argument, where
+    /// `$last` is that file.
     private func capture(
         granted: String, screencapture: String = #"printf shot > "$last""#
     ) throws -> (status: Int32, stdout: Data, stderr: String, tempFile: String?) {

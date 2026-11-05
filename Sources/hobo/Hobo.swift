@@ -703,7 +703,7 @@ struct Screenshot: OutputCommand {
     static let jsonStyle = Output.JSONStyle.document
 
     func validate() throws {
-        if json, output == Self.standardOutput { throw ValidationError("--json can't go with -o -: stdout has the PNG") }
+        if json && output == Self.standardOutput { throw ValidationError("--json can't go with -o -: stdout has the PNG") }
     }
 
     func execute(_: Output) async throws -> Reply {
