@@ -160,3 +160,33 @@ import Testing
         return results
     }
 }
+
+/// The record that stops replayd's approval dialog. Whether replayd honours it takes a guest, in
+/// the integration test; this pins what is written.
+@Suite struct ScreenCaptureApprovalSeedTests {
+    @Test func writesARecordForSSHsClientWithItsAlertsFarAhead() throws {
+        let home = FileManager.default.temporaryDirectory.appending(path: "hobo-seed-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        // Twice: a create that retries finds the directory there.
+        for _ in 1...2 {
+            let process = Process()
+            // The shell the guest user logs in with, which SSH runs the command in.
+            process.executableURL = URL(filePath: "/bin/zsh")
+            process.arguments = ["-c", GUITestingGrants.seedScreenCaptureApprovalCommand]
+            process.environment = ["HOME": home.path, "PATH": "/usr/bin:/bin"]
+            try process.run()
+            process.waitUntilExit()
+            #expect(process.terminationStatus == 0)
+        }
+        let file = home.appending(path: "Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist")
+        let plist = try PropertyListSerialization.propertyList(from: Data(contentsOf: file), format: nil) as? [String: [String: Any]]
+        let sshClient = "/usr/libexec/sshd-keygen-wrapper"
+        #expect(plist?.keys.sorted() == [sshClient])
+        let record = try #require(plist?[sshClient])
+        for key in ["kScreenCaptureApprovalLastAlerted", "kScreenCapturePrivacyHintDate"] {
+            let date = try #require(record[key] as? Date, "\(key)")
+            #expect(date > Date(timeIntervalSinceNow: 50 * 365 * 24 * 3600), "\(key)")
+        }
+    }
+}

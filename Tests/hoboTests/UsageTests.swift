@@ -110,3 +110,13 @@ struct DeleteOptionTests {
         _ = try Delete.parse(["dev", "--json", "--force"])
     }
 }
+
+struct ScreenshotOptionTests {
+    /// The JSON would land in the middle of the PNG's stdout.
+    @Test func jsonNeedsTheOutputToBeAFile() throws {
+        #expect(throws: (any Error).self) { try Screenshot.parse(["dev", "--json", "-o", "-"]) }
+        _ = try Screenshot.parse(["dev", "--json"])
+        _ = try Screenshot.parse(["dev", "--json", "-o", "shot.png"])
+        _ = try Screenshot.parse(["dev", "-o", "-"])
+    }
+}

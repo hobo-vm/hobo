@@ -290,9 +290,17 @@ public final class VMRunner {
             guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
             showWindow(guest)
             return .accepted
-        case .exec(let command):
+        case .exec(let command, gui: false):
             return await withGuest(reply: reply) { ssh, onOutput in
                 try await ssh.exec(command, onOutput: onOutput)
+            }
+        case .exec(let command, gui: true):
+            guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
+            guard let script = type(of: guest.bundle).guiExecScript(command) else {
+                return .error("exec --gui and screenshot need a macOS guest for now")
+            }
+            return await withGuest(reply: reply) { ssh, onOutput in
+                try await ssh.exec(script: script, onOutput: onOutput)
             }
         case .copy(let copy):
             return await withGuest(reply: reply) { ssh, onOutput in

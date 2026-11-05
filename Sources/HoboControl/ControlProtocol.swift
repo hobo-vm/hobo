@@ -21,8 +21,9 @@ public enum ControlRequest: Codable, Equatable, Sendable {
     /// Starts the stop sequence and replies at once; the VM process exits when the VM is off.
     case stop(force: Bool)
     /// Runs a command in the guest over SSH, without stdin or a TTY: `output` lines, then `exited`.
-    /// The arguments are shell-quoted and run by the guest user's login shell.
-    case exec(command: [String])
+    /// The arguments are shell-quoted and run by the guest user's login shell; with `gui`, in that
+    /// user's desktop session (`VMBundle.guiExecScript`).
+    case exec(command: [String], gui: Bool = false)
     /// Runs scp between host paths and the guest: scp's output as `output` lines, then `exited`.
     case copy(GuestCopy)
     /// Pauses the VM and saves its state, answering once the state is saved (or with what stopped

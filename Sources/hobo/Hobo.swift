@@ -35,7 +35,7 @@ struct HoboCommand: AsyncParsableCommand {
         version: Hobo.version,
         subcommands: [
             Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self, Suspend.self, Discard.self, View.self,
-            SSH.self, Exec.self, Copy.self, IP.self, SetCommand.self, Provision.self, Clone.self, SnapshotCommand.self, Rename.self, Delete.self, Claude.self, Usage.self,
+            SSH.self, Exec.self, Copy.self, Screenshot.self, IP.self, SetCommand.self, Provision.self, Clone.self, SnapshotCommand.self, Rename.self, Delete.self, Claude.self, Usage.self,
         ]
     )
 }
@@ -616,12 +616,16 @@ struct Exec: OutputCommand {
         abstract: "Run a command in a running VM.",
         discussion: """
             The command runs as the vagrant user, without stdin or a TTY, and hobo exits with its status. \
-            Its arguments are quoted for the guest's shell, so use sh -c '<script>' for pipes and the like.
+            Its arguments are quoted for the guest's shell, so use sh -c '<script>' for pipes and the like. \
+            With --gui (macOS guests) it waits up to a minute for the desktop session, and exits 125 if it never comes up.
             """
     )
 
     @Argument(help: "Name of the VM.")
     var name: String
+
+    @Flag(help: "Run in the vagrant user's desktop session rather than a background one.")
+    var gui = false
 
     @Flag(help: "Print the command's exit status as JSON; its output goes to stderr.")
     var json = false
@@ -636,7 +640,7 @@ struct Exec: OutputCommand {
     }
 
     func execute(_ output: Output) async throws -> Reply {
-        let status = try GuestChannel().exec(name, command: command, onOutput: writeOutput)
+        let status = try GuestChannel().exec(name, command: command, gui: gui, onOutput: writeOutput)
         return Reply(GuestCommandResult(exitStatus: status), text: nil, exitStatus: status)
     }
 }
@@ -672,6 +676,44 @@ private func writeOutput(_ stream: GuestStream, _ data: Data) throws {
     switch stream {
     case .stdout: try FileHandle.standardOutput.write(contentsOf: data)
     case .stderr: try FileHandle.standardError.write(contentsOf: data)
+    }
+}
+
+struct Screenshot: OutputCommand {
+    /// The `--output` that means this process's stdout.
+    private static let standardOutput = "-"
+
+    static let configuration = CommandConfiguration(
+        abstract: "Save a PNG of a running macOS VM's screen.",
+        discussion: """
+            Captures from inside the guest's desktop session, which needs a VM built from a recipe with [gui_testing]. \
+            Prints the file's path; by default it is a new <vm>-<timestamp>.png in the current directory.
+            """
+    )
+
+    @Argument(help: "Name of the VM.")
+    var name: String
+
+    @Option(name: .shortAndLong, help: ArgumentHelp("Where to write the PNG, replacing what's there; - for stdout.", valueName: "path"))
+    var output: String?
+
+    @Flag(help: "Print the VM's name and the file's path as JSON.")
+    var json = false
+
+    static let jsonStyle = Output.JSONStyle.document
+
+    func validate() throws {
+        if json && output == Self.standardOutput { throw ValidationError("--json can't go with -o -: stdout has the PNG") }
+    }
+
+    func execute(_: Output) async throws -> Reply {
+        let screenshot = try GuestChannel().screenshot(name)
+        if output == Self.standardOutput {
+            try FileHandle.standardOutput.write(contentsOf: screenshot.png)
+            return Reply(ScreenshotResult(name: screenshot.name, path: Self.standardOutput), text: nil)
+        }
+        let file = try screenshot.save(to: output)
+        return Reply(ScreenshotResult(name: screenshot.name, path: file.path), text: file.path)
     }
 }
 

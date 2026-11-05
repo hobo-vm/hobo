@@ -71,6 +71,12 @@ public enum GUITestingGrants {
         return database
     }
 
+    /// JavaScript for `osascript`: makes `$.CGPreflightScreenCaptureAccess()` callable. Its import
+    /// also provides `$.AXIsProcessTrusted()`.
+    static let bindScreenCapturePreflight = """
+        ObjC.import("ApplicationServices"); ObjC.bindFunction("CGPreflightScreenCaptureAccess", ["bool", []])
+        """
+
     /// Run over SSH in the guest: fails unless the session has Accessibility, Screen Recording and
     /// Automation of System Events. `screencapture` succeeds without the grant (it just leaves
     /// windows out), so Screen Recording is asked of CoreGraphics. Retried, since System Events
@@ -78,8 +84,7 @@ public enum GUITestingGrants {
     public static let checkCommand = """
         for attempt in 1 2 3; do
           osascript -l JavaScript -e '
-            ObjC.import("ApplicationServices")
-            ObjC.bindFunction("CGPreflightScreenCaptureAccess", ["bool", []])
+            \(bindScreenCapturePreflight)
             if (!$.AXIsProcessTrusted()) throw new Error("Accessibility is not granted")
             if (!$.CGPreflightScreenCaptureAccess()) throw new Error("Screen Recording is not granted")
             Application("System Events").processes[0].name()
@@ -87,6 +92,27 @@ public enum GUITestingGrants {
           sleep 10
         done
         exit 1
+        """
+
+    /// Run over SSH in the guest, before anything captures the screen: tells replayd that SSH's
+    /// client has already been alerted. Without a record, its first capture puts up a dialog (the
+    /// grants don't prevent it) that blocks the guest's UI and shows in later screenshots. The
+    /// record is for `sshd-keygen-wrapper`, which everything run over SSH counts as; an app started
+    /// on its own may count separately. Its dates are far ahead so that no new alert falls due.
+    /// Checked 2026-11-05 on 27.2, for 5 captures over 45 s.
+    public static let seedScreenCaptureApprovalCommand = """
+        container="$HOME/Library/Group Containers/group.com.apple.replayd"
+        mkdir -p "$container" && cat > "$container/ScreenCaptureApprovals.plist" <<'PLIST'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict><key>/usr/libexec/sshd-keygen-wrapper</key><dict>
+        <key>kScreenCaptureAlertableUsageCount</key><integer>0</integer>
+        <key>kScreenCaptureApprovalLastAlerted</key><date>2099-01-01T00:00:00Z</date>
+        <key>kScreenCaptureApprovalLastUsed</key><date>2099-01-01T00:00:00Z</date>
+        <key>kScreenCapturePrivacyHintDate</key><date>2099-01-01T00:00:00Z</date>
+        <key>kScreenCapturePrivacyHintPolicy</key><integer>2592000</integer>
+        </dict></dict></plist>
+        PLIST
         """
 
     private static func apple(_ identifier: String, _ signingID: String) -> Client {

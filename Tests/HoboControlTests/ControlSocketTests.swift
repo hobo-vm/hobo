@@ -103,7 +103,7 @@ import Synchronization
     @Test func streamsOutputThenTheLastResponse() throws {
         // Several frames in one write, so the client must keep what follows each newline.
         let server = try ControlServer(path: socket) { request, reply in
-            guard case .exec(let command) = request else { return .error("expected exec") }
+            guard case .exec(let command, _) = request else { return .error("expected exec") }
             try? reply.send(.output(.stdout, Data(command.joined(separator: " ").utf8)))
             try? reply.send(.output(.stderr, Data("warning\n".utf8)))
             return .exited(3)

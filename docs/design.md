@@ -431,8 +431,20 @@ global VMs on 2026-11-01.
       - Create then checks over SSH, before the provision steps, that Accessibility
         (`AXIsProcessTrusted`), Screen Recording (`CGPreflightScreenCaptureAccess`; `screencapture`
         succeeds without the grant, leaving windows out) and System Events scripting work, and
-        fails otherwise. Whether macOS's periodic Screen Recording re-approval affects long-lived VMs
-        is unknown.
+        fails otherwise.
+      - The grants don't stop replayd's own approval dialog ("requesting to bypass the system private
+        window picker"): the first capture by a client with no record raises it, from plain `exec` or
+        `--gui`, and it blocks the guest's UI and shows in later screenshots. So create then seeds
+        that record over SSH, before anything captures: `ScreenCaptureApprovals.plist` in the user's
+        replayd group container, with its alert dates in 2099, for `sshd-keygen-wrapper` only, which
+        everything run over SSH counts as (decided 2026-11-05). An app started on its own may count
+        separately and still get the dialog when it captures. Checked on 27.2 for 5 captures over
+        45 s; whether the record lasts for weeks or across macOS updates is unknown. A VM built
+        before this needs rebuilding.
+      - Running outside the GUI session cuts plain `exec` off less than that might suggest: on a VM
+        with the grants, `screencapture` (windows included), `open` and System Events scripting all
+        work from it, in the same way as from `--gui` (checked 2026-11-05 on 27.2). Automation of
+        Finder times out from both, since only System Events is granted.
     - Recipe `[security] sip = false` (and `amfi = false`, which needs it) turns SIP and AMFI off,
       for testing ad-hoc signed binaries that claim restricted entitlements (decided 2026-11-02;
       `[gui_testing]` doesn't need it). Checked on a macOS 27.2 guest (2026-11-02): `csrutil disable`
@@ -452,8 +464,23 @@ global VMs on 2026-11-01.
       - The provisioning boot checks what the guest runs with (`csrutil status`, `kern.bootargs`),
         fails if it isn't what the recipe asked, and records it as `sip`/`amfi` in `config.json`
         (missing means on, for older bundles). Clones inherit it as guest state.
-    - `exec --gui` runs the command in the `vagrant` user's Aqua session (`launchctl asuser`).
-    - `screenshot` runs `screencapture` that way and returns the PNG.
+    - `exec --gui` runs the command in the `vagrant` user's Aqua session: `sudo launchctl asuser
+      <uid> sudo -u vagrant env PATH=… <cmd>` (`asuser` needs root; the inner `sudo` makes it the user
+      again and resets the environment, hence `PATH`). It's a `gui` field on the `exec` request, so
+      streaming, exit status, cancelling and leases are `exec`'s; killing the process group reaches
+      through both `sudo`s (checked 2026-11-05 on 27.2). Auto-login can finish after SSH answers, so
+      it waits up to 60 s for `/dev/console` and the `gui/<uid>` domain to be the user's, then exits
+      125; holding `running` back instead would slow every start, and leave a VM with broken
+      auto-login unreachable by plain `exec`. Decided 2026-11-05.
+    - `screenshot [-o path]` is `exec --gui` of a script, in `GuestChannel`, with no request of its
+      own: `screencapture -x` to a temp file (it can't write to stdout), then `cat`. It first asks
+      `CGPreflightScreenCaptureAccess` in the guest and fails without the grant, since a capture
+      without it succeeds with the windows left out, and that desktop could pass for an app that
+      never opened. Asking the guest covers withdrawn grants and clones, which a host-side check of
+      the recipe wouldn't. By default the PNG goes to a new `./<vm>-<timestamp>.png`, numbered if
+      taken, so a session's shots never replace each other; `-o -` is stdout, and it prints the path
+      (`--json`: `{name, path}`). Decided 2026-11-05.
+    - On a Linux guest the VM process refuses both (`VMBundle.guiExecScript` is nil) until hobo-938.
     - A host-side framebuffer screenshot for wedged guests is deferred.
 18. **Agent sessions and leases.** Agents work in sessions, not one-shot commands: `start --ephemeral`,
     many `exec`/`screenshot` calls, `stop`. There is no `hobo run`. An agent that dies or forgets
