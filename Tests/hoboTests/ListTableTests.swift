@@ -25,6 +25,13 @@ struct ListTableTests {
         #expect(state(.crashed(config, exitStatus: -9)) == "crashed (signal 9)")
     }
 
+    @Test func anEphemeralVMsStateSaysSo() {
+        var ephemeral = config
+        ephemeral.ephemeral = true
+        #expect(List.row(summary(.stopped(ephemeral)))[1] == "stopped, ephemeral")
+        #expect(List.row(summary(.running(ephemeral, pid: 4242)))[1] == "running, ephemeral")
+    }
+
     @Test func aRunningRowsStateIsWhatItsProcessSays() {
         func state(windowShown: Bool? = nil, phase: String? = nil, detail: String? = nil) -> String {
             var running = summary(.running(config, pid: 4242))

@@ -324,9 +324,7 @@ struct List: OutputCommand {
 
     private func table(_ listing: VMListing) -> String {
         let vmRows = listing.vms.map { summary in
-            var cells = Self.row(summary)
-            if summary.config?.ephemeral == true { cells[1] += ", ephemeral" }
-            return cells + [Self.snapshotsCell(count: summary.snapshots?.count ?? 0, bytes: summary.snapshotBytes ?? 0)]
+            Self.row(summary) + [Self.snapshotsCell(count: summary.snapshots?.count ?? 0, bytes: summary.snapshotBytes ?? 0)]
         }
         let total = ["TOTAL", "", "", "", "", fileSize(listing.totalBytes), Self.snapshotsCell(count: listing.snapshotCount, bytes: listing.totalSnapshotBytes)]
         let rows = [["NAME", "STATE", "OS", "CPUS", "MEMORY", "DISK (USED/SIZE)", "SNAPSHOTS"]] + vmRows + [total]
@@ -361,12 +359,13 @@ struct List: OutputCommand {
     }
 
     private static func stateCell(_ summary: VMSummary) -> String {
-        switch summary.state {
+        let state = switch summary.state {
         case .running: runningState(summary)
         case .suspended: "suspended (\(fileSize(summary.savedStateBytes ?? 0)))"
         case .crashed: crashedState(exitStatus: summary.exitStatus ?? 0)
         case .stopped, .building, .failed, .broken: summary.state.rawValue
         }
+        return summary.config?.ephemeral == true ? state + ", ephemeral" : state
     }
 
     private static func crashedState(exitStatus status: Int32) -> String {
