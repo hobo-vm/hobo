@@ -98,10 +98,11 @@ public enum GUITestingGrants {
     /// client has already been alerted. Without a record, its first capture puts up a dialog (the
     /// grants don't prevent it) that blocks the guest's UI and shows in later screenshots. The
     /// record is for `sshd-keygen-wrapper`, which everything run over SSH counts as; an app started
-    /// on its own may count separately. Checked 2026-11-05 on 27.2, for 5 captures over 45 s.
+    /// on its own may count separately. Its dates are far ahead so that no new alert falls due.
+    /// Checked 2026-11-05 on 27.2, for 5 captures over 45 s.
     public static let seedScreenCaptureApprovalCommand = """
-        approvals="$HOME/Library/Group Containers/group.com.apple.replayd"
-        mkdir -p "$approvals" && cat > "$approvals/ScreenCaptureApprovals.plist" <<'PLIST'
+        container="$HOME/Library/Group Containers/group.com.apple.replayd"
+        mkdir -p "$container" && cat > "$container/ScreenCaptureApprovals.plist" <<'PLIST'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0"><dict><key>/usr/libexec/sshd-keygen-wrapper</key><dict>
