@@ -353,15 +353,19 @@ struct List: OutputCommand {
 
     private func row(_ summary: VMSummary) -> [String] {
         let used = fileSize(summary.allocatedBytes)
+        let state = stateCell(summary)
         // Building, failed and broken VMs have no config.
-        guard let config = summary.config else { return [summary.name, summary.state.rawValue, "—", "—", "—", "\(used) / —"] }
-        let state = switch summary.state {
+        guard let config = summary.config else { return [summary.name, state, "—", "—", "—", "\(used) / —"] }
+        return [summary.name, state] + columns(config, used: used)
+    }
+
+    private func stateCell(_ summary: VMSummary) -> String {
+        switch summary.state {
         case .running: runningState(summary)
         case .suspended: "suspended (\(fileSize(summary.savedStateBytes ?? 0)))"
         case .crashed: crashedState(exitStatus: summary.exitStatus ?? 0)
         case .stopped, .building, .failed, .broken: summary.state.rawValue
         }
-        return [summary.name, state] + columns(config, used: used)
     }
 
     private func crashedState(exitStatus status: Int32) -> String {
