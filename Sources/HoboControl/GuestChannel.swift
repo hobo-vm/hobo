@@ -45,7 +45,7 @@ public struct GuestChannel: Sendable {
 
     /// Captures the guest's screen from inside its desktop session (decision 17).
     public func screenshot(_ name: String) throws -> GuestScreenshot {
-        let (vm, _) = try runningJob(name)
+        let vm = try store.find(name)
         var png = Data()
         var errors = Data()
         let status = try exec(name, command: GuestScreenshot.command, gui: true) { stream, data in
