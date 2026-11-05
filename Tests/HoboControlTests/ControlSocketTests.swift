@@ -57,7 +57,6 @@ import Synchronization
         #expect(try await ControlClient.send(.view, to: socket) == .accepted)
     }
 
-    /// VM processes from before `windowShown` existed leave it out of their status.
     @Test func idleTimeoutFieldsRoundTripAndAreAbsentWithoutOne() throws {
         let timed = ControlResponse.status(VMRunStatus(state: .running, pid: 7, idleTimeoutSeconds: 1800, idleSecondsRemaining: 90))
         #expect(try ControlSocket.decode(ControlResponse.self, from: ControlSocket.encode(timed).dropLast()) == timed)
@@ -86,6 +85,7 @@ import Synchronization
         #expect(requests.withLock { $0 } == [ControlRequest.renew, .status])
     }
 
+    /// VM processes from before `windowShown` existed leave it out of their status.
     @Test func statusWithoutWindowDecodes() throws {
         let line = Data(#"{"status":{"_0":{"state":"running","pid":7}}}"#.utf8)
         #expect(try ControlSocket.decode(ControlResponse.self, from: line) == .status(VMRunStatus(state: .running, pid: 7)))
