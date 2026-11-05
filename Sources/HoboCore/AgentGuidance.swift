@@ -67,9 +67,9 @@ public enum AgentGuidance {
         - On a macOS guest, plain `exec` runs in a background session, though `open`, System Events \
         scripting and `screencapture` work from it. `exec --gui` runs the command in the `vagrant` \
         user's desktop session instead, waiting for it after a boot: use it for anything that needs \
-        that session. UI scripting also needs the VM to be built from a \
-        recipe with `[gui_testing]`, which grants Accessibility and Screen Recording. Linux guests \
-        have neither `exec --gui` nor `screenshot` yet.
+        that session. That scripting and `screencapture` need the VM to be built from a recipe with \
+        `[gui_testing]`, which grants Accessibility and Screen Recording. Linux guests have neither \
+        `exec --gui` nor `screenshot` yet.
 
         ## Capacity
 

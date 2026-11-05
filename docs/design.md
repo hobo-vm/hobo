@@ -441,10 +441,10 @@ global VMs on 2026-11-01.
         separately and still get the dialog when it captures. Checked on 27.2 for 5 captures over
         45 s; whether the record lasts for weeks or across macOS updates is unknown. A VM built
         before this needs rebuilding.
-      - Plain `exec` is less cut off than this section's premise suggests: on a VM with the grants,
-        `screencapture` (windows included), `open` and System Events scripting all work from it, in
-        the same way as from `--gui` (checked 2026-11-05 on 27.2). Automation of Finder times out from
-        both, since only System Events is granted.
+      - Running outside the GUI session cuts plain `exec` off less than that might suggest: on a VM
+        with the grants, `screencapture` (windows included), `open` and System Events scripting all
+        work from it, in the same way as from `--gui` (checked 2026-11-05 on 27.2). Automation of
+        Finder times out from both, since only System Events is granted.
     - Recipe `[security] sip = false` (and `amfi = false`, which needs it) turns SIP and AMFI off,
       for testing ad-hoc signed binaries that claim restricted entitlements (decided 2026-11-02;
       `[gui_testing]` doesn't need it). Checked on a macOS 27.2 guest (2026-11-02): `csrutil disable`
