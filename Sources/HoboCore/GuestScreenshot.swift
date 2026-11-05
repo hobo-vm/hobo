@@ -14,8 +14,8 @@ public struct GuestScreenshot: Equatable, Sendable {
     public static let pngSignature = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
 
     /// Run in the guest's desktop session; the PNG is its stdout. `screencapture` can't write to
-    /// stdout, so it goes through a temp file, which an interrupted capture cleans up too (a signal
-    /// alone wouldn't run an EXIT trap). Without the grant, `screencapture` still succeeds but
+    /// stdout, so it goes through a temp file, which an interrupted capture cleans up too, exiting
+    /// with the status a signal would give. Without the grant, `screencapture` still succeeds but
     /// leaves windows out, and the desktop it returns could pass for an app that never opened.
     public static let command = ["sh", "-c", """
         f=$(mktemp /tmp/hobo-screenshot.XXXXXX) || exit 1
