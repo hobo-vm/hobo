@@ -50,6 +50,19 @@ struct IdleTimerTests {
         #expect(timer.remaining(at: at(2010)) == .seconds(90))
     }
 
+    /// `hobo exec` or `hobo view` during boot: the countdown begins with them already holding it.
+    @Test func whatBeganDuringBootHoldsItOnceItStarts() {
+        var timer = IdleTimer(timeout: .seconds(100))
+        timer.requestBegan(at: at(10))
+        timer.setWindowShown(true, at: at(20))
+        timer.start(at: at(30))
+        #expect(timer.remaining(at: at(5000)) == nil && !timer.hasExpired(at: at(5000)))
+        timer.requestEnded(at: at(5000))
+        #expect(timer.remaining(at: at(5000)) == nil, "the window is still showing")
+        timer.setWindowShown(false, at: at(6000))
+        #expect(timer.remaining(at: at(6000)) == .seconds(100))
+    }
+
     @Test func expiresOnceTheTimeoutHasPassed() {
         let timer = counting()
         #expect(timer.secondsRemaining(at: at(99)) == 1 && !timer.hasExpired(at: at(99)))
