@@ -22,8 +22,8 @@ brew install qemu
 
 Large files live in `~/Downloads/hobo-windows-spike` (12 GB disk after install, plus the 0.9 GB
 virtio-win ISO). The files here: `run.sh` (host side), `autounattend.xml`, `hobo-setup.ps1`
-(first logon), `run-in-session.ps1` (the `exec --gui` prototype), `screenshot.ps1`, and
-`hvf-unaligned.patch` (finding 14).
+(first logon), `run-in-session.ps1` (the `exec --gui` prototype), `screenshot.ps1`,
+`hvf-unaligned.patch` (finding 14), and `vz-boot.swift` (finding 20).
 
 ## The machine
 
@@ -95,10 +95,10 @@ qemu-system-aarch64 -machine virt,highmem=on -accel hvf -cpu host -smp 4 -m 8G
 9. **Auto-logon survives reboots.** The unattend `AutoLogon` has a `LogonCount`, so
    `hobo-setup.ps1` rewrites the Winlogon keys permanently. After a cold boot, `query user` shows
    vagrant `Active` on `console`.
-10. **Display is 800×600.** `ramfb` has no resolution properties in QEMU 11.1, and Windows drives
+10. **`ramfb` is 800×600.** `ramfb` has no resolution properties in QEMU 11.1, and Windows drives
     it with the Basic Display adapter at the firmware's 800×600. That's too small for real GUI
-    testing. Open question for M5: edk2's GOP resolution setting (persisted in `vars.fd`), or a
-    different display path. VZ's virtio-gpu is still out, because Windows on Arm can't drive it.
+    testing, but `virtio-gpu-pci` replaces it: see "Display and VZ" below, which also corrects
+    what this finding used to say about virtio-gpu.
 11. **Networking.** User-mode networking with `hostfwd` needs no root, and the guest reaches the
     internet. It gives no routable guest IP, so `hobo ip` and VZ's DHCP-lease model don't carry
     over. M5 picks between hostfwd (a port per VM) and `vmnet-shared` (root, or a
@@ -179,8 +179,34 @@ qemu-system-aarch64 ... -chardev socket,id=chrtpm,path=$WORK/swtpm.sock
       reports `EkCertIsAvailable: false` for this CA anyway, so the engine can skip
       `--create-ek-cert` or point `swtpm_setup --config` at a Hobo-owned CA.
 
+## Display and VZ (hobo-51j)
+
+Run on 2026-11-05 on macOS 27.2, against APFS clones of the installed disk above. The spike and
+decision 20 had said Windows on Arm can't drive virtio-gpu, but nothing had tested it, and
+virtio-win 0.1.302 ships `viogpudo/w11/ARM64`.
+
+19. **Under QEMU, virtio-gpu works and ends the 800×600 limit.** `pnputil /add-driver viogpudo.inf
+    /install` over SSH bound "Red Hat VirtIO GPU DOD controller" with no test signing or reboot.
+    With `-device virtio-gpu-pci,xres=1920,yres=1200` and no `ramfb`, the guest boots to SSH in
+    16 s at 1920×1200. It offers modes up to 5120×2160, and QMP `screendump` and the guest-side
+    screenshot both return 1920×1200. Setup itself hasn't been run on this device, and neither
+    suspend nor snapshots have been tried with it.
+20. **Windows didn't boot under VZ.** `vz-boot.swift` uses VZ's EFI, NVMe, virtio-gpu, USB input
+    and NAT. Neither Windows path ever showed anything:
+
+    | Boot | Display | CPU | Other signs |
+    |---|---|---|---|
+    | Installed disk (raw, `viogpudo` installed, fresh NVRAM) | black for 5 min | one core at 100% | disk and NVRAM never written, no DHCP lease |
+    | Windows ISO over USB mass storage, empty disk | black at 50 s, no "press any key" | one core at about 100% | |
+    | Control: clone of an Ubuntu 26.04 VM, same program, NVMe | GNOME desktop by 50 s | about 2% | |
+
+    So the hang comes before any display driver matters: one vCPU spins early, in firmware or
+    Windows' boot loader. The cause wasn't found, because nothing appears on the display or the
+    console, and it may be fixable. Decision 20's conclusion stands for now, for this reason and
+    not the one it gave: VZ's virtio-gpu was never reached.
+
 ## Not tried
 
 - A fresh install with vTPM + Secure Boot and no LabConfig bypasses (the runtime checks above
   ran on the existing install), running snapshots with a vTPM, Windows Hello, suspend/snapshots
-  via QMP, `system_powerdown` timing, display resolution, and faster install media (finding 1).
+  via QMP, `system_powerdown` timing, and faster install media (finding 1).
