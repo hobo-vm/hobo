@@ -42,6 +42,15 @@ import Testing
         #expect(try Data(contentsOf: file) == Data("png".utf8))
     }
 
+    /// The path is printed for the caller to use, so it comes back without the `..`.
+    @Test func anAbsolutePathIgnoresTheDirectory() throws {
+        defer { cleanUp() }
+        let file = directory.appending(path: "shot.png")
+        let saved = try screenshot.save(to: directory.path + "/elsewhere/../shot.png", in: directory.appending(path: "unused"), date: date)
+        #expect(saved.path == file.path)
+        #expect(try Data(contentsOf: file) == Data("png".utf8))
+    }
+
     @Test func aFailedWriteIsAnErrorRatherThanALoop() throws {
         defer { cleanUp() }
         let missing = directory.appending(path: "missing")
@@ -56,12 +65,14 @@ import Testing
     // The capture script, with the guest's tools stubbed by PATH. The integration test covers it on
     // a real guest, but only with the grant: its refusal would take a VM built without one.
 
-    /// Runs the script with `osascript` answering `granted`, and a `screencapture` that writes to
-    /// the file it is given and notes that it ran.
-    private func capture(granted: String) throws -> (status: Int32, stdout: Data, stderr: String, captured: Bool) {
-        let ran = directory.appending(path: "captured")
+    /// Runs the script with `osascript` answering `granted`, and a `screencapture` that notes the
+    /// file it was given, in `tempFile`, then runs `screencapture`, where `$last` is that file.
+    private func capture(
+        granted: String, screencapture: String = #"printf shot > "$last""#
+    ) throws -> (status: Int32, stdout: Data, stderr: String, tempFile: String?) {
+        let note = directory.appending(path: "captured")
         try stub("osascript", "echo \(granted)")
-        try stub("screencapture", "touch '\(ran.path)'; for last; do :; done; printf shot > \"$last\"")
+        try stub("screencapture", "for last; do :; done; printf %s \"$last\" > '\(note.path)'; \(screencapture)")
         let process = Process()
         process.executableURL = URL(filePath: "/bin/\(GuestScreenshot.command[0])")
         process.arguments = Array(GuestScreenshot.command.dropFirst())
@@ -73,7 +84,7 @@ import Testing
         let stdout = out.fileHandleForReading.readDataToEndOfFile()
         let stderr = err.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        return (process.terminationStatus, stdout, String(decoding: stderr, as: UTF8.self), FileManager.default.fileExists(atPath: ran.path))
+        return (process.terminationStatus, stdout, String(decoding: stderr, as: UTF8.self), try? String(contentsOf: note, encoding: .utf8))
     }
 
     private func stub(_ name: String, _ body: String) throws {
@@ -88,6 +99,25 @@ import Testing
         #expect(result.status == 0)
         #expect(result.stdout == Data("shot".utf8))
         #expect(result.stderr.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: try #require(result.tempFile)))
+    }
+
+    /// Exiting 0 with no output would blame the capture for coming back empty, not for failing.
+    @Test func aFailedCaptureKeepsItsStatusAndLeavesNothing() throws {
+        defer { cleanUp() }
+        let result = try capture(granted: "true", screencapture: "exit 3")
+        #expect(result.status == 3)
+        #expect(result.stdout.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: try #require(result.tempFile)))
+    }
+
+    /// A cancelled exec signals the script, which exits as a command killed by SIGTERM would.
+    @Test func anInterruptedCaptureLeavesNothing() throws {
+        defer { cleanUp() }
+        let result = try capture(granted: "true", screencapture: "kill -TERM $PPID")
+        #expect(result.status == 143)
+        #expect(result.stdout.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: try #require(result.tempFile)))
     }
 
     /// `screencapture` would succeed, leaving windows out.
@@ -97,6 +127,6 @@ import Testing
         #expect(result.status == 1)
         #expect(result.stdout.isEmpty)
         #expect(result.stderr.contains("[gui_testing]"))
-        #expect(!result.captured)
+        #expect(result.tempFile == nil)
     }
 }
