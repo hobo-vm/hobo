@@ -281,8 +281,7 @@ import Testing
         try write(4, to: a.appending(path: "disk"), at: 0)
         let measured = store.snapshots(of: try store.find("a"))
         #expect(measured.map(\.tag) == ["s"])
-        expect(measured.first?.uniqueBytes, megabytes: 0)
-        #expect(measured.first?.uniqueBytes != nil)
+        expect(try #require(measured.first?.uniqueBytes), megabytes: 0)
         expect(store.diskUsage().snapshotBytes["a"], megabytes: 4)
     }
 
