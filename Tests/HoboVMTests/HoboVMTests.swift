@@ -408,6 +408,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         defer { _ = try? run(hobo, ["stop", "--force", expiring], in: work, environment: env) }
         #expect(text.contains("deleted after 20s idle"), "\(text)")
         #expect(try list().contains(try Regex("\(expiring)\\s+running, ephemeral, \\d+s left")))
+        #expect(try output(hobo, ["start", expiring, "--json"], environment: env).contains("\"idleSecondsRemaining\""), "a renewal shows the time left")
         #expect(try output(hobo, ["exec", expiring, "--", "sh", "-c", "sleep 30; echo held"], environment: env) == "held\n")
         #expect(exists(expiring), "the exec outlasted the timeout")
         // Polling `list` doesn't keep it alive: the full stop sequence fits well inside this.

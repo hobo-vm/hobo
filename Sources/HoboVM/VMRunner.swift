@@ -268,10 +268,14 @@ public final class VMRunner {
     }
 
     private func handle(_ request: ControlRequest, reply: ControlReply) async -> ControlResponse {
+        // `renew` only restarts it: as a hold, its answer would report its own request as holding the
+        // timer, with no time left to show.
+        if request == .renew { idleTimer?.renew(at: idleClock.now) }
         // Held for as long as the request runs: a long `exec` is the opposite of idle. A client that
         // hangs up cancels its request, so an abandoned one can't hold the timer.
-        if request.countsAsActivity { idleTimer?.requestBegan(at: idleClock.now) }
-        defer { if request.countsAsActivity { idleTimer?.requestEnded(at: idleClock.now) } }
+        let holds = request.countsAsActivity && request != .renew
+        if holds { idleTimer?.requestBegan(at: idleClock.now) }
+        defer { if holds { idleTimer?.requestEnded(at: idleClock.now) } }
         switch request {
         case .status, .renew:
             return .status(currentStatus())
