@@ -29,8 +29,8 @@ public struct GuestChannel: Sendable {
     public func renewing(_ name: String, every interval: Duration = .seconds(1), while body: () async throws -> Void) async throws {
         let socket = store.job(for: name).socket
         let renewals = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: interval)
+            while true {
+                try await Task.sleep(for: interval) // Throws once cancelled, which ends the renewals.
                 _ = try? await ControlClient.renew(at: socket)
             }
         }
