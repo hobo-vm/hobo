@@ -50,7 +50,7 @@ public enum IdleTimeoutError: Error, Equatable, CustomStringConvertible {
 public struct IdleTimer: Sendable {
     public typealias Instant = SuspendingClock.Instant
 
-    public let timeout: Duration
+    private let timeout: Duration
     private var lastUse: Instant?
     private var runningRequests = 0
     private var windowShown = false
@@ -95,10 +95,8 @@ public struct IdleTimer: Sendable {
 
     /// `remaining` in whole seconds, rounded up, so a VM that hasn't expired never reports 0.
     public func secondsRemaining(at now: Instant) -> Int? {
-        remaining(at: now).map { remaining in
-            let (seconds, attoseconds) = remaining.components
-            return Int(seconds) + (attoseconds > 0 ? 1 : 0)
-        }
+        guard let (seconds, attoseconds) = remaining(at: now)?.components else { return nil }
+        return Int(seconds) + (attoseconds > 0 ? 1 : 0)
     }
 
     public func hasExpired(at now: Instant) -> Bool {
