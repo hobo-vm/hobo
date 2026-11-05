@@ -1,4 +1,5 @@
 import ArgumentParser
+import HoboCore
 import Testing
 @testable import hobo
 
@@ -83,6 +84,22 @@ struct InitOptionTests {
     @Test func serverIsOnlyForLinux() throws {
         #expect(throws: (any Error).self) { try Init.parse(["--server"]) }
         _ = try Init.parse(["--os", "linux", "--server"])
+    }
+}
+
+struct IdleTimeoutOptionTests {
+    /// A typo mustn't reach the VM process, whose missing option would mean the standard timeout.
+    @Test func startRefusesATypo() throws {
+        #expect(try Start.parse(["dev", "--ephemeral"]).idleTimeout == nil)
+        #expect(try Start.parse(["dev", "--ephemeral", "--idle-timeout", "off"]).idleTimeout == .off)
+        #expect(try Start.parse(["dev", "--ephemeral", "--idle-timeout", "90s"]).idleTimeout == .after(seconds: 90))
+        #expect(throws: (any Error).self) { try Start.parse(["dev", "--ephemeral", "--idle-timeout", "30"]) }
+    }
+
+    @Test func theVMProcessReadsTheOptionItIsGiven() throws {
+        #expect(try VMRun.parse(["dev"]).idleTimeout == nil)
+        #expect(try VMRun.parse(["dev", "--idle-timeout", "off"]).idleTimeout == .off)
+        #expect(try VMRun.parse(["dev", "--idle-timeout", "90s"]).idleTimeout == .after(seconds: 90))
     }
 }
 
