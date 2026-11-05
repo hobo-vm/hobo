@@ -54,7 +54,7 @@ public struct VMStore: Sendable {
         public var bundle: URL
         public var status: Status
         /// Bytes the VM's own files occupy on the host: its bundle without its snapshots, which
-        /// `diskUsage(of:)` measures. Blocks shared with a clone count in full.
+        /// `diskUsage()` measures. Blocks shared with a clone count in full.
         public var allocatedBytes: UInt64
         /// The VM's launchd job, if it is loaded.
         public var job: Launchd.Job?

@@ -50,7 +50,7 @@ public struct VMSummary: Encodable, Equatable, Sendable {
     /// answered; only the VM process knows, so only `VMLifecycle.listing()` fills it in.
     public var windowShown: Bool?
     /// What a `running` VM's process says it is doing, when that isn't plainly running: `starting`
-    /// or `stopping` (a suspend is `stopping`, detail `saving state`). Filled in as `windowShown` is.
+    /// or `stopping` (a suspend is `stopping`, detail `saving state`). Only from `VMLifecycle.listing()`.
     public var phase: String?
     /// The VM process's detail for `phase`, e.g. `booting` or `shutting down over SSH`.
     public var phaseDetail: String?
