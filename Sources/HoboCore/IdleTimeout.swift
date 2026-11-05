@@ -52,12 +52,14 @@ public struct IdleTimer: Sendable {
 
     public let timeout: Duration
     private var lastUse: Instant?
-    private var requests = 0
+    private var runningRequests = 0
     private var windowShown = false
 
     public init(timeout: Duration) {
         self.timeout = timeout
     }
+
+    public var timeoutSeconds: Int { Int(timeout.components.seconds) }
 
     public mutating func start(at now: Instant) {
         lastUse = now
@@ -69,12 +71,12 @@ public struct IdleTimer: Sendable {
     }
 
     public mutating func requestBegan(at now: Instant) {
-        requests += 1
+        runningRequests += 1
         renew(at: now)
     }
 
     public mutating func requestEnded(at now: Instant) {
-        requests -= 1
+        runningRequests -= 1
         renew(at: now)
     }
 
@@ -87,7 +89,7 @@ public struct IdleTimer: Sendable {
 
     /// What is left, or nil while nothing is counting: before `start`, and while held.
     public func remaining(at now: Instant) -> Duration? {
-        guard let lastUse, requests == 0, !windowShown else { return nil }
+        guard let lastUse, runningRequests == 0, !windowShown else { return nil }
         return max(timeout - lastUse.duration(to: now), .zero)
     }
 

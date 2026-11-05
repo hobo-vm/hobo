@@ -241,8 +241,8 @@ public final class VMRunner {
             idleTimer?.renew(at: now)
             return
         }
-        guard idleTimer != nil else { return }
-        log("Idle for \(IdleTimeout.after(seconds: Int(timer.timeout.components.seconds))); stopping")
+        guard idleTimer != nil else { return } // Kept since the timer started.
+        log("Idle for \(IdleTimeout.after(seconds: timer.timeoutSeconds)); stopping")
         beginStop(force: false)
     }
 
@@ -261,18 +261,18 @@ public final class VMRunner {
         let now = idleClock.now
         idleTimer?.setWindowShown(status.windowShown, at: now)
         if let idleTimer {
-            status.idleTimeoutSeconds = Int(idleTimer.timeout.components.seconds)
+            status.idleTimeoutSeconds = idleTimer.timeoutSeconds
             if status.state != .stopping { status.idleSecondsRemaining = idleTimer.secondsRemaining(at: now) }
         }
         return status
     }
 
     private func handle(_ request: ControlRequest, reply: ControlReply) async -> ControlResponse {
-        // `renew` only restarts it: as a hold, its answer would report its own request as holding the
-        // timer, with no time left to show.
+        // `renew` restarts the countdown without holding it: its answer reports the time left, and a
+        // request holding the timer would leave none to report.
         if request == .renew { idleTimer?.renew(at: idleClock.now) }
-        // Held for as long as the request runs: a long `exec` is the opposite of idle. A client that
-        // hangs up cancels its request, so an abandoned one can't hold the timer.
+        // Other activity holds the countdown for as long as it runs: a long `exec` is the opposite of
+        // idle. A client that hangs up cancels its request, so an abandoned one can't hold it.
         let holds = request.countsAsActivity && request != .renew
         if holds { idleTimer?.requestBegan(at: idleClock.now) }
         defer { if holds { idleTimer?.requestEnded(at: idleClock.now) } }
