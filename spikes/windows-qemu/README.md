@@ -23,7 +23,7 @@ brew install qemu
 Large files live in `~/Downloads/hobo-windows-spike` (12 GB disk after install, plus the 0.9 GB
 virtio-win ISO). The files here: `run.sh` (host side), `autounattend.xml`, `hobo-setup.ps1`
 (first logon), `run-in-session.ps1` (the `exec --gui` prototype), `screenshot.ps1`,
-`hvf-unaligned.patch` (finding 14), and `vz-boot.swift` (finding 20).
+`hvf-unaligned.patch` (finding 14), and `vz-boot.swift` (findings 20 and 21).
 
 ## The machine
 
@@ -201,9 +201,37 @@ virtio-win 0.1.302 ships `viogpudo/w11/ARM64`.
     | Control: clone of an Ubuntu 26.04 VM, same program, NVMe | GNOME desktop by 50 s | about 2% | |
 
     So the hang comes before any display driver matters: one vCPU spins early, in firmware or
-    Windows' boot loader. The cause wasn't found, because nothing appears on the display or the
-    console, and it may be fixable. Decision 20's conclusion stands for now, for this reason and
-    not the one it gave: VZ's virtio-gpu was never reached.
+    Windows' boot loader. Finding 21 has the cause.
+21. **Windows does run under VZ, with two fixes.** [A post on running Windows under
+    Tart](https://mustafaakin.dev/blog/windows-on-tart/) names them, and its [fork](https://github.com/mustafaakin/tart/tree/windows-guest-extras)
+    has the code (FSL-1.1-ALv2, so it was built here for testing only and none of it is in this
+    repo). Run on an M2 on macOS 27.2, with the installed disk above, on NVMe:
+
+    - The spin ends with the private `VZGenericPlatformConfiguration`
+      `_setPerformanceMonitoringUnitEmulationEnabled:`. Alone, it turns the hang into "The virtual
+      machine stopped unexpectedly" in under a second. `_setFineGrainedTrapsEmulationEnabled:`
+      wasn't needed.
+    - VZ's firmware offers a Blt-only GOP with no linear framebuffer, which the post gives as the
+      cause of that stop. The fork's UEFI driver (7 KB) backs the GOP with reserved RAM and copies
+      changed rows to the scanout until `ExitBootServices`. Here it went in the EFI partition with a
+      small loader as `EFI/BOOT/BOOTAA64.EFI`, which starts the driver and then Boot Manager, moved
+      to `EFI/BOOT/windows.efi`. No firmware file is replaced, and VZ's `VZEFIBootLoader` is used.
+
+    | Check | Result |
+    |---|---|
+    | Boot to SSH, fresh NVRAM | 6–8 s; 11 s with two clones starting together |
+    | Devices | Apple NVMe, VirtIO network with a DHCP lease on the VM's MAC, VirtIO GPU |
+    | Display | 1024×768 at first; 1920×1200 once set from the desktop session, and it stays set across a reboot |
+    | Session work | `run-in-session.ps1` works, and a guest screenshot is 1920×1200 |
+    | Guest reboot, shutdown | Same VM process through a reboot, SSH back in 16 s; shutdown stops the VM |
+    | Save a running VM | Works, against the post's report: about 5–6 s, 2.8 GB with 8 GB of memory |
+    | Restore | 3–8 s; processes and desktop carry on, and the VM's CPU settles |
+    | Network after restore | **Dead.** The guest stops answering ARP, and swapping the attachment from the host doesn't help. `ipconfig /renew` doesn't either; `Restart-NetAdapter` in the guest brings it back in about a second |
+    | Clones | `cp -c` of disk and NVRAM, new machine identifier and MAC; two ran together, each with its own lease. The hostname stays the source's |
+
+    Not yet tried: installing under VZ (the post's DISM script takes 12 min and avoids Setup,
+    which it says fails on these disks), ASIF disks, virtio-fs shares, and whether the private
+    setter survives later macOS releases.
 
 ## Not tried
 
