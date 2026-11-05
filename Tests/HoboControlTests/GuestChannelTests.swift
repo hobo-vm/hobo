@@ -98,6 +98,28 @@ import Testing
         #expect(requests.withLock { $0.count } == settled)
     }
 
+    /// A failed provision step has to reach `hobo provision`, and ends the renewals as a finished one does.
+    @Test func renewingPassesOnTheWorksFailureAndStops() async throws {
+        defer { cleanUp() }
+        struct StepFailed: Error {}
+        let requests = Mutex<[ControlRequest]>([])
+        let server = try serve { request, _ in
+            requests.withLock { $0.append(request) }
+            return .status(VMRunStatus(state: .running, pid: 4242))
+        }
+        defer { server.close() }
+        await #expect(throws: StepFailed.self) {
+            try await channel.renewing("dev", every: .milliseconds(5)) {
+                while requests.withLock({ $0.isEmpty }) { try await Task.sleep(for: .milliseconds(5)) }
+                throw StepFailed()
+            }
+        }
+        try await Task.sleep(for: .milliseconds(50)) // Lets a renewal already sent arrive.
+        let settled = requests.withLock { $0.count }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(requests.withLock { $0.count } == settled)
+    }
+
     @Test func renewingOutlivesAVMThatDoesntAnswer() async throws {
         defer { cleanUp() }
         let ran = Mutex(false)
