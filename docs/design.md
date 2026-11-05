@@ -431,8 +431,20 @@ global VMs on 2026-11-01.
       - Create then checks over SSH, before the provision steps, that Accessibility
         (`AXIsProcessTrusted`), Screen Recording (`CGPreflightScreenCaptureAccess`; `screencapture`
         succeeds without the grant, leaving windows out) and System Events scripting work, and
-        fails otherwise. Whether macOS's periodic Screen Recording re-approval affects long-lived VMs
-        is unknown.
+        fails otherwise.
+      - The grants don't stop replayd's own approval dialog ("requesting to bypass the system private
+        window picker"): the first capture by a client with no record raises it, from plain `exec` or
+        `--gui`, and it blocks the guest's UI and shows in later screenshots. So create then seeds
+        that record over SSH, before anything captures: `ScreenCaptureApprovals.plist` in the user's
+        replayd group container, with its alert dates in 2099, for `sshd-keygen-wrapper` only, which
+        everything run over SSH counts as (decided 2026-11-05). An app started on its own may count
+        separately and still get the dialog when it captures. Checked on 27.2 for 5 captures over
+        45 s; whether the record lasts for weeks or across macOS updates is unknown. A VM built
+        before this needs rebuilding.
+      - Plain `exec` is less cut off than this section's premise suggests: on a VM with the grants,
+        `screencapture` (windows included), `open` and System Events scripting all work from it, in
+        the same way as from `--gui` (checked 2026-11-05 on 27.2). Automation of Finder times out from
+        both, since only System Events is granted.
     - Recipe `[security] sip = false` (and `amfi = false`, which needs it) turns SIP and AMFI off,
       for testing ad-hoc signed binaries that claim restricted entitlements (decided 2026-11-02;
       `[gui_testing]` doesn't need it). Checked on a macOS 27.2 guest (2026-11-02): `csrutil disable`

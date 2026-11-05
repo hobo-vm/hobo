@@ -94,6 +94,26 @@ public enum GUITestingGrants {
         exit 1
         """
 
+    /// Run over SSH in the guest, before anything captures the screen: tells replayd that SSH's
+    /// client has already been alerted. Without a record, its first capture puts up a dialog (the
+    /// grants don't prevent it) that blocks the guest's UI and shows in later screenshots. The
+    /// record is for `sshd-keygen-wrapper`, which everything run over SSH counts as; an app started
+    /// on its own may count separately. Checked 2026-11-05 on 27.2, for 5 captures over 45 s.
+    public static let seedScreenCaptureApprovalCommand = """
+        approvals="$HOME/Library/Group Containers/group.com.apple.replayd"
+        mkdir -p "$approvals" && cat > "$approvals/ScreenCaptureApprovals.plist" <<'PLIST'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict><key>/usr/libexec/sshd-keygen-wrapper</key><dict>
+        <key>kScreenCaptureAlertableUsageCount</key><integer>0</integer>
+        <key>kScreenCaptureApprovalLastAlerted</key><date>2099-01-01T00:00:00Z</date>
+        <key>kScreenCaptureApprovalLastUsed</key><date>2099-01-01T00:00:00Z</date>
+        <key>kScreenCapturePrivacyHintDate</key><date>2099-01-01T00:00:00Z</date>
+        <key>kScreenCapturePrivacyHintPolicy</key><integer>2592000</integer>
+        </dict></dict></plist>
+        PLIST
+        """
+
     private static func apple(_ identifier: String, _ signingID: String) -> Client {
         Client(identifier: identifier, requirement: "identifier \"\(signingID)\" and anchor apple")
     }

@@ -152,6 +152,7 @@ public struct VMCreator {
             if recipe.guiTesting != nil {
                 log("Checking GUI testing permissions")
                 try await ssh.check(GUITestingGrants.checkCommand, what: "GUI testing permission check")
+                try await ssh.check(GUITestingGrants.seedScreenCaptureApprovalCommand, what: "seeding the Screen Recording approval")
             }
             try await provisionAndShutDown(vm, ssh: ssh, recipe: recipe, cleanupScript: Conventions.cleanupScript)
             return security

@@ -624,7 +624,7 @@ struct Exec: OutputCommand {
     @Argument(help: "Name of the VM.")
     var name: String
 
-    @Flag(help: "Run in the vagrant user's desktop session, for GUI apps, open, UI scripting and screencapture.")
+    @Flag(help: "Run in the vagrant user's desktop session, waiting for it after a boot, for anything that needs that session.")
     var gui = false
 
     @Flag(help: "Print the command's exit status as JSON; its output goes to stderr.")

@@ -98,6 +98,11 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         let saved = try FileManager.default.contentsOfDirectory(atPath: work.path).filter { $0.hasPrefix("itest-") && $0.hasSuffix(".png") }
         #expect(saved.count == 1, "\(saved)")
         #expect(try output(hobo, ["exec", "itest", "--", "sh", "-c", "ls /tmp | grep -c hobo-screenshot || true"], environment: env) == "0\n")
+        // Create seeded the approval, so those captures raised no dialog. replayd logs its decision at
+        // the capture; finding the check it ran means this isn't passing on a log that says nothing.
+        let replayd = try output(hobo, ["exec", "itest", "--", "/usr/bin/log", "show", "--last", "10m", "--predicate", #"process == "replayd""#, "--style", "compact"], environment: env)
+        #expect(replayd.contains("requireAlertWithCanonicalBundleID"), "replayd's log has changed wording")
+        #expect(!replayd.contains("userAcknowledgementAlert"), "the approval dialog was raised")
         let payload = work.appending(path: "payload.txt")
         try "over and back\n".write(to: payload, atomically: true, encoding: .utf8)
         #expect(try run(hobo, ["cp", payload.path, "itest:/tmp/payload.txt"], in: work, environment: env) == 0)
