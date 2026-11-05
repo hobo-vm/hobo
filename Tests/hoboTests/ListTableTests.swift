@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import HoboControl
 @testable import HoboCore
 @testable import hobo
 
@@ -30,6 +31,53 @@ struct ListTableTests {
         ephemeral.ephemeral = true
         #expect(List.row(summary(.stopped(ephemeral)))[1] == "stopped, ephemeral")
         #expect(List.row(summary(.running(ephemeral, pid: 4242)))[1] == "running, ephemeral")
+    }
+
+    @Test func anEphemeralRowSaysWhereItsIdleTimeoutStands() {
+        var ephemeral = config
+        ephemeral.ephemeral = true
+        func state(
+            timeout: Int? = 1800, remaining: Int? = nil, windowShown: Bool? = false, phase: String? = nil
+        ) -> String {
+            var running = summary(.running(ephemeral, pid: 4242))
+            running.idleTimeoutSeconds = timeout
+            running.idleSecondsRemaining = remaining
+            running.windowShown = windowShown
+            running.phase = phase
+            return List.row(running)[1]
+        }
+        #expect(state(remaining: 1680) == "running, ephemeral, 28m left")
+        #expect(state() == "running, ephemeral, busy", "it has a timeout, but nothing is counting")
+        #expect(state(timeout: nil) == "running, ephemeral, no timeout")
+        #expect(state(windowShown: true) == "running (window), ephemeral", "the window explains the hold")
+        #expect(state(windowShown: nil) == "running, ephemeral", "its process didn't answer, so nothing is known")
+        #expect(state(remaining: 60, phase: "starting") == "starting, ephemeral", "no countdown until the boot sequence ends")
+        #expect(state(phase: "stopping") == "stopping, ephemeral")
+    }
+
+    @Test func aNormalVMsRowHasNoIdleTimeout() {
+        var running = summary(.running(config, pid: 4242))
+        running.windowShown = false
+        #expect(List.row(running)[1] == "running")
+    }
+
+    @Test(arguments: [(1, "1s left"), (59, "59s left"), (60, "1m left"), (61, "2m left"), (1680, "28m left"), (1681, "29m left"), (3600, "1h left"), (5400, "1h 30m left"), (7200, "2h left")])
+    func timeLeftRoundsUpToTheMinuteWithSecondsUnderOne(seconds: Int, text: String) {
+        var ephemeral = config
+        ephemeral.ephemeral = true
+        var running = summary(.running(ephemeral, pid: 4242))
+        running.windowShown = false
+        running.idleTimeoutSeconds = 7200
+        running.idleSecondsRemaining = seconds
+        #expect(List.row(running)[1] == "running, ephemeral, \(text)")
+    }
+
+    @Test func startSaysTheAddressAndTheIdleTimeout() {
+        #expect(Start.details(nil) == "")
+        #expect(Start.details(VMRunStatus(state: .running, pid: 1)) == "")
+        #expect(Start.details(VMRunStatus(state: .running, pid: 1, ipAddress: "192.168.64.5")) == " (192.168.64.5)")
+        #expect(Start.details(VMRunStatus(state: .running, pid: 1, ipAddress: "192.168.64.5", idleTimeoutSeconds: 1800))
+            == " (192.168.64.5); deleted after 30m idle")
     }
 
     @Test func aRunningRowsStateIsWhatItsProcessSays() {

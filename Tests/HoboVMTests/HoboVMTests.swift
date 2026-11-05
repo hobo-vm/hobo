@@ -384,8 +384,51 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try output(hobo, ["list"], environment: env).contains(try Regex("\(keptClone)\\s+stopped\\s")))
         #expect(try run(hobo, ["delete", keptClone, "--yes"], in: work, environment: env) == 0)
 
+        try checkIdleTimeout(hobo: hobo, work: work, vms: vms, env: env)
+
         #expect(try run(hobo, ["delete", "litest", "--yes"], in: work, environment: env) == 0)
         #expect(try FileManager.default.contentsOfDirectory(atPath: vms.path).isEmpty)
+    }
+
+    /// Decision 18 on a real clone of the stopped VM `litest`: a request outlasting the timeout holds
+    /// it, `list` shows the countdown without renewing it, and expiry stops and deletes the clone.
+    /// `set --keep` and `off` each spare a clone past a timeout that has passed.
+    private func checkIdleTimeout(hobo: String, work: URL, vms: URL, env: [String: String]) throws {
+        func start(_ timeout: String) throws -> (name: String, text: String) {
+            let started = try output(hobo, ["start", "litest", "--ephemeral", "--idle-timeout", timeout], environment: env)
+            let name = try #require(started.firstMatch(of: /(litest-[0-9a-f]{4}) is running/)?.1, "\(started)")
+            return (String(name), started)
+        }
+        func exists(_ name: String) -> Bool { FileManager.default.fileExists(atPath: vms.appending(path: "\(name).hobovm").path) }
+        func list() throws -> String { try output(hobo, ["list"], environment: env) }
+
+        #expect(try run(hobo, ["start", "litest", "--idle-timeout", "5m"], in: work, environment: env) != 0, "not ephemeral")
+
+        let (expiring, text) = try start("20s")
+        defer { _ = try? run(hobo, ["stop", "--force", expiring], in: work, environment: env) }
+        #expect(text.contains("deleted after 20s idle"), "\(text)")
+        #expect(try list().contains(try Regex("\(expiring)\\s+running, ephemeral, \\d+s left")))
+        #expect(try output(hobo, ["exec", expiring, "--", "sh", "-c", "sleep 30; echo held"], environment: env) == "held\n")
+        #expect(exists(expiring), "the exec outlasted the timeout")
+        // Polling `list` doesn't keep it alive: the full stop sequence fits well inside this.
+        let deadline = Date.now.addingTimeInterval(180)
+        while exists(expiring), Date.now < deadline {
+            _ = try? list()
+            Thread.sleep(forTimeInterval: 2)
+        }
+        #expect(!exists(expiring), "expired and deleted")
+
+        let (kept, _) = try start("20s")
+        defer { _ = try? run(hobo, ["stop", "--force", kept], in: work, environment: env) }
+        #expect(try run(hobo, ["set", kept, "--keep"], in: work, environment: env) == 0)
+        Thread.sleep(forTimeInterval: 25)
+        #expect(try list().contains(try Regex("\(kept)\\s+running\\s")), "kept: no timeout, and no longer ephemeral")
+        #expect(try run(hobo, ["delete", kept, "--force"], in: work, environment: env) == 0)
+
+        let (untimed, _) = try start("off")
+        defer { _ = try? run(hobo, ["stop", "--force", untimed], in: work, environment: env) }
+        #expect(try list().contains(try Regex("\(untimed)\\s+running, ephemeral, no timeout")))
+        #expect(try output(hobo, ["stop", untimed], environment: env).contains("Stopped and deleted \(untimed)"))
     }
 
     /// The guest's clock reads the host's time, within 5 s. The host is read both sides of the

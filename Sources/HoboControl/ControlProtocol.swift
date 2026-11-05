@@ -13,7 +13,11 @@ public enum ControlProtocol {
 }
 
 public enum ControlRequest: Codable, Equatable, Sendable {
+    /// Asks how the VM process is doing. Looking isn't using: this alone doesn't count as activity,
+    /// or a `hobo list` left polling would keep every forgotten ephemeral VM alive.
     case status
+    /// `status` from a client that is about to use the VM, e.g. `hobo ip` before its own SSH.
+    case renew
     /// Starts the stop sequence and replies at once; the VM process exits when the VM is off.
     case stop(force: Bool)
     /// Runs a command in the guest over SSH, without stdin or a TTY: `output` lines, then `exited`.
@@ -29,6 +33,9 @@ public enum ControlRequest: Codable, Equatable, Sendable {
     case snapshot(tag: String)
     /// Shows the VM's window, creating it the first time, and brings it to the front.
     case view
+
+    /// Whether this request counts as using the VM, for its idle timeout: all but `status`.
+    public var countsAsActivity: Bool { self != .status }
 }
 
 public enum ControlResponse: Codable, Equatable, Sendable {
@@ -63,13 +70,23 @@ public struct VMRunStatus: Codable, Equatable, Sendable {
     /// Whether the VM's window is showing (`hobo view`, `start --gui`) rather than hidden or never
     /// opened. VM processes from before it existed don't send it.
     @MissingAsFalse public var windowShown: Bool
+    /// The idle timeout this run has, if it has one: only an ephemeral VM does (decision 18).
+    public var idleTimeoutSeconds: Int?
+    /// What is left of it, rounded up. Absent while it isn't counting: until the boot sequence ends,
+    /// while a request is running or the window is showing, and once the VM is stopping.
+    public var idleSecondsRemaining: Int?
 
-    public init(state: State, pid: Int32, detail: String? = nil, ipAddress: String? = nil, windowShown: Bool = false) {
+    public init(
+        state: State, pid: Int32, detail: String? = nil, ipAddress: String? = nil, windowShown: Bool = false,
+        idleTimeoutSeconds: Int? = nil, idleSecondsRemaining: Int? = nil
+    ) {
         self.state = state
         self.pid = pid
         self.detail = detail
         self.ipAddress = ipAddress
         self.windowShown = windowShown
+        self.idleTimeoutSeconds = idleTimeoutSeconds
+        self.idleSecondsRemaining = idleSecondsRemaining
     }
 }
 

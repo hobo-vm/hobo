@@ -456,10 +456,36 @@ global VMs on 2026-11-01.
     - `screenshot` runs `screencapture` that way and returns the PNG.
     - A host-side framebuffer screenshot for wedged guests is deferred.
 18. **Agent sessions and leases.** Agents work in sessions, not one-shot commands: `start --ephemeral`,
-    many `exec`/`screenshot` calls, `stop`. There is no `hobo run`. Ephemeral VMs carry an idle
-    timeout (`--idle-timeout`, default 30 min; off for normal VMs), renewed by every control-socket
-    call; on expiry the VM process stops itself, deleting the clone. `hobo list` shows time
-    remaining. `hobo mcp` also stops the ephemeral VMs it started when its session ends.
+    many `exec`/`screenshot` calls, `stop`. There is no `hobo run`. An agent that dies or forgets
+    leaves a clone running and holding one of the 2 macOS guest slots, and with no daemon only its
+    own VM process can notice. So an ephemeral VM holds a lease on running: an idle timeout (nothing
+    to do with the guest's DHCP lease), after which the VM process runs the normal graceful stop,
+    which deletes the clone. `hobo mcp` also stops the ephemeral VMs it started when its session
+    ends (hobo-i2j); the timeout is what covers a server that is killed, and CLI agents. Decided
+    2026-11-04 (hobo-r86):
+    - Only ephemeral VMs have one; normal VMs were kept on purpose, and aren't deleted anyway.
+      `start --idle-timeout <d>` takes a whole number and a unit (`90s`, `30m`, `2h`) or `off`, and
+      anything else is an error, so a typo can't turn the cleanup off; the default is 30 min. It
+      lasts one run, as an argument to `_vm-run`, not in `config.json`: a resume starts over from
+      the default. It is an error on a normal VM and on one already running.
+    - `hobo set --keep` ends it: the VM process rereads `config.json` before acting on an expiry
+      and when reporting the time left. If the file is unreadable, it stays up and warns.
+    - Using the VM renews it, looking doesn't. `status` alone doesn't, or a polling `hobo list`
+      would keep every forgotten clone alive, so `list` and the wait loops stay passive. Every other
+      request does, including `renew` (`status` that counts), which `hobo ip`, `hobo ssh`,
+      `hobo provision` and `start` on a running VM send. Their own SSH never reaches the socket, so
+      these renew once, and a long `hobo ssh` session or raw `ssh` can expire underneath itself.
+    - A running request holds it (a client that hangs up cancels its request, so an abandoned one
+      can't), as does a showing window, whose clicks and keys never reach the socket; the full
+      timeout restarts when they end. A window left open is a VM someone can see, not a forgotten one.
+    - It counts from the end of the boot sequence, however that ended, so a short timeout can't end
+      a guest still booting and a stuck boot still gets cleaned up; and only the host's awake time
+      (`SuspendingClock`), so closing a laptop lid mid-session doesn't cost the session its VM.
+    - `hobo list` shows `running, ephemeral, 28m left`, `busy` while held by a request, or
+      `no timeout`, and `--json` `idleTimeoutSeconds` and `idleSecondsRemaining`. `start` states
+      the timeout, since an expiry leaves nothing behind to say why the VM is gone (a kept log or
+      record would pile up, as decision 12 says of logs); `hobo usage` and `AgentGuidance` say a VM
+      not found mid-session has probably expired.
 19. **MCP.** `hobo mcp` is a stdio server with typed tools mirroring the CLI: lifecycle, `exec`
     (with `gui`), `copy_in`/`copy_out`, `screenshot` (image content), `view`, `clone`, `snapshot`, `set`,
     `provision`, `list`. Destructive tools go through the client's normal permission prompts.

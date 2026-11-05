@@ -92,6 +92,71 @@ import Testing
         #expect(summary.phase == nil && summary.phaseDetail == nil)
     }
 
+    @Test func listingHasTheIdleTimeoutWithoutRenewingIt() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let requests = Mutex<[ControlRequest]>([])
+        let server = try ControlServer(path: store.job(for: "dev").socket) { request, _ in
+            requests.withLock { $0.append(request) }
+            return .status(VMRunStatus(state: .running, pid: 4242, idleTimeoutSeconds: 1800, idleSecondsRemaining: 90))
+        }
+        defer { server.close() }
+        let summary = try #require(await lifecycle.listing().vms.first)
+        #expect(summary.idleTimeoutSeconds == 1800 && summary.idleSecondsRemaining == 90)
+        #expect(requests.withLock { $0 } == [.status])
+    }
+
+    @Test func aStoppedVMsSummaryHasNoIdleTimeoutFields() throws {
+        defer { cleanUp() }
+        let summary = VMSummary(try store.find("dev"))
+        #expect(!String(decoding: try HoboJSON.line(summary), as: UTF8.self).contains("idle"))
+    }
+
+    /// Marks `dev` ephemeral, as `clone --ephemeral` leaves it.
+    func makeEphemeral() throws {
+        let file = store.bundle(for: "dev").appending(path: VMStore.configFile)
+        var config = try VMConfig.load(from: file)
+        config.ephemeral = true
+        try config.write(to: file)
+    }
+
+    @Test func startingARunningVMRenewsItsIdleTimeout() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let requests = Mutex<[ControlRequest]>([])
+        let server = try ControlServer(path: store.job(for: "dev").socket) { request, _ in
+            requests.withLock { $0.append(request) }
+            return .status(VMRunStatus(state: .running, pid: 4242))
+        }
+        defer { server.close() }
+        #expect(try await lifecycle.start("dev") == .alreadyRunning(VMRunStatus(state: .running, pid: 4242)))
+        #expect(requests.withLock { $0 } == [.renew])
+    }
+
+    @Test func aNormalVMCantHaveAnIdleTimeout() async throws {
+        defer { cleanUp() }
+        await #expect(throws: LifecycleError.idleTimeoutNeedsEphemeral("dev")) { try await lifecycle.start("dev", idleTimeout: .off) }
+        launchctl.pid.withLock { $0 = 4242 }
+        await #expect(throws: LifecycleError.idleTimeoutNeedsEphemeral("dev")) { try await lifecycle.start("dev", idleTimeout: .off) }
+    }
+
+    /// Refused before the saved state is thrown away.
+    @Test func aColdStartWithAnIdleTimeoutOnANormalVMKeepsTheState() async throws {
+        defer { cleanUp() }
+        try suspend()
+        await #expect(throws: LifecycleError.idleTimeoutNeedsEphemeral("dev")) {
+            try await lifecycle.start("dev", cold: true, idleTimeout: .standard)
+        }
+        #expect(isSuspended)
+    }
+
+    @Test func aRunningEphemeralVMsIdleTimeoutCantChange() async throws {
+        defer { cleanUp() }
+        try makeEphemeral()
+        launchctl.pid.withLock { $0 = 4242 }
+        await #expect(throws: LifecycleError.idleTimeoutNeedsStop("dev")) { try await lifecycle.start("dev", idleTimeout: .standard) }
+    }
+
     @Test func listingStillShowsARunningVMWhoseProcessIsSilent() async throws {
         defer { cleanUp() }
         launchctl.pid.withLock { $0 = 4242 }
@@ -324,11 +389,11 @@ import Testing
         let requests: Mutex<[ControlRequest]> = Mutex([])
         let server = try ControlServer(path: store.job(for: "dev").socket) { request, _ in
             requests.withLock { $0.append(request) }
-            return request == .status ? .status(status) : .accepted
+            return request == .renew ? .status(status) : .accepted
         }
         defer { server.close() }
         #expect(try await lifecycle.start("dev", gui: gui) == .alreadyRunning(status))
-        #expect(requests.withLock { $0 } == (gui ? [.view, .status] : [.status]))
+        #expect(requests.withLock { $0 } == (gui ? [.view, .renew] : [.renew]))
     }
 
     @Test func sharesCantBeAddedToARunningVM() async throws {
@@ -456,6 +521,16 @@ import Testing
         let shares = [VMShare(name: "a", path: "/x/a", readOnly: false), VMShare(name: "b", path: "/x/b", readOnly: true)]
         let arguments = VMLifecycle.runArguments(executable: URL(filePath: "/bin/hobo"), name: "dev", gui: false, shares: shares)
         #expect(arguments == ["/bin/hobo", "_vm-run", "dev", "--share", "/x/a", "--share", "/x/b:ro"])
+    }
+
+    /// Left out unless given, so the VM process applies the standard timeout, and only if ephemeral.
+    @Test func aRunsIdleTimeoutGoesToTheVMProcess() throws {
+        func arguments(_ timeout: IdleTimeout?) -> [String] {
+            VMLifecycle.runArguments(executable: URL(filePath: "/bin/hobo"), name: "dev", gui: false, idleTimeout: timeout)
+        }
+        #expect(arguments(nil) == ["/bin/hobo", "_vm-run", "dev"])
+        #expect(arguments(.off) == ["/bin/hobo", "_vm-run", "dev", "--idle-timeout", "off"])
+        #expect(arguments(.after(seconds: 90)) == ["/bin/hobo", "_vm-run", "dev", "--idle-timeout", "90s"])
     }
 
     @Test(arguments: [false, true])

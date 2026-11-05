@@ -54,6 +54,12 @@ public struct VMSummary: Encodable, Equatable, Sendable {
     public var phase: String?
     /// The VM process's detail for `phase`, e.g. `booting` or `shutting down over SSH`.
     public var phaseDetail: String?
+    /// The idle timeout a `running` ephemeral VM's process says this run has; absent with `off`.
+    /// Only from `VMLifecycle.listing()`.
+    public var idleTimeoutSeconds: Int?
+    /// What is left of it, rounded up. Absent while a request or window holds it or it isn't
+    /// counting yet. Only from `VMLifecycle.listing()`.
+    public var idleSecondsRemaining: Int?
 
     public init(_ vm: VMStore.VM) {
         name = vm.name

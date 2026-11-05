@@ -75,6 +75,9 @@ struct Usage: ParsableCommand {
               Ephemeral   `start <vm> --ephemeral` boots a new clone of a stopped VM, named <vm>-<4 hex>
                           (printed, and "name" in its JSON). An ephemeral VM is deleted when it stops,
                           even by crashing, but not when it is suspended. `set <name> --keep` keeps it.
+                          It also stops itself after \(IdleTimeout.standard) idle (`start --idle-timeout`, or off), shown by
+                          `list`. A hobo command on it resets the clock, except `list`; raw SSH doesn't. A VM
+                          not found mid-session has probably expired: start another.
               Snapshots   `snapshot save <vm> <tag>` on a running or suspended VM also saves its memory, and
                           `snapshot restore` returns to that running moment; a stopped VM's has only its
                           disk, and it stays stopped. Restoring over a running or suspended VM takes

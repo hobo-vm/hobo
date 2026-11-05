@@ -23,14 +23,15 @@ extension VMLifecycle {
     /// ephemeral VM (`VMStore.ephemeralName`) and starts that, returning its name. The clone is
     /// deleted when it stops, as it is if it fails to start.
     public func startEphemeral(
-        from source: String, gui: Bool = false, shares: [VMShare] = [], timeout: Duration = .seconds(10 * 60)
+        from source: String, gui: Bool = false, shares: [VMShare] = [], idleTimeout: IdleTimeout? = nil,
+        timeout: Duration = .seconds(10 * 60)
     ) async throws -> (name: String, result: StartResult) {
         let vm = try store.find(source)
         let name = try store.ephemeralName(for: vm.name)
         _ = try store.cloneVM(vm.name, to: name, ephemeral: true, log: log)
         log("Cloned \(vm.name) to \(name)")
         do {
-            return (name, try await start(name, gui: gui, shares: shares, timeout: timeout))
+            return (name, try await start(name, gui: gui, shares: shares, idleTimeout: idleTimeout, timeout: timeout))
         } catch {
             // One that booted is deleted once it stops (finding it deletes it, `removeIfEphemeral`).
             // One that never booted is still here and deleted now: stopped (a bad share, say), or

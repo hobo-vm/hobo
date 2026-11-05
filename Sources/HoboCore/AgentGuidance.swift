@@ -50,8 +50,10 @@ public enum AgentGuidance {
         3. Work with as many `exec`, `cp` and `screenshot` calls as you need. There is no one-shot \
         `run`: a session is start, work, stop.
         4. `stop <clone>` when done, which deletes it. A clone you forget stops and deletes itself \
-        after 30 idle minutes (`start --idle-timeout` changes that); every command on it resets the \
-        clock.
+        after \(IdleTimeout.standard) idle (`start --idle-timeout` changes that). Every command on it \
+        except `list` resets the clock, and a running `exec` holds it; raw SSH doesn't count. If a \
+        clone isn't found mid-session it has probably expired, along with anything in it: start \
+        another.
 
         ## Test inside the guest, never through the host
 

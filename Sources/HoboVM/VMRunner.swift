@@ -14,12 +14,17 @@ public final class VMRunner {
     static let bootTimeout: Duration = .seconds(10 * 60)
     nonisolated static let outputChunkBytes = 64 << 10
 
+    /// Stops while the host sleeps, along with whatever was using the VM.
+    private let idleClock = SuspendingClock()
+
     let store: VMStore
     let name: String
     /// Whether to show the window once the guest is ready (`start --gui`).
     let gui: Bool
     /// `start --share`: shares for this run only, on top of `config.json`'s.
     let runShares: [VMShare]
+    /// `start --idle-timeout`, in place of the standard one. Only an ephemeral VM has one.
+    let idleTimeout: IdleTimeout?
     let log: @Sendable (String) -> Void
 
     /// The process's one runner, held here because nothing else keeps it alive between control
@@ -36,15 +41,18 @@ public final class VMRunner {
     private var snapshotSave: Task<ControlResponse, Never>?
     /// The VM's name as its bundle spells it, once found; `name` may differ in case.
     private var bundleName: String?
+    /// Nil if this run has no idle timeout: a normal VM, `--idle-timeout off`, or `hobo set --keep`.
+    private var idleTimer: IdleTimer?
 
     public init(
-        store: VMStore = .standard(), name: String, gui: Bool = false, runShares: [VMShare] = [],
+        store: VMStore = .standard(), name: String, gui: Bool = false, runShares: [VMShare] = [], idleTimeout: IdleTimeout? = nil,
         log: @escaping @Sendable (String) -> Void
     ) {
         self.store = store
         self.name = name
         self.gui = gui
         self.runShares = runShares
+        self.idleTimeout = idleTimeout
         self.log = log
     }
 
@@ -69,6 +77,9 @@ public final class VMRunner {
         let config = try VMConfig.load(from: vm.bundle.appending(path: VMStore.configFile))
         // From now on, the VM going without a process and saved state deletes it.
         if config.ephemeral { try Data().write(to: vm.bundle.appending(path: VMStore.startedMarker)) }
+        if config.ephemeral, case .after(let seconds) = idleTimeout ?? .standard {
+            idleTimer = IdleTimer(timeout: .seconds(seconds))
+        }
         guard config.engine == .vz, config.os != .windows else { throw RunnerError.unsupported(config.engine, config.os) }
         guard let mac = VZMACAddress(string: config.macAddress) else { throw RunnerError.badMACAddress(config.macAddress) }
 
@@ -113,6 +124,7 @@ public final class VMRunner {
         }
         Task {
             await waitUntilReachable(guest, resumed: saved != nil)
+            startIdleCountdown()
             // Only once the guest answers SSH: its login prompt or login window shows well before
             // it is usable. After a timeout it shows anyway, so a stuck boot can be looked at.
             if gui, status.state != .stopping { showWindow(guest) }
@@ -204,12 +216,65 @@ public final class VMRunner {
         }
     }
 
+    /// Decision 18: once the boot sequence has ended, however it ended, so a short timeout can't end
+    /// a guest still booting and a stuck boot still gets cleaned up. A 1 s tick rather than a sleep
+    /// until the deadline, which requests and the window keep moving.
+    private func startIdleCountdown() {
+        guard idleTimer != nil else { return }
+        idleTimer?.start(at: idleClock.now)
+        Task {
+            while idleTimer != nil {
+                try? await Task.sleep(for: .seconds(1), clock: idleClock)
+                checkIdleTimer()
+            }
+        }
+    }
+
+    private func checkIdleTimer() {
+        guard status.state != .stopping else { return }
+        let now = idleClock.now
+        idleTimer?.setWindowShown(window?.isShown ?? false, at: now)
+        guard let timer = idleTimer, timer.hasExpired(at: now) else { return }
+        guard refreshIdleTimerFromConfig() else {
+            // It may have been kept; only `config.json` can say, so nothing is deleted on a guess.
+            log("warning: \(VMStore.configFile) is unreadable, so \(name) stays up past its idle timeout")
+            idleTimer?.renew(at: now)
+            return
+        }
+        guard idleTimer != nil else { return }
+        log("Idle for \(IdleTimeout.after(seconds: Int(timer.timeout.components.seconds))); stopping")
+        beginStop(force: false)
+    }
+
+    /// `hobo set --keep` only changes `config.json`, so it is read again wherever the timer matters:
+    /// a kept VM has no idle timeout from then on. Returns whether the file could be read.
+    private func refreshIdleTimerFromConfig() -> Bool {
+        guard let config = try? VMConfig.load(from: store.bundle(for: name).appending(path: VMStore.configFile)) else { return false }
+        if !config.ephemeral { idleTimer = nil }
+        return true
+    }
+
+    private func currentStatus() -> VMRunStatus {
+        var status = status
+        status.windowShown = window?.isShown ?? false
+        if idleTimer != nil { _ = refreshIdleTimerFromConfig() }
+        let now = idleClock.now
+        idleTimer?.setWindowShown(status.windowShown, at: now)
+        if let idleTimer {
+            status.idleTimeoutSeconds = Int(idleTimer.timeout.components.seconds)
+            if status.state != .stopping { status.idleSecondsRemaining = idleTimer.secondsRemaining(at: now) }
+        }
+        return status
+    }
+
     private func handle(_ request: ControlRequest, reply: ControlReply) async -> ControlResponse {
+        // Held for as long as the request runs: a long `exec` is the opposite of idle. A client that
+        // hangs up cancels its request, so an abandoned one can't hold the timer.
+        if request.countsAsActivity { idleTimer?.requestBegan(at: idleClock.now) }
+        defer { if request.countsAsActivity { idleTimer?.requestEnded(at: idleClock.now) } }
         switch request {
-        case .status:
-            var status = status
-            status.windowShown = window?.isShown ?? false
-            return .status(status)
+        case .status, .renew:
+            return .status(currentStatus())
         case .stop(let force):
             beginStop(force: force)
             return .accepted

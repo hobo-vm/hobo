@@ -1,5 +1,6 @@
 import Foundation
 import HoboCore
+import Synchronization
 import Testing
 @testable import HoboControl
 
@@ -38,21 +39,44 @@ import Testing
         return try ControlServer(path: store.job(for: "dev").socket, handler: handler)
     }
 
+    /// Runs a blocking client call on a GCD thread. The fake VM process's handler needs Swift
+    /// concurrency's pool, which parallel tests blocking on their own clients can otherwise exhaust.
+    func offPool<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global().async { continuation.resume(with: Result(catching: body)) }
+        }
+    }
+
     @Test func refusesAStoppedVM() {
         defer { cleanUp() }
         #expect(throws: GuestChannelError.notRunning("dev")) { try channel.ipAddress("dev") }
         #expect(throws: GuestChannelError.notRunning("dev")) { try channel.exec("dev", command: ["true"]) { _, _ in } }
     }
 
-    @Test func reportsTheIPOrWhyThereIsNone() throws {
+    @Test func reportsTheIPOrWhyThereIsNone() async throws {
         defer { cleanUp() }
+        let channel = channel
         let ip = try serve { _, _ in .status(VMRunStatus(state: .running, pid: 4242, ipAddress: "192.168.64.5")) }
-        #expect(try channel.ipAddress("dev") == "192.168.64.5")
-        #expect(try channel.address("DEV") == GuestAddress(name: "dev", ipAddress: "192.168.64.5"), "the stored name, not the one typed")
+        #expect(try await offPool { try channel.ipAddress("dev") } == "192.168.64.5")
+        #expect(try await offPool { try channel.address("DEV") } == GuestAddress(name: "dev", ipAddress: "192.168.64.5"), "the stored name, not the one typed")
         ip.close()
         let none = try serve { _, _ in .status(VMRunStatus(state: .starting, pid: 4242, detail: "booting")) }
         defer { none.close() }
-        #expect(throws: GuestChannelError.noIPAddress("dev", "booting")) { try channel.ipAddress("dev") }
+        await #expect(throws: GuestChannelError.noIPAddress("dev", "booting")) { try await offPool { try channel.ipAddress("dev") } }
+    }
+
+    /// Whoever asks for the IP is about to use the guest over SSH, which the VM process can't see.
+    @Test func askingForTheIPRenewsTheIdleTimeout() async throws {
+        defer { cleanUp() }
+        let channel = channel
+        let requests = Mutex<[ControlRequest]>([])
+        let server = try serve { request, _ in
+            requests.withLock { $0.append(request) }
+            return .status(VMRunStatus(state: .running, pid: 4242, ipAddress: "192.168.64.5"))
+        }
+        defer { server.close() }
+        _ = try await offPool { try channel.ipAddress("dev") }
+        #expect(requests.withLock { $0 } == [.renew])
     }
 
     @Test func execPassesOutputAndReturnsTheExitStatus() throws {

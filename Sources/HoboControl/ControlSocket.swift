@@ -282,7 +282,21 @@ public enum ControlClient {
 
     /// Asks the VM process how it is doing.
     public static func status(at path: URL) throws -> VMRunStatus {
-        let response = try send(.status, to: path)
+        try statusAnswer(to: .status, at: path)
+    }
+
+    /// `status` for a client about to use the VM, which counts as activity for its idle timeout.
+    public static func renew(at path: URL) throws -> VMRunStatus {
+        try statusAnswer(to: .renew, at: path)
+    }
+
+    /// `renew(at:)` for async callers, off Swift concurrency's thread pool.
+    public static func renew(at path: URL) async throws -> VMRunStatus {
+        try await offPool { try renew(at: path) }
+    }
+
+    private static func statusAnswer(to request: ControlRequest, at path: URL) throws -> VMRunStatus {
+        let response = try send(request, to: path)
         switch response {
         case .status(let status): return status
         case .error(let message): throw ControlError.badMessage(message)

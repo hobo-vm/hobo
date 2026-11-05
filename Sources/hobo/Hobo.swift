@@ -365,7 +365,24 @@ struct List: OutputCommand {
         case .crashed: crashedState(exitStatus: summary.exitStatus ?? 0)
         case .stopped, .building, .failed, .broken: summary.state.rawValue
         }
-        return summary.config?.ephemeral == true ? state + ", ephemeral" : state
+        guard summary.config?.ephemeral == true else { return state }
+        return ([state, "ephemeral"] + [idleTimeoutState(summary)].compactMap { $0 }).joined(separator: ", ")
+    }
+
+    /// An ephemeral VM's idle timeout, for a VM plainly running whose process answered (only then is
+    /// `windowShown` set). A showing window explains itself, and holds the countdown.
+    private static func idleTimeoutState(_ summary: VMSummary) -> String? {
+        guard summary.state == .running, summary.phase == nil, summary.windowShown == false else { return nil }
+        if let remaining = summary.idleSecondsRemaining { return timeLeft(seconds: remaining) + " left" }
+        return summary.idleTimeoutSeconds == nil ? "no timeout" : "busy"
+    }
+
+    /// `45s`, `28m` or `1h 30m`: up to the next minute, with seconds only under a minute.
+    private static func timeLeft(seconds: Int) -> String {
+        if seconds < 60 { return "\(seconds)s" }
+        let minutes = (seconds + 59) / 60
+        if minutes < 60 { return "\(minutes)m" }
+        return "\(minutes / 60)h" + (minutes % 60 == 0 ? "" : " \(minutes % 60)m")
     }
 
     private static func crashedState(exitStatus status: Int32) -> String {
@@ -412,6 +429,18 @@ struct Start: OutputCommand {
     @Flag(help: "Boot a new clone of the VM instead, deleted when it stops. The VM must be stopped.")
     var ephemeral = false
 
+    @Option(
+        help: ArgumentHelp(
+            """
+            How long an ephemeral VM may sit idle before it stops, which deletes it: 90s, 30m, 2h, or off. Defaults to \
+            \(IdleTimeout.standard). Using the VM through hobo resets the clock; raw SSH doesn't.
+            """,
+            valueName: "duration"
+        ),
+        transform: IdleTimeout.init(parsing:)
+    )
+    var idleTimeout: IdleTimeout?
+
     @Flag(help: "Print progress and the VM's name and status (state, PID, IP address) as JSON Lines events.")
     var json = false
 
@@ -433,14 +462,22 @@ struct Start: OutputCommand {
         defer { interrupt.cancel() }
         let lifecycle = VMLifecycle(log: output.log)
         let (name, result) = ephemeral
-            ? try await lifecycle.startEphemeral(from: self.name, gui: gui, shares: shares)
-            : (self.name, try await lifecycle.start(self.name, gui: gui, cold: cold, shares: shares))
+            ? try await lifecycle.startEphemeral(from: self.name, gui: gui, shares: shares, idleTimeout: idleTimeout)
+            : (self.name, try await lifecycle.start(self.name, gui: gui, cold: cold, shares: shares, idleTimeout: idleTimeout))
         let text = switch result {
-        case .started(let status): "\(name) is running\(status.ipAddress.map { " (\($0))" } ?? "")"
-        case .resumed(let status): "\(name) resumed\(status.ipAddress.map { " (\($0))" } ?? "")"
-        case .alreadyRunning(let status): "\(name) is already running\(status?.ipAddress.map { " (\($0))" } ?? "")"
+        case .started(let status): "\(name) is running\(Self.details(status))"
+        case .resumed(let status): "\(name) resumed\(Self.details(status))"
+        case .alreadyRunning(let status): "\(name) is already running\(Self.details(status))"
         }
         return Reply(NamedStartResult(name: name, result: result), text: text)
+    }
+
+    /// What follows the outcome: e.g. ` (192.168.64.5); deleted after 30m idle`. The timeout is said
+    /// up front because a VM that expires leaves nothing behind to say why it is gone.
+    static func details(_ status: VMRunStatus?) -> String {
+        let address = status?.ipAddress.map { " (\($0))" } ?? ""
+        let timeout = status?.idleTimeoutSeconds.map { "; deleted after \(IdleTimeout.after(seconds: $0)) idle" } ?? ""
+        return address + timeout
     }
 }
 
@@ -666,10 +703,13 @@ struct VMRun: ParsableCommand {
     @Flag var gui = false
     /// `start --share`, as `VMShare.argument` wrote them: absolute paths.
     @Option(name: .customLong("share")) var shares: [String] = []
+    /// `start --idle-timeout`, as `IdleTimeout.description` wrote it.
+    @Option(name: .customLong("idle-timeout"), transform: IdleTimeout.init(parsing:)) var idleTimeout: IdleTimeout?
 
     func run() throws {
         let name = name
         let gui = gui
+        let idleTimeout = idleTimeout
         let runShares = try shares.map { try VMShare.parse($0, currentDirectory: URL(filePath: "/")) }
         // `Entry` calls this on the main thread, before anything else is running.
         MainActor.assumeIsolated {
@@ -677,7 +717,7 @@ struct VMRun: ParsableCommand {
             // Never in the Dock, and takes focus only when `hobo view` or `--gui` shows the window.
             app.setActivationPolicy(.accessory)
             Task {
-                await VMRunner(name: name, gui: gui, runShares: runShares) { line in
+                await VMRunner(name: name, gui: gui, runShares: runShares, idleTimeout: idleTimeout) { line in
                     print("\(Date.now.formatted(.iso8601)) \(line)")
                     fflush(stdout)
                 }.start()

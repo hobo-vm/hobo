@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import HoboControl
 import HoboCore
+import Synchronization
 
 @Suite struct ControlSocketTests {
     /// Short, since socket paths are capped at 103 bytes and the temp directory is long.
@@ -57,6 +58,34 @@ import HoboCore
     }
 
     /// VM processes from before `windowShown` existed leave it out of their status.
+    @Test func idleTimeoutFieldsRoundTripAndAreAbsentWithoutOne() throws {
+        let timed = ControlResponse.status(VMRunStatus(state: .running, pid: 7, idleTimeoutSeconds: 1800, idleSecondsRemaining: 90))
+        #expect(try ControlSocket.decode(ControlResponse.self, from: ControlSocket.encode(timed).dropLast()) == timed)
+        let untimed = try ControlSocket.encode(VMRunStatus(state: .running, pid: 7))
+        #expect(!String(decoding: untimed, as: UTF8.self).contains("idle"))
+    }
+
+    /// Only a plain look isn't use: a polling `hobo list` must not keep a forgotten VM alive.
+    @Test func everyRequestButStatusCountsAsActivity() {
+        let copy = GuestCopy(direction: .toGuest, sources: ["/a"], destination: "/tmp/", recursive: false)
+        #expect(!ControlRequest.status.countsAsActivity)
+        let requests: [ControlRequest] = [.renew, .stop(force: false), .exec(command: ["true"]), .copy(copy), .suspend, .snapshot(tag: "a"), .view]
+        for request in requests { #expect(request.countsAsActivity, "\(request)") }
+    }
+
+    @Test func renewAndStatusSendTheirOwnRequestsAndReturnTheStatus() async throws {
+        let path = URL(filePath: "/tmp/hobo-\(UUID().uuidString.prefix(8)).sock")
+        let requests = Mutex<[ControlRequest]>([])
+        let server = try ControlServer(path: path) { request, _ in
+            requests.withLock { $0.append(request) }
+            return .status(VMRunStatus(state: .running, pid: 7))
+        }
+        defer { server.close() }
+        #expect(try await ControlClient.renew(at: path).pid == 7)
+        #expect(try await ControlClient.status(at: path).pid == 7)
+        #expect(requests.withLock { $0 } == [ControlRequest.renew, .status])
+    }
+
     @Test func statusWithoutWindowDecodes() throws {
         let line = Data(#"{"status":{"_0":{"state":"running","pid":7}}}"#.utf8)
         #expect(try ControlSocket.decode(ControlResponse.self, from: line) == .status(VMRunStatus(state: .running, pid: 7)))

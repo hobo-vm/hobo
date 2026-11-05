@@ -29,19 +29,24 @@ public struct VMLifecycle: Sendable {
     /// boots it instead. With `gui`, the VM's window opens once the guest answers SSH, or at once if
     /// it is already running. `shares` are for this run only, on top of the VM's own; they can't be
     /// added to a VM that's already running, or to a resumed one, whose saved state fits only the
-    /// shares it had.
+    /// shares it had. `idleTimeout` is for this run of an ephemeral VM, in place of the standard one;
+    /// a normal VM can't have one, and a running VM's can't change.
     public func start(
-        _ name: String, gui: Bool = false, cold: Bool = false, shares: [VMShare] = [], timeout: Duration = .seconds(10 * 60)
+        _ name: String, gui: Bool = false, cold: Bool = false, shares: [VMShare] = [], idleTimeout: IdleTimeout? = nil,
+        timeout: Duration = .seconds(10 * 60)
     ) async throws -> StartResult {
         let vm = try store.find(name)
         let job = store.job(for: vm.name)
         let config: VMConfig
         var resuming = false
         switch vm.status {
-        case .running:
+        case .running(let stored, _):
             if !shares.isEmpty { throw LifecycleError.sharesNeedStop(vm.name) }
+            if idleTimeout != nil {
+                throw stored.ephemeral ? LifecycleError.idleTimeoutNeedsStop(vm.name) : LifecycleError.idleTimeoutNeedsEphemeral(vm.name)
+            }
             if gui { try await view(vm.name) }
-            return .alreadyRunning(try? await ControlClient.status(at: job.socket))
+            return .alreadyRunning(try? await ControlClient.renew(at: job.socket))
         case .suspended(let stored, let saved):
             config = stored
             if !cold {
@@ -64,6 +69,7 @@ public struct VMLifecycle: Sendable {
         case .broken:
             throw LifecycleError.notStartable(vm.name, "its bundle has no valid \(VMStore.configFile)")
         }
+        if idleTimeout != nil, !config.ephemeral { throw LifecycleError.idleTimeoutNeedsEphemeral(vm.name) }
         guard Entitlements.has(Entitlements.virtualization) else { throw LifecycleError.unsigned(executable.path) }
         try ControlSocket.checkPath(job.socket.path)
         if !resuming {
@@ -80,7 +86,7 @@ public struct VMLifecycle: Sendable {
         try? FileManager.default.removeItem(at: job.log)
         let plist = try Launchd.plist(
             label: job.label,
-            arguments: Self.runArguments(executable: executable, name: vm.name, gui: gui, shares: shares),
+            arguments: Self.runArguments(executable: executable, name: vm.name, gui: gui, shares: shares, idleTimeout: idleTimeout),
             environment: ["HOBO_VMS": store.directory.path, "HOBO_HOME": store.home.root.path],
             log: job.log
         )
@@ -92,8 +98,9 @@ public struct VMLifecycle: Sendable {
     }
 
     /// The VM process's command line, as launchd runs it.
-    static func runArguments(executable: URL, name: String, gui: Bool, shares: [VMShare] = []) -> [String] {
+    static func runArguments(executable: URL, name: String, gui: Bool, shares: [VMShare] = [], idleTimeout: IdleTimeout? = nil) -> [String] {
         [executable.path, "_vm-run", name] + (gui ? ["--gui"] : []) + shares.flatMap { ["--share", $0.argument] }
+            + (idleTimeout.map { ["--idle-timeout", $0.description] } ?? [])
     }
 
     /// Shows the window of a running (or booting) VM and brings it to the front.
@@ -251,6 +258,8 @@ public struct VMLifecycle: Sendable {
         for index in listing.vms.indices where listing.vms[index].state == .running {
             guard let status = await runStatus(listing.vms[index].name) else { continue }
             listing.vms[index].windowShown = status.windowShown
+            listing.vms[index].idleTimeoutSeconds = status.idleTimeoutSeconds
+            listing.vms[index].idleSecondsRemaining = status.idleSecondsRemaining
             if status.state != .running {
                 listing.vms[index].phase = status.state.rawValue
                 listing.vms[index].phaseDetail = status.detail
@@ -320,6 +329,8 @@ public enum LifecycleError: Error, Equatable, CustomStringConvertible {
     case sharesNeedCold(String)
     case suspended(String)
     case cantResume(String, String)
+    case idleTimeoutNeedsEphemeral(String)
+    case idleTimeoutNeedsStop(String)
 
     public var description: String {
         switch self {
@@ -343,6 +354,10 @@ public enum LifecycleError: Error, Equatable, CustomStringConvertible {
             "\(name) is suspended (hobo start \(name) resumes it; hobo discard \(name) throws its saved state away)"
         case .cantResume(let name, let reason):
             "can't resume \(name): \(reason) (hobo start --cold \(name) boots it fresh, discarding its saved state)"
+        case .idleTimeoutNeedsEphemeral(let name):
+            "\(name) isn't ephemeral, and only ephemeral VMs have an idle timeout (hobo start \(name) --ephemeral boots a clone that does)"
+        case .idleTimeoutNeedsStop(let name):
+            "\(name) is already running, and a run's idle timeout can't change (hobo set \(name) --keep keeps the VM instead)"
         }
     }
 }

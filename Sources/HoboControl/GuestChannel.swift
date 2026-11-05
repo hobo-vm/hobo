@@ -15,10 +15,11 @@ public struct GuestChannel: Sendable {
         try address(name).ipAddress
     }
 
-    /// The VM's name as stored and its guest's IP, as `hobo ip --json` reports them.
+    /// The VM's name as stored and its guest's IP, as `hobo ip --json` reports them. Whoever asks is
+    /// about to use the guest, so this renews its idle timeout; SSH itself never reaches the socket.
     public func address(_ name: String) throws -> GuestAddress {
         let (vm, job) = try runningJob(name)
-        let status = try ControlClient.status(at: job.socket)
+        let status = try ControlClient.renew(at: job.socket)
         guard let ip = status.ipAddress else { throw GuestChannelError.noIPAddress(vm.name, status.detail) }
         return GuestAddress(name: vm.name, ipAddress: ip)
     }
