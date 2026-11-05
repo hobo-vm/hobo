@@ -79,6 +79,35 @@ import Testing
         #expect(requests.withLock { $0 } == [.renew])
     }
 
+    /// `hobo provision` works over its own SSH, for longer than an idle timeout may last.
+    @Test func renewingKeepsRenewingUntilTheWorkEnds() async throws {
+        defer { cleanUp() }
+        let requests = Mutex<[ControlRequest]>([])
+        let server = try serve { request, _ in
+            requests.withLock { $0.append(request) }
+            return .status(VMRunStatus(state: .running, pid: 4242))
+        }
+        defer { server.close() }
+        try await channel.renewing("dev", every: .milliseconds(5)) {
+            while requests.withLock({ $0.count }) < 2 { try await Task.sleep(for: .milliseconds(5)) }
+        }
+        #expect(requests.withLock { $0.allSatisfy { $0 == .renew } })
+        try await Task.sleep(for: .milliseconds(50)) // Lets a renewal already sent arrive.
+        let settled = requests.withLock { $0.count }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(requests.withLock { $0.count } == settled)
+    }
+
+    @Test func renewingOutlivesAVMThatDoesntAnswer() async throws {
+        defer { cleanUp() }
+        let ran = Mutex(false)
+        try await channel.renewing("dev", every: .milliseconds(1)) {
+            try await Task.sleep(for: .milliseconds(20))
+            ran.withLock { $0 = true }
+        }
+        #expect(ran.withLock { $0 })
+    }
+
     @Test func execPassesOutputAndReturnsTheExitStatus() throws {
         defer { cleanUp() }
         let server = try serve { _, reply in

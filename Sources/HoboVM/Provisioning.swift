@@ -21,10 +21,11 @@ public enum Provisioning {
         let recipe = try Recipe.load(from: recipeFile)
         try recipe.checkFilesExist()
         let vm = try store.find(name)
-        let ip = try GuestChannel(store: store).ipAddress(vm.name)
-        let ssh = GuestSSH(host: ip, auth: try .forVM(bundle: vm.bundle, home: store.home))
+        let channel = GuestChannel(store: store)
+        let ssh = GuestSSH(host: try channel.ipAddress(vm.name), auth: try .forVM(bundle: vm.bundle, home: store.home))
         if recipe.provisioners.isEmpty { log("\(recipeFile.relativePath) has no [[provision]] steps") }
-        try await run(recipe, ssh: ssh, log: log)
+        // Steps can outlast an ephemeral VM's idle timeout, and their SSH never reaches its socket.
+        try await channel.renewing(vm.name) { try await run(recipe, ssh: ssh, log: log) }
         return ProvisionResult(name: vm.name, steps: recipe.provisioners.count)
     }
 

@@ -24,6 +24,20 @@ public struct GuestChannel: Sendable {
         return GuestAddress(name: vm.name, ipAddress: ip)
     }
 
+    /// Runs `body`, which works over its own SSH, renewing the idle timeout of the VM with this stored
+    /// name until it ends. A renewal that fails isn't `body`'s failure: if the VM has gone, its SSH says so.
+    public func renewing(_ name: String, every interval: Duration = .seconds(1), while body: () async throws -> Void) async throws {
+        let socket = store.job(for: name).socket
+        let renewals = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: interval)
+                _ = try? await ControlClient.renew(at: socket)
+            }
+        }
+        defer { renewals.cancel() }
+        try await body()
+    }
+
     /// Runs `command` in the guest and returns its exit status.
     public func exec(_ name: String, command: [String], onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
         try stream(.exec(command: command), name: name, onOutput: onOutput)

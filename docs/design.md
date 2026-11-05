@@ -472,9 +472,10 @@ global VMs on 2026-11-01.
       and when reporting the time left. If the file is unreadable, it stays up and warns.
     - Using the VM renews it, looking doesn't. `status` alone doesn't, or a polling `hobo list`
       would keep every forgotten clone alive, so `list` and the wait loops stay passive. Every other
-      request does, including `renew` (`status` that counts), which `hobo ip`, `hobo ssh`,
-      `hobo provision` and `start` on a running VM send. Their own SSH never reaches the socket, so
-      these renew once, and a long `hobo ssh` session or raw `ssh` can expire underneath itself.
+      request does, including `renew` (`status` that counts), which `hobo ip`, `hobo ssh` and
+      `start` on a running VM send. Their own SSH never reaches the socket, so these renew once, and
+      a long `hobo ssh` session or raw `ssh` can expire underneath itself. `hobo provision` has a
+      process to do better with: it sends `renew` every second while its steps run.
     - A running request holds it (a client that hangs up cancels its request, so an abandoned one
       can't), as does a showing window, whose clicks and keys never reach the socket; the full
       timeout restarts when they end. A window left open is a VM someone can see, not a forgotten one.
