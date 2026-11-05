@@ -22,8 +22,10 @@ let package = Package(
             name: "HoboVM",
             dependencies: ["HoboCore", "HoboControl"],
             // Compiled in: `make install` copies only the binary, so a resource bundle wouldn't follow it.
-            resources: [.embedInCode("Resources/Signs")]
+            resources: [.embedInCode("Resources/Signs"), .embedInCode("Resources/Windows")],
+            plugins: ["WindowsBootPlugin"]
         ),
+        .plugin(name: "WindowsBootPlugin", capability: .buildTool()),
         .target(name: "HoboMCP", dependencies: ["HoboCore", "HoboControl"]),
         .executableTarget(
             name: "hobo",
