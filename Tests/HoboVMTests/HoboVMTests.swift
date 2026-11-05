@@ -390,9 +390,10 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try FileManager.default.contentsOfDirectory(atPath: vms.path).isEmpty)
     }
 
-    /// Decision 18 on a real clone of the stopped VM `litest`: a request outlasting the timeout holds
-    /// it, `list` shows the countdown without renewing it, and expiry stops and deletes the clone.
-    /// `set --keep` and `off` each spare a clone past a timeout that has passed.
+    /// Decision 18 on a real clone of the stopped VM `litest`: a renewal restarts the timeout, a request
+    /// outlasting it holds it, `list` shows the countdown without renewing it, and expiry stops and
+    /// deletes the clone. `set --keep`, an unreadable `config.json` and `off` each spare a clone past a
+    /// timeout that has passed.
     private func checkIdleTimeout(hobo: String, work: URL, vms: URL, env: [String: String]) throws {
         func start(_ timeout: String) throws -> (name: String, text: String) {
             let started = try output(hobo, ["start", "litest", "--ephemeral", "--idle-timeout", timeout], environment: env)
@@ -408,7 +409,9 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         defer { _ = try? run(hobo, ["stop", "--force", expiring], in: work, environment: env) }
         #expect(text.contains("deleted after 20s idle"), "\(text)")
         #expect(try list().contains(try Regex("\(expiring)\\s+running, ephemeral, \\d+s left")))
-        #expect(try output(hobo, ["start", expiring, "--json"], environment: env).contains("\"idleSecondsRemaining\""), "a renewal shows the time left")
+        Thread.sleep(forTimeInterval: 3)
+        let renewed = try output(hobo, ["start", expiring, "--json"], environment: env)
+        #expect(renewed.contains(/"idleSecondsRemaining":\s*20\b/), "a renewal restarts the full timeout: \(renewed)")
         #expect(try output(hobo, ["exec", expiring, "--", "sh", "-c", "sleep 30; echo held"], environment: env) == "held\n")
         #expect(exists(expiring), "the exec outlasted the timeout")
         // Polling `list` doesn't keep it alive: the full stop sequence fits well inside this.
@@ -425,6 +428,17 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         Thread.sleep(forTimeInterval: 25)
         #expect(try list().contains(try Regex("\(kept)\\s+running\\s")), "kept: no timeout, and no longer ephemeral")
         #expect(try run(hobo, ["delete", kept, "--force"], in: work, environment: env) == 0)
+
+        // An unreadable config.json can't say the clone wasn't kept, so its expiry deletes nothing.
+        let (unreadable, _) = try start("20s")
+        defer { _ = try? run(hobo, ["stop", "--force", unreadable], in: work, environment: env) }
+        let configFile = vms.appending(path: "\(unreadable).hobovm/config.json")
+        let config = try Data(contentsOf: configFile)
+        try Data("not json".utf8).write(to: configFile)
+        Thread.sleep(forTimeInterval: 25)
+        try config.write(to: configFile)
+        #expect(try list().contains(try Regex("\(unreadable)\\s+running, ephemeral, \\d+s left")), "still up, and counting again")
+        #expect(try output(hobo, ["stop", unreadable], environment: env).contains("Stopped and deleted \(unreadable)"))
 
         let (untimed, _) = try start("off")
         defer { _ = try? run(hobo, ["stop", "--force", untimed], in: work, environment: env) }
