@@ -706,13 +706,13 @@ struct Screenshot: OutputCommand {
         if json, output == Self.standardOutput { throw ValidationError("--json can't go with -o -: stdout has the PNG") }
     }
 
-    func execute(_ output: Output) async throws -> Reply {
+    func execute(_: Output) async throws -> Reply {
         let screenshot = try GuestChannel().screenshot(name)
-        if self.output == Self.standardOutput {
+        if output == Self.standardOutput {
             try FileHandle.standardOutput.write(contentsOf: screenshot.png)
             return Reply(ScreenshotResult(name: screenshot.name, path: Self.standardOutput), text: nil)
         }
-        let file = try screenshot.save(to: self.output)
+        let file = try screenshot.save(to: output)
         return Reply(ScreenshotResult(name: screenshot.name, path: file.path), text: file.path)
     }
 }

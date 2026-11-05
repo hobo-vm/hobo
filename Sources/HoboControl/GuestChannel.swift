@@ -45,7 +45,7 @@ public struct GuestChannel: Sendable {
 
     /// Captures the guest's screen from inside its desktop session (decision 17).
     public func screenshot(_ name: String) throws -> GuestScreenshot {
-        let vmName = try runningJob(name).0.name
+        let (vm, _) = try runningJob(name)
         var png = Data()
         var errors = Data()
         let status = try exec(name, command: GuestScreenshot.command, gui: true) { stream, data in
@@ -56,12 +56,12 @@ public struct GuestChannel: Sendable {
         }
         guard status == 0 else {
             let reason = String(decoding: errors, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-            throw GuestChannelError.screenshotFailed(vmName, reason.isEmpty ? "the capture exited with status \(status)" : reason)
+            throw GuestChannelError.screenshotFailed(vm.name, reason.isEmpty ? "the capture exited with status \(status)" : reason)
         }
         guard png.starts(with: GuestScreenshot.pngSignature) else {
-            throw GuestChannelError.screenshotFailed(vmName, "the guest's output isn't a PNG (does a shell startup file print something?)")
+            throw GuestChannelError.screenshotFailed(vm.name, "the guest's output isn't a PNG (does a shell startup file print something?)")
         }
-        return GuestScreenshot(name: vmName, png: png)
+        return GuestScreenshot(name: vm.name, png: png)
     }
 
     /// Copies with scp and returns its exit status; scp's messages arrive as output.
