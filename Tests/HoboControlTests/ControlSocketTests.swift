@@ -64,12 +64,13 @@ import Synchronization
         #expect(!String(decoding: untimed, as: UTF8.self).contains("idle"))
     }
 
-    /// Only a plain look isn't use: a polling `hobo list` must not keep a forgotten VM alive.
-    @Test func everyRequestButStatusCountsAsActivity() {
+    /// A plain look isn't use, or a polling `hobo list` would keep a forgotten VM alive; a `renew`
+    /// that held the timer couldn't report the time left.
+    @Test func everyRequestButStatusAndRenewHoldsTheIdleTimeout() {
         let copy = GuestCopy(direction: .toGuest, sources: ["/a"], destination: "/tmp/", recursive: false)
-        #expect(!ControlRequest.status.countsAsActivity)
-        let requests: [ControlRequest] = [.renew, .stop(force: false), .exec(command: ["true"]), .copy(copy), .suspend, .snapshot(tag: "a"), .view]
-        for request in requests { #expect(request.countsAsActivity, "\(request)") }
+        #expect(!ControlRequest.status.holdsIdleTimeout && !ControlRequest.renew.holdsIdleTimeout)
+        let requests: [ControlRequest] = [.stop(force: false), .exec(command: ["true"]), .copy(copy), .suspend, .snapshot(tag: "a"), .view]
+        for request in requests { #expect(request.holdsIdleTimeout, "\(request)") }
     }
 
     @Test func renewAndStatusSendTheirOwnRequestsAndReturnTheStatus() async throws {

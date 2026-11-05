@@ -273,9 +273,8 @@ public final class VMRunner {
         if request == .renew { idleTimer?.renew(at: idleClock.now) }
         // Other activity holds the countdown for as long as it runs: a long `exec` is the opposite of
         // idle. A client that hangs up cancels its request, so an abandoned one can't hold it.
-        let holds = request.countsAsActivity && request != .renew
-        if holds { idleTimer?.requestBegan(at: idleClock.now) }
-        defer { if holds { idleTimer?.requestEnded(at: idleClock.now) } }
+        if request.holdsIdleTimeout { idleTimer?.requestBegan(at: idleClock.now) }
+        defer { if request.holdsIdleTimeout { idleTimer?.requestEnded(at: idleClock.now) } }
         switch request {
         case .status, .renew:
             return .status(currentStatus())

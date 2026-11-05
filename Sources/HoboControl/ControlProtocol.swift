@@ -34,8 +34,9 @@ public enum ControlRequest: Codable, Equatable, Sendable {
     /// Shows the VM's window, creating it the first time, and brings it to the front.
     case view
 
-    /// Whether this request counts as using the VM, for its idle timeout: all but `status`.
-    public var countsAsActivity: Bool { self != .status }
+    /// Whether this request holds the VM's idle timeout while it runs: all but `status`, which isn't
+    /// use, and `renew`, which only restarts it.
+    public var holdsIdleTimeout: Bool { self != .status && self != .renew }
 }
 
 public enum ControlResponse: Codable, Equatable, Sendable {
