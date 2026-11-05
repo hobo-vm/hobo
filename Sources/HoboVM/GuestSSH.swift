@@ -61,8 +61,8 @@ public struct GuestSSH: Sendable {
         try await exec(script: "exec " + shellQuote(command), onOutput: onOutput)
     }
 
-    /// `exec` for a shell line of its own, which stays in the guest shell's process group, so that
-    /// cancelling reaches it.
+    /// `exec` for a shell script rather than an argv. What it runs must stay in the guest shell's
+    /// process group, so that cancelling reaches it.
     public func exec(script: String, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
         let pidMarker = PIDMarker(onOutput)
         let status = try await stream("echo \(pidMarker.marker)$$; " + script, onOutput: pidMarker.receive)

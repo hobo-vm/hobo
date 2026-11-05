@@ -47,10 +47,15 @@ public struct MacVMBundle: VMBundle {
     /// 2026-11-05 on 27.2).
     public static func guiExecScript(_ command: [String]) -> String? {
         """
-        i=0; until [ "$(stat -f %Su /dev/console)" = "$(id -un)" ] && launchctl print "gui/$(id -u)" >/dev/null 2>&1; do \
-        i=$((i + 1)); if [ "$i" -ge \(guiSessionWaitSeconds) ]; then \
-        echo "$(id -un)'s desktop session isn't up after \(guiSessionWaitSeconds) seconds" >&2; exit \(guiSessionUnavailableStatus); fi; \
-        sleep 1; done; \
+        i=0
+        until [ "$(stat -f %Su /dev/console)" = "$(id -un)" ] && launchctl print "gui/$(id -u)" >/dev/null 2>&1; do
+          i=$((i + 1))
+          if [ "$i" -ge \(guiSessionWaitSeconds) ]; then
+            echo "$(id -un)'s desktop session isn't up after \(guiSessionWaitSeconds) seconds" >&2
+            exit \(guiSessionUnavailableStatus)
+          fi
+          sleep 1
+        done
         exec sudo -n launchctl asuser "$(id -u)" sudo -n -u "$(id -un)" env "PATH=$PATH" \(shellQuote(command))
         """
     }
