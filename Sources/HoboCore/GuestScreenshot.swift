@@ -36,6 +36,8 @@ public struct GuestScreenshot: Equatable, Sendable {
         to path: String?, in directory: URL = .currentDirectory(), date: Date = .now
     ) throws -> URL {
         if let path {
+            // Not `URL(filePath:relativeTo:)`: it drops the base's last component when the base has
+            // no trailing slash, which would write beside `directory` rather than in it.
             let file = (path.hasPrefix("/") ? URL(filePath: path) : directory.appending(path: path)).standardizedFileURL
             try png.write(to: file)
             return file
