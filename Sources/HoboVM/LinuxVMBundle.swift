@@ -22,6 +22,8 @@ public struct LinuxVMBundle: VMBundle {
     /// cloud-init's growpart did this at create but is off afterwards. growpart exits 1 when the
     /// partition already fills the disk, as on a retry after `resize2fs` failed.
     public static let growDiskCommand = #"root=$(findmnt -no SOURCE /) && part=$(cat "/sys/class/block/${root#/dev/}/partition") && { sudo -n growpart "/dev/$(lsblk -no PKNAME "$root")" "$part" || [ $? -eq 1 ]; } && sudo -n resize2fs "$root""#
+    /// Linux GUI testing waits on its own design (Beads hobo-938).
+    public static func guiExecScript(_ command: [String]) -> String? { nil }
 
     public var directory: URL
     /// The cloud-init seed ISO, attached read-only as a second disk while `create` runs.

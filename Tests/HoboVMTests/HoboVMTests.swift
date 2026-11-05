@@ -84,6 +84,20 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["exec", "itest", "--", "sh", "-c", "exit 7"], in: work, environment: env) == 7)
         #expect(try run(hobo, ["exec", "itest", "--", "zsh", "-c", GUITestingGrants.checkCommand], in: work, environment: env) == 0)
         #expect(try output(hobo, ["ssh", "itest", "--", "whoami"], environment: env) == "vagrant\n")
+        // exec --gui is in the desktop session, as the same user; plain exec isn't.
+        #expect(try output(hobo, ["exec", "itest", "--", "launchctl", "managername"], environment: env) == "Background\n")
+        #expect(try output(hobo, ["exec", "itest", "--gui", "--", "launchctl", "managername"], environment: env) == "Aqua\n")
+        #expect(try output(hobo, ["exec", "itest", "--gui", "--", "whoami"], environment: env) == "vagrant\n")
+        #expect(try run(hobo, ["exec", "itest", "--gui", "--", "sh", "-c", "exit 7"], in: work, environment: env) == 7)
+        // A screenshot is a real PNG of the headless display, and leaves nothing behind in the guest.
+        #expect(try run(hobo, ["exec", "itest", "--gui", "--", "open", "-a", "TextEdit"], in: work, environment: env) == 0)
+        let shot = work.appending(path: "shot.png")
+        #expect(try output(hobo, ["screenshot", "itest", "-o", shot.path], environment: env) == shot.standardizedFileURL.path + "\n")
+        #expect(try output("/usr/bin/sips", ["-g", "pixelWidth", shot.path], environment: env).contains("pixelWidth: 1920"))
+        #expect(try run(hobo, ["screenshot", "itest"], in: work, environment: env) == 0)
+        let saved = try FileManager.default.contentsOfDirectory(atPath: work.path).filter { $0.hasPrefix("itest-") && $0.hasSuffix(".png") }
+        #expect(saved.count == 1, "\(saved)")
+        #expect(try output(hobo, ["exec", "itest", "--", "sh", "-c", "ls /tmp | grep -c hobo-screenshot || true"], environment: env) == "0\n")
         let payload = work.appending(path: "payload.txt")
         try "over and back\n".write(to: payload, atomically: true, encoding: .utf8)
         #expect(try run(hobo, ["cp", payload.path, "itest:/tmp/payload.txt"], in: work, environment: env) == 0)
@@ -276,6 +290,9 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(started.contains("(\(ip))"))
         #expect(try output(hobo, ["exec", "litest", "--", "uname", "-m"], environment: env) == "aarch64\n")
         #expect(try output(hobo, ["ssh", "litest", "--", "whoami"], environment: env) == "vagrant\n")
+        // No desktop session to run in yet (Beads hobo-938).
+        #expect(try run(hobo, ["exec", "litest", "--gui", "--", "true"], in: work, environment: env) != 0)
+        #expect(try run(hobo, ["screenshot", "litest"], in: work, environment: env) != 0)
         // Cloud-init ran once, at create, and stays off.
         #expect(try run(hobo, ["exec", "litest", "--", "test", "-e", "/etc/cloud/cloud-init.disabled"], in: work, environment: env) == 0)
         // The root filesystem grew to the recipe's disk.

@@ -35,6 +35,26 @@ public struct MacVMBundle: VMBundle {
     public static let growDiskCommand =
         #"sudo -n diskutil apfs resizeContainer "$(diskutil info / | awk '/APFS Physical Store:/ { print $NF }')" 0"#
 
+    /// How long `exec --gui` waits for the desktop session, which auto-login can finish after SSH answers.
+    static let guiSessionWaitSeconds = 60
+    /// What `exec --gui` exits with when the session never comes up, like `env` failing to run a command.
+    static let guiSessionUnavailableStatus: Int32 = 125
+
+    /// Waits for auto-login, then enters the Aqua session. `launchctl asuser` needs root, and leaves
+    /// the command root without the inner `sudo -u`, which in turn resets the environment, so the
+    /// `PATH` is carried over to find what plain `exec` finds. TCC still attributes the command to
+    /// sshd, whose grants `[gui_testing]` wrote, and a kill of the process group reaches it (checked
+    /// 2026-11-05 on 27.2).
+    public static func guiExecScript(_ command: [String]) -> String? {
+        """
+        i=0; until [ "$(stat -f %Su /dev/console)" = "$(id -un)" ] && launchctl print "gui/$(id -u)" >/dev/null 2>&1; do \
+        i=$((i + 1)); if [ "$i" -ge \(guiSessionWaitSeconds) ]; then \
+        echo "$(id -un)'s desktop session isn't up after \(guiSessionWaitSeconds) seconds" >&2; exit \(guiSessionUnavailableStatus); fi; \
+        sleep 1; done; \
+        exec sudo -n launchctl asuser "$(id -u)" sudo -n -u "$(id -un)" env "PATH=$PATH" \(shellQuote(command))
+        """
+    }
+
     public var directory: URL
 
     public init(directory: URL) { self.directory = directory }

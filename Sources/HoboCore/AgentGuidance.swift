@@ -62,11 +62,13 @@ public enum AgentGuidance {
         - Never drive the VM's window from the host: don't click, type or take host screenshots of \
         it, or script it with AppleScript or computer use. `view` and `start --gui` are for a person \
         to watch. To drive the guest's UI, run the automation inside the guest (AppleScript and \
-        System Events, XCUITest) and look with `screenshot`.
+        System Events, XCUITest) and look with `screenshot`, which fails rather than leave windows out \
+        if the VM lacks the Screen Recording grant.
         - On a macOS guest, plain `exec` runs outside the logged-in desktop, so GUI apps, `open`, UI \
         scripting and `screencapture` don't work from it. `exec --gui` runs the command in the \
         `vagrant` user's desktop session instead. UI scripting also needs the VM to be built from a \
-        recipe with `[gui_testing]`, which grants Accessibility and Screen Recording.
+        recipe with `[gui_testing]`, which grants Accessibility and Screen Recording. Linux guests \
+        have neither `exec --gui` nor `screenshot` yet.
 
         ## Capacity
 

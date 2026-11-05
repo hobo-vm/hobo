@@ -38,9 +38,30 @@ public struct GuestChannel: Sendable {
         try await body()
     }
 
-    /// Runs `command` in the guest and returns its exit status.
-    public func exec(_ name: String, command: [String], onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
-        try stream(.exec(command: command), name: name, onOutput: onOutput)
+    /// Runs `command` in the guest, in its desktop session if `gui`, and returns its exit status.
+    public func exec(_ name: String, command: [String], gui: Bool = false, onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
+        try stream(.exec(command: command, gui: gui), name: name, onOutput: onOutput)
+    }
+
+    /// Captures the guest's screen from inside its desktop session (decision 17).
+    public func screenshot(_ name: String) throws -> GuestScreenshot {
+        let vmName = try runningJob(name).0.name
+        var png = Data()
+        var errors = Data()
+        let status = try exec(name, command: GuestScreenshot.command, gui: true) { stream, data in
+            switch stream {
+            case .stdout: png += data
+            case .stderr: errors += data
+            }
+        }
+        guard status == 0 else {
+            let reason = String(decoding: errors, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            throw GuestChannelError.screenshotFailed(vmName, reason.isEmpty ? "the capture exited with status \(status)" : reason)
+        }
+        guard png.starts(with: GuestScreenshot.pngSignature) else {
+            throw GuestChannelError.screenshotFailed(vmName, "the guest's output isn't a PNG (does a shell startup file print something?)")
+        }
+        return GuestScreenshot(name: vmName, png: png)
     }
 
     /// Copies with scp and returns its exit status; scp's messages arrive as output.
@@ -87,11 +108,13 @@ public struct GuestCommandResult: Codable, Equatable, Sendable {
 public enum GuestChannelError: Error, Equatable, CustomStringConvertible {
     case notRunning(String)
     case noIPAddress(String, String?)
+    case screenshotFailed(String, String)
 
     public var description: String {
         switch self {
         case .notRunning(let name): "\(name) is not running (hobo start \(name))"
         case .noIPAddress(let name, let detail): "\(name) has no IP yet\(detail.map { " (\($0))" } ?? "")"
+        case .screenshotFailed(let name, let reason): "can't screenshot \(name): \(reason)"
         }
     }
 }

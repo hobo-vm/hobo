@@ -71,6 +71,12 @@ public enum GUITestingGrants {
         return database
     }
 
+    /// JavaScript for `osascript`: makes `$.CGPreflightScreenCaptureAccess()` callable, and with it
+    /// `$.AXIsProcessTrusted()`.
+    static let bindScreenCapturePreflight = """
+        ObjC.import("ApplicationServices"); ObjC.bindFunction("CGPreflightScreenCaptureAccess", ["bool", []])
+        """
+
     /// Run over SSH in the guest: fails unless the session has Accessibility, Screen Recording and
     /// Automation of System Events. `screencapture` succeeds without the grant (it just leaves
     /// windows out), so Screen Recording is asked of CoreGraphics. Retried, since System Events
@@ -78,8 +84,7 @@ public enum GUITestingGrants {
     public static let checkCommand = """
         for attempt in 1 2 3; do
           osascript -l JavaScript -e '
-            ObjC.import("ApplicationServices")
-            ObjC.bindFunction("CGPreflightScreenCaptureAccess", ["bool", []])
+            \(bindScreenCapturePreflight)
             if (!$.AXIsProcessTrusted()) throw new Error("Accessibility is not granted")
             if (!$.CGPreflightScreenCaptureAccess()) throw new Error("Screen Recording is not granted")
             Application("System Events").processes[0].name()

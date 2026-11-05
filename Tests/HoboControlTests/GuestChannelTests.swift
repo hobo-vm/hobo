@@ -142,6 +142,93 @@ import Testing
         #expect(output == Data("hi\n".utf8))
     }
 
+    @Test func execAsksForTheDesktopSessionOnlyWithGUI() async throws {
+        defer { cleanUp() }
+        let channel = channel
+        let requests = Mutex<[ControlRequest]>([])
+        let server = try serve { request, _ in
+            requests.withLock { $0.append(request) }
+            return .exited(0)
+        }
+        defer { server.close() }
+        _ = try await offPool { try channel.exec("dev", command: ["true"]) { _, _ in } }
+        _ = try await offPool { try channel.exec("dev", command: ["true"], gui: true) { _, _ in } }
+        #expect(requests.withLock { $0 } == [.exec(command: ["true"], gui: false), .exec(command: ["true"], gui: true)])
+    }
+
+    @Test func aScreenshotJoinsItsChunksUnderTheStoredName() async throws {
+        defer { cleanUp() }
+        let channel = channel
+        let requests = Mutex<[ControlRequest]>([])
+        let server = try serve { request, reply in
+            requests.withLock { $0.append(request) }
+            try? reply.send(.output(.stdout, GuestScreenshot.pngSignature))
+            try? reply.send(.output(.stderr, Data("a warning\n".utf8)))
+            try? reply.send(.output(.stdout, Data("rest".utf8)))
+            return .exited(0)
+        }
+        defer { server.close() }
+        let screenshot = try await offPool { try channel.screenshot("DEV") }
+        #expect(screenshot == GuestScreenshot(name: "dev", png: GuestScreenshot.pngSignature + Data("rest".utf8)))
+        #expect(requests.withLock { $0 } == [.exec(command: GuestScreenshot.command, gui: true)])
+    }
+
+    @Test func aFailedScreenshotSaysWhatTheGuestSaid() async throws {
+        defer { cleanUp() }
+        let channel = channel
+        let server = try serve { _, reply in
+            try? reply.send(.output(.stdout, GuestScreenshot.pngSignature))
+            try? reply.send(.output(.stderr, Data("Screen Recording isn't granted\n".utf8)))
+            return .exited(1)
+        }
+        defer { server.close() }
+        await #expect(throws: GuestChannelError.screenshotFailed("dev", "Screen Recording isn't granted")) {
+            try await offPool { try channel.screenshot("dev") }
+        }
+    }
+
+    @Test func aFailedScreenshotWithNothingToSayGivesTheStatus() async throws {
+        defer { cleanUp() }
+        let channel = channel
+        let server = try serve { _, _ in .exited(125) }
+        defer { server.close() }
+        await #expect(throws: GuestChannelError.screenshotFailed("dev", "the capture exited with status 125")) {
+            try await offPool { try channel.screenshot("dev") }
+        }
+    }
+
+    /// A shell startup file printing would otherwise be saved as a corrupt image.
+    @Test func aScreenshotThatIsntAPNGIsAnError() async throws {
+        defer { cleanUp() }
+        let channel = channel
+        let server = try serve { _, reply in
+            try? reply.send(.output(.stdout, Data("welcome\n".utf8) + GuestScreenshot.pngSignature))
+            return .exited(0)
+        }
+        defer { server.close() }
+        await #expect {
+            try await offPool { try channel.screenshot("dev") }
+        } throws: { error in
+            guard case GuestChannelError.screenshotFailed("dev", let reason) = error else { return false }
+            return reason.contains("isn't a PNG")
+        }
+    }
+
+    @Test func aScreenshotRefusedByTheVMProcessIsTheRefusal() async throws {
+        defer { cleanUp() }
+        let channel = channel
+        let server = try serve { _, _ in .error("exec --gui and screenshot need a macOS guest for now") }
+        defer { server.close() }
+        await #expect(throws: LifecycleError.refused("dev", "exec --gui and screenshot need a macOS guest for now")) {
+            try await offPool { try channel.screenshot("dev") }
+        }
+    }
+
+    @Test func aScreenshotOfAStoppedVMSaysSo() {
+        defer { cleanUp() }
+        #expect(throws: GuestChannelError.notRunning("dev")) { try channel.screenshot("dev") }
+    }
+
     @Test func aRefusalIsAnError() throws {
         defer { cleanUp() }
         let server = try serve { _, _ in .error("dev is stopping") }
