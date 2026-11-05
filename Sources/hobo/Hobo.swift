@@ -324,7 +324,7 @@ struct List: OutputCommand {
 
     private func table(_ listing: VMListing) -> String {
         let vmRows = listing.vms.map { summary in
-            var cells = row(summary)
+            var cells = Self.row(summary)
             if summary.config?.ephemeral == true { cells[1] += ", ephemeral" }
             return cells + [Self.snapshotsCell(count: summary.snapshots?.count ?? 0, bytes: summary.snapshotBytes ?? 0)]
         }
@@ -351,7 +351,8 @@ struct List: OutputCommand {
         count == 0 && bytes == 0 ? "—" : "\(count) (\(fileSize(bytes)))"
     }
 
-    private func row(_ summary: VMSummary) -> [String] {
+    /// A VM's cells for every column but SNAPSHOTS.
+    static func row(_ summary: VMSummary) -> [String] {
         let used = fileSize(summary.allocatedBytes)
         let state = stateCell(summary)
         // Building, failed and broken VMs have no config.
@@ -359,7 +360,7 @@ struct List: OutputCommand {
         return [summary.name, state] + columns(config, used: used)
     }
 
-    private func stateCell(_ summary: VMSummary) -> String {
+    private static func stateCell(_ summary: VMSummary) -> String {
         switch summary.state {
         case .running: runningState(summary)
         case .suspended: "suspended (\(fileSize(summary.savedStateBytes ?? 0)))"
@@ -368,18 +369,18 @@ struct List: OutputCommand {
         }
     }
 
-    private func crashedState(exitStatus status: Int32) -> String {
+    private static func crashedState(exitStatus status: Int32) -> String {
         "crashed (\(status < 0 ? "signal \(-status)" : "exit \(status)"))"
     }
 
     /// `running`, `running (window)`, or what the process is doing instead, e.g.
     /// `stopping (saving state)` during a suspend.
-    private func runningState(_ summary: VMSummary) -> String {
+    private static func runningState(_ summary: VMSummary) -> String {
         if let phase = summary.phase { return phase + (summary.phaseDetail.map { " (\($0))" } ?? "") }
         return summary.windowShown == true ? "running (window)" : "running"
     }
 
-    private func columns(_ config: VMConfig, used: String) -> [String] {
+    private static func columns(_ config: VMConfig, used: String) -> [String] {
         [config.osDescription, String(config.cpus), fileSize(config.memory), "\(used) / \(fileSize(config.disk))"]
     }
 }
