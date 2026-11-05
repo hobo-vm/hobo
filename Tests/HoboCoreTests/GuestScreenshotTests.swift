@@ -53,8 +53,8 @@ import Testing
         #expect(json == #"{"name":"dev","path":"/tmp/a.png"}"#)
     }
 
-    // The capture script, with the guest's tools stubbed by PATH. On a real guest it is covered by
-    // the integration test, but only with the grant, and only a VM built without one could say otherwise.
+    // The capture script, with the guest's tools stubbed by PATH. The integration test covers it on
+    // a real guest, but only with the grant: its refusal would take a VM built without one.
 
     /// Runs the script with `osascript` answering `granted`, and a `screencapture` that writes to
     /// the file it is given and notes that it ran.

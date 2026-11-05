@@ -71,8 +71,8 @@ public enum GUITestingGrants {
         return database
     }
 
-    /// JavaScript for `osascript`: makes `$.CGPreflightScreenCaptureAccess()` callable, and with it
-    /// `$.AXIsProcessTrusted()`.
+    /// JavaScript for `osascript`: makes `$.CGPreflightScreenCaptureAccess()` callable. Its import
+    /// also provides `$.AXIsProcessTrusted()`.
     static let bindScreenCapturePreflight = """
         ObjC.import("ApplicationServices"); ObjC.bindFunction("CGPreflightScreenCaptureAccess", ["bool", []])
         """
