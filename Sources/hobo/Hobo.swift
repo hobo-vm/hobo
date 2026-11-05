@@ -366,7 +366,7 @@ struct List: OutputCommand {
         case .stopped, .building, .failed, .broken: summary.state.rawValue
         }
         guard summary.config?.ephemeral == true else { return state }
-        return ([state, "ephemeral"] + [idleTimeoutState(summary)].compactMap { $0 }).joined(separator: ", ")
+        return [state, "ephemeral", idleTimeoutState(summary)].compactMap { $0 }.joined(separator: ", ")
     }
 
     /// An ephemeral VM's idle timeout, for a VM plainly running whose process answered (only then is
