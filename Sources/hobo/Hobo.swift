@@ -380,7 +380,8 @@ struct List: OutputCommand {
     /// `45s`, `28m` or `1h 30m`: up to the next minute, with seconds only under a minute.
     private static func timeLeft(seconds: Int) -> String {
         if seconds < 60 { return "\(seconds)s" }
-        let minutes = (seconds + 59) / 60
+        // Not `(seconds + 59) / 60`: `--idle-timeout` takes values large enough to overflow that.
+        let minutes = seconds / 60 + (seconds % 60 == 0 ? 0 : 1)
         if minutes < 60 { return "\(minutes)m" }
         return "\(minutes / 60)h" + (minutes % 60 == 0 ? "" : " \(minutes % 60)m")
     }

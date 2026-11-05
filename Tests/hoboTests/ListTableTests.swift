@@ -61,7 +61,7 @@ struct ListTableTests {
         #expect(List.row(running)[1] == "running")
     }
 
-    @Test(arguments: [(1, "1s left"), (59, "59s left"), (60, "1m left"), (61, "2m left"), (1680, "28m left"), (1681, "29m left"), (3600, "1h left"), (5400, "1h 30m left"), (7200, "2h left")])
+    @Test(arguments: [(1, "1s left"), (59, "59s left"), (60, "1m left"), (61, "2m left"), (1680, "28m left"), (1681, "29m left"), (3600, "1h left"), (5400, "1h 30m left"), (7200, "2h left"), (Int.max, "2562047788015215h 31m left")])
     func timeLeftRoundsUpToTheMinuteWithSecondsUnderOne(seconds: Int, text: String) {
         var ephemeral = config
         ephemeral.ephemeral = true
