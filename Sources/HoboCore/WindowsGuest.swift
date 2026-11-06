@@ -57,6 +57,20 @@ public enum WindowsGuest {
         return trimmed.allSatisfy(\.isNumber) ? "hobo-\(trimmed.prefix(10))" : trimmed
     }
 
+    /// A shell step's script as Windows PowerShell must receive it, or nil to send the file as it is.
+    /// PowerShell reads a script with no byte order mark in the system's code page, which mangles
+    /// UTF-8, so one that is valid UTF-8 gets a mark. One marked UTF-16, or in some other encoding, is
+    /// what its author chose and goes unchanged.
+    public static func powerShellScript(_ file: Data) -> String? {
+        if file.starts(with: [0xFF, 0xFE]) || file.starts(with: [0xFE, 0xFF]) { return nil }
+        let mark: [UInt8] = [0xEF, 0xBB, 0xBF]
+        let body = file.starts(with: mark) ? file.dropFirst(mark.count) : file
+        return String(data: Data(body), encoding: .utf8).map(powerShellScript)
+    }
+
+    /// `powerShellScript(_:)` for text Hobo already has as a string.
+    public static func powerShellScript(_ text: String) -> String { "\u{FEFF}" + text }
+
     /// A command as `common.ps1` reads it: base64 of a JSON array, needing no quoting on the way.
     static func encoded(_ command: [String]) -> String {
         // An array of strings always encodes.

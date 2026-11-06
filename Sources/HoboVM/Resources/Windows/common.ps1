@@ -21,6 +21,11 @@ function Write-Marker([string]$Marker) {
     $out.Flush()
 }
 
+# What to report when a command was found but wouldn't start, which exits 126.
+function Format-StartFailure([string]$Name, $Failure) {
+    return "${Name}: $($Failure.Exception.InnerException.Message)"
+}
+
 # Quotes one argument the way CommandLineToArgvW, and so nearly every Windows program, reads it:
 # backslashes only need doubling where they run into a quote.
 function Format-Argument([string]$Argument) {

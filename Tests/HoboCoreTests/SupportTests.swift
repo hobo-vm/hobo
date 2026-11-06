@@ -187,6 +187,34 @@ import Testing
         try index.verify(file, sha256: fake)
     }
 
+    /// What `hobo init` does then `hobo create`: the pin's hash is the one verifying it reuses.
+    @Test func verifyingAHashJustTakenDoesntHashAgain() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = served.appending(path: "mac.ipsw")
+        #expect(try index.hash(of: file) == (try shasum(file)))
+
+        var doctored = try entries()
+        let fake = String(repeating: "c", count: 64)
+        doctored[file.standardizedFileURL.path]!.sha256 = fake
+        try JSONEncoder().encode(doctored).write(to: index.indexFile)
+        try index.verify(file, sha256: fake)
+    }
+
+    /// An ISO is often a link to a download elsewhere; what counts is whether that has changed.
+    @Test func aChangeBehindASymbolicLinkIsNoticed() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = served.appending(path: "target.iso")
+        try Data("first".utf8).write(to: target)
+        let link = served.appending(path: "link.iso")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+        let first = try index.hash(of: link)
+
+        try Data("second, and longer".utf8).write(to: target)
+        let second = try index.hash(of: link)
+        #expect(second != first)
+        #expect(second == (try shasum(target)))
+    }
+
     private func shasum(_ file: URL) throws -> String {
         let process = Process()
         process.executableURL = URL(filePath: "/usr/bin/shasum")

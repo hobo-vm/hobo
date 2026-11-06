@@ -27,6 +27,18 @@ import Testing
         #expect(try JSONDecoder().decode([String].self, from: data) == command)
     }
 
+    @Test func aUTF8ScriptGetsOneByteOrderMark() {
+        #expect(WindowsGuest.powerShellScript(Data("é".utf8)) == "\u{FEFF}é")
+        #expect(WindowsGuest.powerShellScript(Data([0xEF, 0xBB, 0xBF] + Array("é".utf8))) == "\u{FEFF}é")
+        #expect(WindowsGuest.powerShellScript(Data()) == "\u{FEFF}")
+    }
+
+    /// Windows-1252's é alone isn't valid UTF-8; PowerShell reads it rightly as it is.
+    @Test(arguments: [[0xFF, 0xFE, 0x41, 0x00], [0xFE, 0xFF, 0x00, 0x41], [0x63, 0xE9]] as [[UInt8]])
+    func aScriptInAnotherEncodingGoesUnchanged(_ bytes: [UInt8]) {
+        #expect(WindowsGuest.powerShellScript(Data(bytes)) == nil)
+    }
+
     @Test func guiExecGoesThroughItsOwnScript() {
         #expect(WindowsGuest.guiExecLine(["a"], marker: "m").hasPrefix(#"& 'C:\ProgramData\Hobo\gui-exec.ps1' 'm' "#))
     }

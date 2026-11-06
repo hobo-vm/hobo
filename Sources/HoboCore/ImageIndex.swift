@@ -78,6 +78,15 @@ public struct ImageIndex: Sendable {
     /// Verifies a local IPSW, used in place, against its pinned hash. An unchanged file (same size
     /// and mtime as when last hashed) is trusted without rehashing.
     public func verify(_ file: URL, sha256 expected: String, log: @Sendable (String) -> Void = { _ in }) throws {
+        let actual = try hash(of: file, log: log)
+        if actual != expected {
+            throw ImageError.checksumMismatch(file.path, expected: expected, actual: actual)
+        }
+    }
+
+    /// A local file's hash, computed only if it has changed since last hashed, and recorded, so that
+    /// verifying a pin made from it needn't hash it again.
+    public func hash(of file: URL, log: @Sendable (String) -> Void = { _ in }) throws -> String {
         let key = file.standardizedFileURL.path
         var entries = load()
         let cached = entries[key]
@@ -86,9 +95,7 @@ public struct ImageIndex: Sendable {
             entries[key] = entry
             try save(entries)
         }
-        if entry.sha256 != expected {
-            throw ImageError.checksumMismatch(file.path, expected: expected, actual: entry.sha256)
-        }
+        return entry.sha256
     }
 
     public static func sha256(of file: URL, log: @Sendable (String) -> Void = { _ in }) throws -> String {
@@ -114,7 +121,9 @@ public struct ImageIndex: Sendable {
     }
 
     private static func stat(_ file: URL) -> (size: UInt64, mtime: Double)? {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+        // Resolved first: for a symbolic link, these would otherwise be the link's own, and say nothing
+        // about whether what it points to has changed.
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.resolvingSymlinksInPath().path),
               let size = attributes[.size] as? NSNumber, let date = attributes[.modificationDate] as? Date
         else { return nil }
         return (size.uint64Value, date.timeIntervalSince1970)

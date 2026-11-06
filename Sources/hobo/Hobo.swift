@@ -103,7 +103,7 @@ struct Init: OutputCommand {
             guard let pin else { throw ValidationError(WindowsInstallMedia.bringYourOwnISO) }
             let iso = URL(filePath: pin)
             try WindowsInstallMedia.validate(iso)
-            image = .windows(WindowsISO(path: iso.path, sha256: try ImageIndex.sha256(of: iso, log: output.log)))
+            image = .windows(WindowsISO(path: iso.path, sha256: try ImageIndex.standard().hash(of: iso, log: output.log)))
         }
         let template = switch image {
         case .macOS(let image): Recipe.template(pinnedTo: image)

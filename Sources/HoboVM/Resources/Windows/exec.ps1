@@ -18,7 +18,7 @@ $start.UseShellExecute = $false
 try {
     $process = [Diagnostics.Process]::Start($start)
 } catch {
-    [Console]::Error.WriteLine("$($arguments[0]): $($_.Exception.InnerException.Message)")
+    [Console]::Error.WriteLine((Format-StartFailure $arguments[0] $_))
     exit 126
 }
 $process.WaitForExit()

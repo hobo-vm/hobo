@@ -32,8 +32,14 @@ struct WindowsIntegrationTests {
             $env:GREETING | Set-Content C:\\Users\\vagrant\\provisioned.txt
             '''
             env = { GREETING = "it's here" }
+
+            [[provision]]
+            type = "shell"
+            path = "bomless.ps1"
             """
         try provisioned.write(to: recipe, atomically: true, encoding: .utf8)
+        // UTF-8 with no byte order mark, as Mac editors write it: PowerShell must still read the é as one letter.
+        try "if ('é'.Length -ne 1) { exit 3 }\n".write(to: work.appending(path: "bomless.ps1"), atomically: true, encoding: .utf8)
         #expect(try session.run(["validate"]).status == 0)
         try #require(try session.run(["create", "base"]).status == 0)
 
@@ -57,6 +63,10 @@ struct WindowsIntegrationTests {
         #expect(try powerShell(#"Get-Content C:\Users\vagrant\provisioned.txt"#).text.contains("it's here"))
         #expect(try session.run(["exec", "vm", "--", "cmd.exe", "/c", "exit 7"]).status == 7)
         #expect(try session.run(["exec", "vm", "--", "nosuchprogram"]).status == 127)
+        // Found, but not something Windows can start.
+        for gui in [[], ["--gui"]] {
+            #expect(try session.run(["exec", "vm"] + gui + ["--", #"C:\Windows\win.ini"#]).status == 126, "\(gui)")
+        }
         #expect(try session.run(["exec", "vm", "--", "Write-Output", #"it's "quoted""#]).text.contains(#"it's "quoted""#))
         #expect(try session.run(["exec", "vm", "--", "Write-Output", "it\u{2019}s curly"]).text.contains("it\u{2019}s curly"))
         #expect(try session.run(["exec", "vm", "--gui", "--", "Write-Output", "it\u{2019}s curly"]).text.contains("it\u{2019}s curly"))

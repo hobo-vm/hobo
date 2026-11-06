@@ -23,18 +23,27 @@ try {
         $process.StartInfo.UseShellExecute = $false
         $process.StartInfo.RedirectStandardOutput = $true
         $process.StartInfo.RedirectStandardError = $true
-        [void]$process.Start()
-        Set-Content "$Directory\pid" $process.Id -Encoding Ascii
-        $stdout = Open-Output "$Directory\stdout"
-        $stderr = Open-Output "$Directory\stderr"
-        $copies = @(
-            $process.StandardOutput.BaseStream.CopyToAsync($stdout),
-            $process.StandardError.BaseStream.CopyToAsync($stderr)
-        )
-        $process.WaitForExit()
-        # An app it left running can hold the pipes open forever, so don't wait long for their end.
-        [void][Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]$copies, 2000)
-        $status = $process.ExitCode
+        $started = $false
+        try {
+            [void]$process.Start()
+            $started = $true
+        } catch {
+            [IO.File]::AppendAllText("$Directory\stderr", (Format-StartFailure $arguments[0] $_) + "`n")
+            $status = 126
+        }
+        if ($started) {
+            Set-Content "$Directory\pid" $process.Id -Encoding Ascii
+            $stdout = Open-Output "$Directory\stdout"
+            $stderr = Open-Output "$Directory\stderr"
+            $copies = @(
+                $process.StandardOutput.BaseStream.CopyToAsync($stdout),
+                $process.StandardError.BaseStream.CopyToAsync($stderr)
+            )
+            $process.WaitForExit()
+            # An app it left running can hold the pipes open forever, so don't wait long for their end.
+            [void][Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]$copies, 2000)
+            $status = $process.ExitCode
+        }
     }
 } catch {
     [IO.File]::AppendAllText("$Directory\stderr", "$_`n")
