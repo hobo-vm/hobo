@@ -481,7 +481,7 @@ global VMs on 2026-11-01.
       the recipe wouldn't. By default the PNG goes to a new `./<vm>-<timestamp>.png`, numbered if
       taken, so a session's shots never replace each other; `-o -` is stdout, and it prints the path
       (`--json`: `{name, path}`). Decided 2026-11-05.
-    - On a Linux guest the VM process refuses both (`VMBundle.guiExecScript` is nil) until hobo-938.
+    - On a Linux guest the VM process refuses both (`VMBundle.guiExecLine` is nil) until hobo-938.
     - A host-side framebuffer screenshot for wedged guests is deferred.
 18. **Agent sessions and leases.** Agents work in sessions, not one-shot commands: `start --ephemeral`,
     many `exec`/`screenshot` calls, `stop`. There is no `hobo run`. An agent that dies or forgets

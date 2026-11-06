@@ -34,7 +34,7 @@ import Testing
     private func run(_ command: [String]) throws -> (status: Int32, stdout: String, stderr: String) {
         let process = Process()
         process.executableURL = URL(filePath: "/bin/sh")
-        process.arguments = ["-c", try #require(MacVMBundle.guiExecScript(command))]
+        process.arguments = ["-c", MacVMBundle.guiExecScript(command)]
         process.environment = ["PATH": "\(directory.path):/usr/bin:/bin"]
         let out = Pipe(), err = Pipe()
         process.standardOutput = out
@@ -91,9 +91,5 @@ import Testing
         #expect(result.status == 0)
         #expect(sleeps == 3)
         #expect(result.stdout.contains("asuser"))
-    }
-
-    @Test func linuxHasNoDesktopSessionYet() {
-        #expect(LinuxVMBundle.guiExecScript(["true"]) == nil)
     }
 }

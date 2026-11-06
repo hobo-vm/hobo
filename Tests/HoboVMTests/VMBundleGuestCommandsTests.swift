@@ -34,9 +34,8 @@ import Testing
         }
     }
 
-    @Test func aMacGUILinePrintsTheMarkerBeforeItsScript() throws {
-        let script = try #require(MacVMBundle.guiExecScript(["a"]))
-        #expect(MacVMBundle.guiExecLine(["a"], marker: "m:") == "echo m:$$; " + script)
+    @Test func aMacGUILinePrintsTheMarkerBeforeItsScript() {
+        #expect(MacVMBundle.guiExecLine(["a"], marker: "m:") == "echo m:$$; " + MacVMBundle.guiExecScript(["a"]))
     }
 
     /// What `exec --gui` refuses on.
@@ -44,8 +43,7 @@ import Testing
         #expect(LinuxVMBundle.guiExecLine(["a"], marker: "m:") == nil)
     }
 
-    /// A Windows guest has no POSIX shell, so none of those defaults may reach it, and it has a GUI
-    /// line even with no script.
+    /// A Windows guest has no POSIX shell, so none of those defaults may reach it.
     @Test func windowsGoesThroughItsOwnScripts() {
         #expect(WindowsVMBundle.execLine(["a"], marker: "m:") == WindowsGuest.execLine(["a"], marker: "m:"))
         #expect(WindowsVMBundle.guiExecLine(["a"], marker: "m:") == WindowsGuest.guiExecLine(["a"], marker: "m:"))

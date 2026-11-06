@@ -13,8 +13,6 @@ public struct WindowsVMBundle: VMBundle {
     public static let remountSharesCommand: String? = nil
     public static let growDiskCommand = WindowsGuest.growDiskCommand
     public static let shutdownCommand = WindowsGuest.shutdownCommand
-    /// `guiExecLine` replaces this: the task it goes through isn't a shell script.
-    public static func guiExecScript(_ command: [String]) -> String? { nil }
     public static func execLine(_ command: [String], marker: String) -> String { WindowsGuest.execLine(command, marker: marker) }
     public static func guiExecLine(_ command: [String], marker: String) -> String? { WindowsGuest.guiExecLine(command, marker: marker) }
     public static func cancelCommand(pid: Int32) -> String { WindowsGuest.cancelCommand(pid: pid) }

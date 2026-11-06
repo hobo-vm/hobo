@@ -40,12 +40,16 @@ public struct MacVMBundle: VMBundle {
     /// What `exec --gui` exits with when the session never comes up, like `env` failing to run a command.
     static let guiSessionUnavailableStatus: Int32 = 125
 
+    public static func guiExecLine(_ command: [String], marker: String) -> String? {
+        "echo \(marker)$$; " + guiExecScript(command)
+    }
+
     /// Waits for auto-login, then enters the Aqua session. `launchctl asuser` needs root, and leaves
     /// the command root without the inner `sudo -u`, which in turn resets the environment, so the
     /// `PATH` is carried over to find what plain `exec` finds. TCC still attributes the command to
     /// sshd, whose grants `[gui_testing]` wrote, and a kill of the process group reaches it (checked
     /// 2026-11-05 on 27.2).
-    public static func guiExecScript(_ command: [String]) -> String? {
+    static func guiExecScript(_ command: [String]) -> String {
         """
         i=0
         until [ "$(stat -f %Su /dev/console)" = "$(id -un)" ] && launchctl print "gui/$(id -u)" >/dev/null 2>&1; do

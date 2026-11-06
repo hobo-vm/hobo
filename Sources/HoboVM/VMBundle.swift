@@ -25,14 +25,11 @@ public protocol VMBundle: Sendable {
     /// Grows the guest's root filesystem, live, into a disk `hobo set --disk` enlarged. It runs
     /// again at the next start if it fails, so it must be safe to repeat.
     static var growDiskCommand: String { get }
-    /// The shell script that runs `command` (`exec --gui`) in the SSH user's desktop session, for the
-    /// default `guiExecLine`. Nil if this kind of guest can't yet, or doesn't go through a script.
-    static func guiExecScript(_ command: [String]) -> String?
     /// Shuts the guest down, over SSH.
     static var shutdownCommand: String { get }
     /// The guest command that prints `marker` and a process ID (`GuestSSH.PIDMarker`), then runs `command`.
     static func execLine(_ command: [String], marker: String) -> String
-    /// `execLine` in the SSH user's desktop session, or nil if this kind of guest can't yet.
+    /// `execLine` in the SSH user's desktop session (`exec --gui`), or nil if this kind of guest can't yet.
     static func guiExecLine(_ command: [String], marker: String) -> String?
     /// Ends what `execLine` or `guiExecLine` started, given the process ID it printed.
     static func cancelCommand(pid: Int32) -> String
@@ -53,10 +50,6 @@ extension VMBundle {
     /// sshd made the guest shell a process group leader, so its PID names the group `cancelCommand` kills.
     public static func execLine(_ command: [String], marker: String) -> String {
         "echo \(marker)$$; exec " + shellQuote(command)
-    }
-
-    public static func guiExecLine(_ command: [String], marker: String) -> String? {
-        guiExecScript(command).map { "echo \(marker)$$; " + $0 }
     }
 
     public static func cancelCommand(pid: Int32) -> String { "kill -TERM -- -\(pid)" }
