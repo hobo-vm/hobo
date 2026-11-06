@@ -1,6 +1,12 @@
 # What exec.ps1, gui-exec.ps1 and gui-run.ps1 share. A command arrives as base64 of a JSON array of
 # its arguments, which needs no quoting on the way through ssh and PowerShell.
 
+# Commands inherit this console, whose code page would otherwise turn their non-ASCII output into `?` or
+# worse on its way to the host. Only this session's console: the guest's locale stays what a real install's is.
+$utf8 = New-Object Text.UTF8Encoding($false)
+[Console]::OutputEncoding = $utf8
+[Console]::InputEncoding = $utf8
+
 function Read-Command([string]$Encoded) {
     $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Encoded))
     return @($json | ConvertFrom-Json)
