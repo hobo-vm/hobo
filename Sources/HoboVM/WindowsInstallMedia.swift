@@ -1,5 +1,6 @@
 import Foundation
 import HoboCore
+import Synchronization
 
 /// The disk image that installs Windows with nobody there, attached as USB storage, built fresh by
 /// each create (`install.cmd` says what it does when it boots). Two partitions, since the firmware
@@ -57,6 +58,8 @@ public enum WindowsInstallMedia {
     private static let mediaHeadroom: UInt64 = 2 << 30
     /// Beyond `boot.wim`: the boot manager and its files, the loader and the driver.
     private static let bootPartitionHeadroom: UInt64 = 512 << 20
+    /// The disks this process has attached and not yet ejected, for `ejectAttached`.
+    private static let attachedDisks = Mutex<Set<String>>([])
 
     /// Throws unless `iso` is a Windows on Arm installer.
     public static func validate(_ iso: URL) throws {
@@ -83,7 +86,7 @@ public enum WindowsInstallMedia {
         // A whole number of MiB, since VZ won't attach a raw image of a size that isn't sectors.
         try makeSparseFile(image, bytes: roundedToMiB(isoBytes + mediaHeadroom))
         let disk = try attachUnmounted(image)
-        defer { try? runQuietly("/usr/sbin/diskutil", ["eject", disk]) }
+        defer { eject(disk) }
 
         try withInstaller(iso) { root in
             let bootBytes = roundedToMiB(try fileSize(root.appending(path: "sources/boot.wim")) + bootPartitionHeadroom)
@@ -234,7 +237,23 @@ public enum WindowsInstallMedia {
         guard let disk = String(decoding: attached, as: UTF8.self).split(whereSeparator: \.isWhitespace).first else {
             throw VMError.unexpectedAttachOutput(image.path)
         }
+        attachedDisks.withLock { _ = $0.insert(String(disk)) }
         return String(disk)
+    }
+
+    private static func eject(_ disk: String) {
+        try? runQuietly("/usr/sbin/diskutil", ["eject", disk])
+        attachedDisks.withLock { _ = $0.remove(disk) }
+    }
+
+    /// For an interrupted create, which exits with no chance to unwind: an image left attached holds
+    /// on to its deleted blocks, and an ISO its mount, until the next restart. Forced, since what
+    /// was copying from them may still be running.
+    static func ejectAttached() {
+        for disk in attachedDisks.withLock({ $0 }) {
+            try? runQuietly("/usr/sbin/diskutil", ["unmountDisk", "force", disk])
+            eject(disk)
+        }
     }
 
     /// Mounts `partitions` in temporary directories for the length of `body`.
@@ -279,10 +298,11 @@ public enum WindowsInstallMedia {
             "image", "attach", "--readOnly", "--nobrowse", image.path,
         ]), as: UTF8.self)
         let lines = attached.split(whereSeparator: \.isNewline)
-        guard let disk = lines.first?.split(whereSeparator: \.isWhitespace).first else {
+        guard let disk = lines.first?.split(whereSeparator: \.isWhitespace).first.map(String.init) else {
             throw VMError.unexpectedAttachOutput(image.path)
         }
-        defer { try? runQuietly("/usr/sbin/diskutil", ["eject", String(disk)]) }
+        attachedDisks.withLock { _ = $0.insert(disk) }
+        defer { eject(disk) }
         try body(lines.compactMap { line in
             let fields = line.split(separator: "\t", omittingEmptySubsequences: false)
             guard let last = fields.last?.trimmingCharacters(in: .whitespaces), last.hasPrefix("/") else { return nil }

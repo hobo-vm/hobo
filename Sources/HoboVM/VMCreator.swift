@@ -408,6 +408,7 @@ private final class InterruptCleanup: Sendable {
             let source = DispatchSource.makeSignalSource(signal: signo, queue: .global())
             source.setEventHandler {
                 interrupted("deleting \(bundle.path)")
+                WindowsInstallMedia.ejectAttached()
                 try? FileManager.default.removeItem(at: bundle)
                 exit(128 + signo)
             }

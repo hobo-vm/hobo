@@ -3,7 +3,8 @@ import Testing
 @testable import HoboVM
 
 /// Attaching real (tiny) disk images, which needs no entitlement, so it runs without HOBO_INTEGRATION.
-@Suite struct WindowsInstallMediaTests {
+/// One at a time, since `ejectAttached` lets go of everything this process attached.
+@Suite(.serialized) struct WindowsInstallMediaTests {
     private func withImage(_ body: (URL) throws -> Void) throws {
         let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-media-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -29,6 +30,16 @@ import Testing
                 #expect(FileManager.default.fileExists(atPath: volume.path))
             }
             other.wait()
+        }
+    }
+
+    @Test func anInterruptedCreateLetsGoOfWhatItAttached() throws {
+        try withImage { image in
+            try WindowsInstallMedia.withAttached(image) { volumes in
+                let volume = try #require(volumes.first)
+                WindowsInstallMedia.ejectAttached()
+                #expect(!FileManager.default.fileExists(atPath: volume.path))
+            }
         }
     }
 }
