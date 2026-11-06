@@ -19,10 +19,6 @@ public struct WindowsVMBundle: VMBundle {
     public static func guiExecLine(_ command: [String], marker: String) -> String? { WindowsGuest.guiExecLine(command, marker: marker) }
     public static func cancelCommand(pid: Int32) -> String { WindowsGuest.cancelCommand(pid: pid) }
 
-    /// Windows' boot loader spins forever without PMU emulation, which VZ only offers through this
-    /// private setter (`spikes/windows-qemu/README.md`, finding 21; Beads hobo-9ni rechecks it).
-    private static let pmuEmulationSetter = NSSelectorFromString("_setPerformanceMonitoringUnitEmulationEnabled:")
-
     public var directory: URL
     /// The install media, attached as USB storage while `create` installs.
     public var installMedia: URL?
@@ -51,20 +47,21 @@ public struct WindowsVMBundle: VMBundle {
     /// `diskutil image resize` gives the GPT a new disk GUID, which Windows' boot configuration names
     /// its disk by: without the old one it can't find itself, and powers off.
     public func keepingDiskIdentity(_ resize: () throws -> Void) throws {
-        let guid = try withDiskDevice { device in try Self.readHeader(of: device, lba: 1).diskGUID }
+        let guid = try withDiskDevice { device in try Self.readHeader(of: device, lba: Self.primaryHeaderLBA).diskGUID }
         try resize()
         try withDiskDevice { device in
-            var primary = try Self.readHeader(of: device, lba: 1)
-            var backup = try Self.readHeader(of: device, lba: primary.alternateLBA)
+            var primary = try Self.readHeader(of: device, lba: Self.primaryHeaderLBA)
             let backupLBA = primary.alternateLBA
+            var backup = try Self.readHeader(of: device, lba: backupLBA)
             primary.diskGUID = guid
             backup.diskGUID = guid
-            try Self.write(primary, to: device, lba: 1)
+            try Self.write(primary, to: device, lba: Self.primaryHeaderLBA)
             try Self.write(backup, to: device, lba: backupLBA)
         }
     }
 
     private static let sectorBytes: UInt64 = 512
+    private static let primaryHeaderLBA: UInt64 = 1
 
     private func withDiskDevice<Result>(_ body: (FileHandle) throws -> Result) throws -> Result {
         let attached = try output("/usr/sbin/diskutil", ["image", "attach", "--noMount", disk.path])
@@ -106,9 +103,7 @@ public struct WindowsVMBundle: VMBundle {
         }
         let platform = VZGenericPlatformConfiguration()
         platform.machineIdentifier = identifier
-        guard platform.responds(to: Self.pmuEmulationSetter) else { throw VMError.windowsUnsupportedHere }
-        typealias Setter = @convention(c) (AnyObject, Selector, Bool) -> Void
-        unsafeBitCast(platform.method(for: Self.pmuEmulationSetter), to: Setter.self)(platform, Self.pmuEmulationSetter, true)
+        try Self.enablePMUEmulation(on: platform)
 
         let bootLoader = VZEFIBootLoader()
         bootLoader.variableStore = VZEFIVariableStore(url: efiVariables)
@@ -147,4 +142,13 @@ public struct WindowsVMBundle: VMBundle {
     }
 
     static let shareTag = "hobo"
+
+    /// Windows' boot loader spins forever without PMU emulation, which VZ only offers through a
+    /// private setter (`spikes/windows-qemu/README.md`, finding 21; Beads hobo-9ni rechecks it).
+    private static func enablePMUEmulation(on platform: VZGenericPlatformConfiguration) throws {
+        let setter = NSSelectorFromString("_setPerformanceMonitoringUnitEmulationEnabled:")
+        guard platform.responds(to: setter) else { throw VMError.windowsUnsupportedHere }
+        typealias Setter = @convention(c) (AnyObject, Selector, Bool) -> Void
+        unsafeBitCast(platform.method(for: setter), to: Setter.self)(platform, setter, true)
+    }
 }

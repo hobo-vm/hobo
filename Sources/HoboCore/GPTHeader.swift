@@ -6,7 +6,7 @@ public struct GPTHeader: Equatable, Sendable {
 
     private static let signature = Data("EFI PART".utf8)
     private static let sizeOffset = 12
-    private static let checksumOffset = 16
+    private static let checksumRange = 16..<20
     private static let alternateOffset = 32
     private static let diskGUIDRange = 56..<72
 
@@ -38,12 +38,9 @@ public struct GPTHeader: Equatable, Sendable {
 
     /// The header's CRC-32, which covers its own bytes with this field taken as zero.
     private mutating func updateChecksum() {
-        sector.replaceSubrange(Self.checksumOffset..<(Self.checksumOffset + 4), with: Data(repeating: 0, count: 4))
+        sector.replaceSubrange(Self.checksumRange, with: Data(repeating: 0, count: Self.checksumRange.count))
         let checksum = Self.crc32(sector.prefix(size))
-        sector.replaceSubrange(
-            Self.checksumOffset..<(Self.checksumOffset + 4),
-            with: (0..<4).map { UInt8(truncatingIfNeeded: checksum >> (8 * $0)) }
-        )
+        sector.replaceSubrange(Self.checksumRange, with: (0..<4).map { UInt8(truncatingIfNeeded: checksum >> (8 * $0)) })
     }
 
     static func crc32(_ bytes: Data) -> UInt32 {
