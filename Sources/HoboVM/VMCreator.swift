@@ -161,12 +161,12 @@ public struct VMCreator {
         )
     }
 
-    private func fetchWindowsPackages() async throws -> WindowsInstallMedia.Packages {
+    private func fetchWindowsPackages() async throws -> WindowsInstallMedia.PackageFiles {
         let images = ImageIndex.standard(home: home)
-        let fetch = { (package: WindowsInstallMedia.Package) async throws -> URL in
+        let fetch = { (package: WindowsInstallMedia.PinnedPackage) async throws -> URL in
             try await images.fetch(package.url, expectedSHA256: package.sha256, log: log, progress: ProgressLine(log: log).report).file
         }
-        return WindowsInstallMedia.Packages(
+        return WindowsInstallMedia.PackageFiles(
             virtioWin: try await fetch(WindowsInstallMedia.virtioWin),
             openSSH: try await fetch(WindowsInstallMedia.openSSH),
             winFsp: try await fetch(WindowsInstallMedia.winFsp)

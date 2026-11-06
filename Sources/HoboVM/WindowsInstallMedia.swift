@@ -8,8 +8,8 @@ import HoboCore
 /// - exFAT: the whole ISO, which Windows Setup looks for even though it installs nothing itself
 ///   here, then the answer file, drivers and guest files, and the script's result afterwards.
 public enum WindowsInstallMedia {
-    /// The files Hobo puts in every Windows guest, each pinned.
-    public struct Packages: Sendable {
+    /// Where a create's copies of the files Hobo puts in every Windows guest are.
+    public struct PackageFiles: Sendable {
         public var virtioWin: URL
         public var openSSH: URL
         public var winFsp: URL
@@ -21,20 +21,21 @@ public enum WindowsInstallMedia {
         }
     }
 
-    public struct Package: Sendable {
+    /// A download of one of those files.
+    public struct PinnedPackage: Sendable {
         public var url: URL
         public var sha256: String
     }
 
-    public static let virtioWin = Package(
+    public static let virtioWin = PinnedPackage(
         url: URL(string: "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.302-1/virtio-win-0.1.302.iso")!,
         sha256: "303f7ae40dad495d6ae474fdc571df58958a4dbc5c37a522d80f9a203867949d"
     )
-    public static let openSSH = Package(
+    public static let openSSH = PinnedPackage(
         url: URL(string: "https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.4.0.0p1-Preview/OpenSSH-ARM64-v10.4.0.0.msi")!,
         sha256: "75fa139d8975eedb706d9180f454e2148af09d417692825f383fe00610b00e21"
     )
-    public static let winFsp = Package(
+    public static let winFsp = PinnedPackage(
         url: URL(string: "https://github.com/winfsp/winfsp/releases/download/v2.1/winfsp-2.1.25156.msi")!,
         sha256: "073a70e00f77423e34bed98b86e600def93393ba5822204fac57a29324db9f7a"
     )
@@ -52,13 +53,22 @@ public enum WindowsInstallMedia {
     static let logFile = "hobo/install.log"
     private static let bootVolume = "HOBOBOOT"
     private static let dataVolume = "HOBOINST"
+    /// Beyond the ISO: the boot partition, the drivers and the packages.
+    private static let mediaHeadroom: UInt64 = 2 << 30
+    /// Beyond `boot.wim`: the boot manager and its files, the loader and the driver.
+    private static let bootPartitionHeadroom: UInt64 = 512 << 20
 
     /// Throws unless `iso` is a Windows on Arm installer.
     public static func validate(_ iso: URL) throws {
+        try withInstaller(iso) { _ in }
+    }
+
+    private static func withInstaller(_ iso: URL, _ body: (URL) throws -> Void) throws {
         try withAttached(iso) { volumes in
             guard let root = volumes.first, isInstaller(root: root) else {
                 throw VMError.unusableImage(iso.lastPathComponent, "it isn't a Windows on Arm installer")
             }
+            try body(root)
         }
     }
 
@@ -68,18 +78,15 @@ public enum WindowsInstallMedia {
     }
 
     /// Writes the media to `image`.
-    static func create(at image: URL, iso: URL, packages: Packages, computerName: String, timeZone: String) throws {
+    static func create(at image: URL, iso: URL, packages: PackageFiles, computerName: String, timeZone: String) throws {
         let isoBytes = try fileSize(iso)
         // A whole number of MiB, since VZ won't attach a raw image of a size that isn't sectors.
-        try makeSparseFile(image, bytes: roundedToMiB(isoBytes + 2 << 30))
+        try makeSparseFile(image, bytes: roundedToMiB(isoBytes + mediaHeadroom))
         let disk = try attachUnmounted(image)
         defer { try? runQuietly("/usr/sbin/diskutil", ["eject", disk]) }
 
-        try withAttached(iso) { volumes in
-            guard let root = volumes.first, isInstaller(root: root) else {
-                throw VMError.unusableImage(iso.lastPathComponent, "it isn't a Windows on Arm installer")
-            }
-            let bootBytes = roundedToMiB(try fileSize(root.appending(path: "sources/boot.wim")) + 512 << 20)
+        try withInstaller(iso) { root in
+            let bootBytes = roundedToMiB(try fileSize(root.appending(path: "sources/boot.wim")) + bootPartitionHeadroom)
             try runQuietly("/usr/sbin/diskutil", [
                 "partitionDisk", "-noEFI", disk, "GPT", "MS-DOS FAT32", bootVolume, "\(bootBytes)B", "ExFAT", dataVolume, "R",
             ])
@@ -97,13 +104,13 @@ public enum WindowsInstallMedia {
     /// unless it says it finished.
     static func checkResult(of image: URL) throws {
         try withAttached(image) { volumes in
-            guard let data = volumes.first(where: { FileManager.default.fileExists(atPath: $0.appending(path: "hobo").path) }) else {
+            guard let volume = volumes.first(where: { FileManager.default.fileExists(atPath: $0.appending(path: "hobo").path) }) else {
                 throw VMError.windowsInstallFailed("its media has no results")
             }
-            let result = (try? String(contentsOf: data.appending(path: resultFile), encoding: .utf8)) ?? ""
+            let result = (try? String(contentsOf: volume.appending(path: resultFile), encoding: .utf8)) ?? ""
             if result.trimmingCharacters(in: .whitespacesAndNewlines) == "OK" { return }
             // Windows writes the log in its own code page; Latin-1 reads any bytes.
-            let log = (try? String(contentsOf: data.appending(path: logFile), encoding: .isoLatin1)) ?? "no log was written"
+            let log = (try? String(contentsOf: volume.appending(path: logFile), encoding: .isoLatin1)) ?? "no log was written"
             throw VMError.windowsInstallFailed(log.split(whereSeparator: \.isNewline).suffix(40).joined(separator: "\n"))
         }
     }
@@ -127,7 +134,7 @@ public enum WindowsInstallMedia {
     }
 
     private static func writeDataPartition(
-        _ volume: URL, from iso: URL, packages: Packages, answerFile: String
+        _ volume: URL, from iso: URL, packages: PackageFiles, answerFile: String
     ) throws {
         let manager = FileManager.default
         try copy(iso, to: volume)
@@ -194,7 +201,8 @@ public enum WindowsInstallMedia {
         let id = Array(identifier.utf16)
         var status: Int32 = 0
         let length = ucal_getWindowsTimeZoneID(id, Int32(id.count), &name, Int32(name.count), &status)
-        // ICU knows every zone macOS offers; UTC is a fine clock for one it doesn't.
+        // ICU knows every zone macOS offers; UTC is a fine clock for one it doesn't. Its warnings are
+        // negative and its errors positive.
         guard status <= 0, length > 0 else { return "UTC" }
         return String(decoding: name.prefix(Int(length)), as: UTF16.self)
     }
