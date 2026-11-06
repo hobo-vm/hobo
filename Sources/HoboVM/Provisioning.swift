@@ -36,7 +36,8 @@ public enum Provisioning {
             let remote = windows
                 ? "\(WindowsGuest.temporaryDirectory)/hobo-provision-\(index + 1).ps1" : "/tmp/hobo-provision-\(index + 1).sh"
             if let inline = step.inline {
-                try await ssh.upload(contents: inline + "\n", to: remote)
+                // Windows PowerShell reads a script with no byte order mark in the system's code page.
+                try await ssh.upload(contents: (windows ? "\u{FEFF}" : "") + inline + "\n", to: remote)
             } else if let path = step.path {
                 try await ssh.upload(recipe.resolve(path), to: remote)
             }

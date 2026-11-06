@@ -20,7 +20,7 @@ struct WindowsIntegrationTests {
         var started: [String] = []
         defer { for vm in started { _ = try? session.run(["stop", "--force", vm]) } }
 
-        // The recipe, from init, with a step that sees its environment and fails the build if it can't.
+        // The recipe, from init, with a step that sees its environment and its own text, and fails the build if it can't.
         #expect(try session.run(["init", "--os", "windows", iso]).status == 0)
         let recipe = work.appending(path: "Hobo.toml")
         let provisioned = try String(contentsOf: recipe, encoding: .utf8) + """
@@ -28,6 +28,7 @@ struct WindowsIntegrationTests {
             [[provision]]
             type   = "shell"
             inline = '''
+            if ('é'.Length -ne 1) { exit 1 }
             $env:GREETING | Set-Content C:\\Users\\vagrant\\provisioned.txt
             '''
             env = { GREETING = "it's here" }
