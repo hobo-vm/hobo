@@ -34,8 +34,24 @@ import Testing
         zeroed.replaceSubrange(16..<20, with: [0, 0, 0, 0])
         #expect(GPTHeader.crc32(Data(zeroed)) == stored)
         #expect(stored != 0)
-        // The rest of the sector is left alone.
+    }
+
+    @Test func settingTheGUIDLeavesTheRestOfTheSectorAlone() throws {
+        var sector = try header()
+        sector[100] = 0x55
+        var parsed = try #require(GPTHeader(sector: sector))
+        parsed.diskGUID = Data(repeating: 0xBB, count: 16)
         #expect(parsed.sector.count == 512)
+        #expect(parsed.sector[92...] == sector[92...])
+        #expect(parsed.alternateLBA == 0x1FF)
+    }
+
+    /// A slice of a larger read has indices that don't start at 0.
+    @Test func readsASliceOfALargerBuffer() throws {
+        let buffer = Data(repeating: 0xEE, count: 100) + (try header())
+        let parsed = try #require(GPTHeader(sector: buffer[100...]))
+        #expect(parsed.diskGUID == Data(repeating: 0xAA, count: 16))
+        #expect(parsed.alternateLBA == 0x1FF)
     }
 
     @Test(arguments: [Data(), Data(repeating: 0, count: 512), Data("EFI PART".utf8)])
@@ -43,9 +59,11 @@ import Testing
         #expect(GPTHeader(sector: sector) == nil)
     }
 
-    @Test func rejectsAnImpossibleSize() throws {
+    @Test(arguments: [(UInt8(10), UInt8(0)), (0x01, 0x02)])
+    func rejectsAnImpossibleSize(_ low: UInt8, _ high: UInt8) throws {
         var sector = try header()
-        sector[12] = 10
+        sector[12] = low // 10 is under the header's fields; 0x201 is over the sector.
+        sector[13] = high
         #expect(GPTHeader(sector: sector) == nil)
     }
 }
