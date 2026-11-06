@@ -564,7 +564,7 @@ global VMs on 2026-11-01.
       media, runs specialize and OOBE, and `SetupComplete.cmd` runs `setup.ps1` as SYSTEM. OOBE then
       restarts the machine about a minute after the first logon, clearing the auto-login settings,
       so a startup task (`finish-setup.ps1`) restores them after that restart, enables sshd and
-      restarts once more. SSH answering means it's done. Blank disk to SSH takes under 5 minutes, and about 11 GB of ASIF.
+      restarts once more. SSH answering means it's done. A whole `hobo create` takes about 8 minutes and about 11 GB of ASIF; a clone then boots to SSH in about 11 s.
       The bypass of Setup is what makes it fast and is also why no TPM or Secure Boot is needed.
     - **Conventions.** `vagrant`/`vagrant` is an administrator, logged in at boot. The clock is
       `RealTimeIsUniversal`, since VZ's runs on UTC. Growing the disk restores the GPT disk GUID
