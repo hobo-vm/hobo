@@ -240,6 +240,13 @@ import Testing
         #expect(recipe.provisioners.isEmpty)
     }
 
+    /// A macOS file name can hold either character TOML gives a meaning to.
+    @Test func windowsTemplateQuotesTheISOPath() throws {
+        let path = #"/isos/my "win" \ 11.iso"#
+        let recipe = try Recipe.parse(Recipe.template(windowsISO: path, sha256: sha), directory: directory)
+        #expect(recipe.source == .local(URL(filePath: path), sha256: sha))
+    }
+
     /// The template's commented-out steps and `[gui_testing]` are well formed once uncommented.
     @Test func initTemplateExampleStepsParse() throws {
         let uncommented = Recipe.template.replacingOccurrences(of: "# [[provision]]", with: "[[provision]]")

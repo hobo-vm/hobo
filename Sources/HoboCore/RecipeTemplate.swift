@@ -65,7 +65,8 @@ extension Recipe {
 
     /// The starter `Hobo.toml` written by `hobo init --os windows <iso>`, pinned to that ISO.
     public static func template(windowsISO path: String, sha256: String) -> String {
-        """
+        let quotedPath = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        return """
         # Hobo recipe: build a VM from it with `hobo create <name>`.
         # The install adds the Vagrant conventions (vagrant/vagrant, an administrator, SSH with PowerShell
         # as its shell, logged in to the desktop at boot); add your own setup as [[provision]] steps.
@@ -76,7 +77,7 @@ extension Recipe {
 
         [source]
         # A Windows on Arm installer's URL or local path, with its SHA-256.
-        iso    = "\(path)"
+        iso    = "\(quotedPath)"
         sha256 = "\(sha256)"
 
         # Steps run once each, in order, over SSH. Scripts are PowerShell. Paths are relative to this file.
