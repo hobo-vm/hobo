@@ -59,7 +59,7 @@ struct Init: OutputCommand {
         """,
         valueName: "build-version-or-iso"
     ))
-    var build: String?
+    var pin: String?
 
     @Flag(help: "With --os linux, leave out the desktop: the guest boots to a text console.")
     var server = false
@@ -89,19 +89,19 @@ struct Init: OutputCommand {
         let image: CatalogImage?
         switch os {
         case .macos:
-            if let build {
-                image = .macOS(try IPSWCatalog.image(build: build, in: try await IPSWCatalog.fetch(), hostMajor: IPSWCatalog.hostMajor))
+            if let pin {
+                image = .macOS(try IPSWCatalog.image(build: pin, in: try await IPSWCatalog.fetch(), hostMajor: IPSWCatalog.hostMajor))
             } else {
                 image = nil
             }
         case .linux:
             let catalog = try await UbuntuCatalog.fetch()
-            let pinned = try build.map { try UbuntuCatalog.image(version: $0, in: catalog) } ?? UbuntuCatalog.newestLTS(in: catalog)
+            let pinned = try pin.map { try UbuntuCatalog.image(version: $0, in: catalog) } ?? UbuntuCatalog.newestLTS(in: catalog)
             if !pinned.supported { throw UbuntuCatalogError.unsupportedVersion(pinned.version) }
             image = .linux(pinned)
         case .windows:
-            guard let build else { throw ValidationError(WindowsInstallMedia.bringYourOwnISO) }
-            let iso = URL(filePath: build)
+            guard let pin else { throw ValidationError(WindowsInstallMedia.bringYourOwnISO) }
+            let iso = URL(filePath: pin)
             try WindowsInstallMedia.validate(iso)
             image = .windows(WindowsISO(path: iso.path, sha256: try ImageIndex.sha256(of: iso, log: output.log)))
         }
