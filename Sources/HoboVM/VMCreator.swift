@@ -150,7 +150,7 @@ public struct VMCreator {
             try await Provisioning.run(recipe, ssh: ssh, log: log)
             log("Cleaning up")
             try await ssh.check(WindowsGuest.cleanupCommand, what: "cleanup")
-            try await shutDown(vm, ssh: ssh, command: WindowsGuest.shutdownCommand)
+            try await shutDown(vm, ssh: ssh)
             return version
         }
         log("Disk uses \(ByteCountFormatter.string(fromByteCount: Int64(bundle.allocatedDiskBytes()), countStyle: .file))")
@@ -368,10 +368,11 @@ public struct VMCreator {
         }
     }
 
-    private func shutDown(_ vm: GuestVM, ssh: GuestSSH, command: String = "sudo -n shutdown -h now") async throws {
+    /// `command` is for when the guest's usual one (`VMBundle.shutdownCommand`) won't do yet.
+    private func shutDown(_ vm: GuestVM, ssh: GuestSSH, command: String? = nil) async throws {
         log("Shutting down")
         // ssh usually drops mid-command here; the VM state is what matters.
-        try await ssh.run(command, quiet: true)
+        try await ssh.run(command ?? type(of: vm.bundle).shutdownCommand, quiet: true)
         if try await !vm.waitForPowerOffOrForce(timeout: .seconds(5 * 60)) {
             log("warning: guest did not power off within 5 minutes; forced it off")
         }
