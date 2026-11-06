@@ -7,6 +7,11 @@ import Virtualization
 public struct WindowsVMBundle: VMBundle {
     public static let platformFiles = ["disk.asif", "efi-vars.fd", "machine-identifier.bin"]
     public static let hiDPIDisplay = false
+    /// viogpudo's startup mode, the only one that reaches the window intact: at the four larger sizes
+    /// tried, Windows accepts the mode but the window goes almost black (Beads hobo-n64).
+    public static let displayPixels = CGSize(width: 1024, height: 768)
+    /// viogpudo doesn't follow the display, so the window scales this one instead.
+    public static let displayFollowsWindow = false
     public static let ntpClockCommand: String? = nil
     public static func setClockCommand(_ date: Date) -> String { WindowsGuest.setClockCommand(date) }
     /// The share service's mount keeps working across a restore (checked 2026-11-05 on 11 build 26300).
@@ -108,7 +113,7 @@ public struct WindowsVMBundle: VMBundle {
 
         let graphics = VZVirtioGraphicsDeviceConfiguration()
         graphics.scanouts = [VZVirtioGraphicsScanoutConfiguration(
-            widthInPixels: Int(GuestDisplay.pixels.width), heightInPixels: Int(GuestDisplay.pixels.height)
+            widthInPixels: Int(Self.displayPixels.width), heightInPixels: Int(Self.displayPixels.height)
         )]
 
         var storage: [VZStorageDeviceConfiguration] = [VZNVMExpressControllerDeviceConfiguration(

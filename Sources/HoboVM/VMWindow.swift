@@ -29,26 +29,33 @@ final class VMWindow: NSObject, NSWindowDelegate {
     /// Whether the guest display follows the window in Retina pixels (VZ's automatic resizing) or,
     /// for a guest that doesn't scale its own UI, in points.
     private let hiDPI: Bool
+    /// False for a guest whose display stays its configured size, which the window scales.
+    private let displayFollowsWindow: Bool
+    /// The size the guest display goes back to when the window hides.
+    private let displayPixels: CGSize
 
     /// `vmName` picks the icon, so it stays the same whatever `title` says.
     init(guest: GuestVM, vmName: String, title: String, log: @escaping (String) -> Void) {
         machine = guest.machine
         icon = VMIcon.image(for: vmName)
         hiDPI = type(of: guest.bundle).hiDPIDisplay
+        displayFollowsWindow = type(of: guest.bundle).displayFollowsWindow
+        let display = type(of: guest.bundle).displayPixels
+        displayPixels = display
         name = title
         self.log = log
         view.virtualMachine = guest.machine
         // Host shortcuts (⌘Tab, ⌘Space) go to the guest while the window is focused.
         view.capturesSystemKeys = true
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1440, height: 900),
+            contentRect: NSRect(x: 0, y: 0, width: 900 * display.width / display.height, height: 900),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false
         )
         super.init()
         window.title = title
         window.contentView = view
-        window.contentAspectRatio = GuestDisplay.pixels
+        window.contentAspectRatio = display
         window.isReleasedWhenClosed = false
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.delegate = self
@@ -62,7 +69,7 @@ final class VMWindow: NSObject, NSWindowDelegate {
     func show() {
         // The guest display follows the window's size while it shows: in Retina pixels by VZ (turning
         // this on resizes it), or in points by `followWindowInPoints`.
-        view.automaticallyReconfiguresDisplay = hiDPI
+        view.automaticallyReconfiguresDisplay = displayFollowsWindow && hiDPI
         hidesAfterFullScreen = false
         // An `.accessory` app never owns the menu bar, so clicking it sent the window behind the
         // active app, and it had no ⌘Tab entry or full-screen Space.
@@ -83,7 +90,7 @@ final class VMWindow: NSObject, NSWindowDelegate {
     /// Without HiDPI, sizes the guest display to the view in points; VZ's automatic resizing would
     /// use backing pixels. Not during a live resize, so a drag reconfigures once, at the end.
     private func followWindowInPoints() {
-        guard !hiDPI, isShown, !window.inLiveResize else { return }
+        guard displayFollowsWindow, !hiDPI, isShown, !window.inLiveResize else { return }
         let size = view.bounds.size
         guard size.width >= 1, size.height >= 1 else { return }
         do {
@@ -108,8 +115,9 @@ final class VMWindow: NSObject, NSWindowDelegate {
         window.orderOut(nil)
         NSApp.setActivationPolicy(.accessory)
         view.automaticallyReconfiguresDisplay = false
+        guard displayFollowsWindow else { return }
         do {
-            try machine.graphicsDevices.first?.displays.first?.reconfigure(sizeInPixels: GuestDisplay.pixels)
+            try machine.graphicsDevices.first?.displays.first?.reconfigure(sizeInPixels: displayPixels)
         } catch {
             // The guest keeps the window's size until the next resize or boot; screenshots follow it.
             log("warning: couldn't reset the display to its configured size: \(error)")

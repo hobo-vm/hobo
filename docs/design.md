@@ -573,6 +573,12 @@ global VMs on 2026-11-01.
       (`WindowsGuest`), kept free of double quotes, which sshd would have to escape; a command's argv
       travels as base64 of JSON. The ISO is the user's, and virtio-win, OpenSSH and WinFsp are
       pinned downloads through the image index.
+    - **Display: 1024×768, fixed.** `viogpudo` offers its 1024×768 startup mode and the VM display's
+      own size, and through the window only the first works. At 1920×1200, 2048×1280, 1600×1000 and
+      1280×800, Windows accepts the mode and in-guest screenshots look right, but the window is
+      96–99% black, with smeared fragments at some sizes (measured 2026-11-06; row pitch isn't the
+      cause). So the VM's display is 1024×768, the driver doesn't follow the window, and the window
+      scales it. Beads hobo-n64 tracks going higher.
     - **Exec.** SSH runs in session 0, so `exec --gui` (and `screenshot`) go through a one-shot
       scheduled task in `vagrant`'s desktop session, with output tailed from files. UI driving
       uses Windows' built-in UI Automation from PowerShell, in the guest; no WinAppDriver, which

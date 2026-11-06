@@ -145,7 +145,6 @@ public struct VMCreator {
 
         log("Waiting for Windows to finish setting up, and for the Vagrant conventions")
         let version = try await withVM(bundle, machine: machine) { vm, ssh in
-            try await setWindowsDisplay(ssh)
             let version = try await ssh.output(WindowsGuest.versionCommand, what: "reading the Windows version")
             try await Provisioning.run(recipe, ssh: ssh, log: log)
             log("Cleaning up")
@@ -171,16 +170,6 @@ public struct VMCreator {
             openSSH: try await fetch(WindowsInstallMedia.openSSH),
             winFsp: try await fetch(WindowsInstallMedia.winFsp)
         )
-    }
-
-    /// Windows starts at 1024×768 whatever the display offers, and remembers this from then on.
-    private func setWindowsDisplay(_ ssh: GuestSSH) async throws {
-        let command = WindowsGuest.setDisplayCommand(width: Int(GuestDisplay.pixels.width), height: Int(GuestDisplay.pixels.height))
-        let status = try await ssh.exec(
-            line: { WindowsGuest.guiExecLine(command, marker: $0) }, cancel: { WindowsGuest.cancelCommand(pid: $0) },
-            onOutput: { [log] _, data in log(String(decoding: data, as: UTF8.self)) }
-        )
-        if status != 0 { throw VMError.commandFailed("setting the display size", status) }
     }
 
     private func logConsoleTail(_ consoleLog: URL, lines: Int = 30) {

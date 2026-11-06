@@ -94,12 +94,13 @@ struct WindowsIntegrationTests {
             """#
         #expect(try powerShell(automation, gui: true).text.contains("typed by automation"))
 
-        // Screenshot: a PNG of the display, at the size create set.
+        // Screenshot: a PNG of the desktop, at the one size that reaches the VM's window intact. This
+        // sees Windows' desktop, not the window, so it can't tell whether the window is showing it.
         let shot = work.appending(path: "shot.png")
         #expect(try session.run(["screenshot", "vm", "--output", shot.path]).status == 0)
         let png = try Data(contentsOf: shot)
         #expect(png.starts(with: [0x89, 0x50, 0x4E, 0x47]))
-        #expect(png[16..<24] == Data([0, 0, 0x07, 0x80, 0, 0, 0x04, 0xB0]), "1920×1200")
+        #expect(png[16..<24] == Data([0, 0, 0x04, 0x00, 0, 0, 0x03, 0x00]), "1024×768")
 
         // Copies, both ways, to a Windows path.
         let copy = work.appending(path: "copy.txt")

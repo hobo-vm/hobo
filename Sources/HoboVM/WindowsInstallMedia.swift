@@ -151,7 +151,6 @@ public enum WindowsInstallMedia {
             (PackageResources.common_ps1, "common.ps1"), (PackageResources.exec_ps1, "exec.ps1"),
             (PackageResources.gui_exec_ps1, "gui-exec.ps1"), (PackageResources.gui_run_ps1, "gui-run.ps1"),
             (PackageResources.cancel_ps1, "cancel.ps1"), (PackageResources.screenshot_ps1, "screenshot.ps1"),
-            (PackageResources.set_display_ps1, "set-display.ps1"),
         ] {
             try writeScript(script, to: guest.appending(path: name))
         }
