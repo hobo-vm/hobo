@@ -58,6 +58,7 @@ struct WindowsIntegrationTests {
         #expect(try session.run(["exec", "vm", "--", "nosuchprogram"]).status == 127)
         #expect(try session.run(["exec", "vm", "--", "Write-Output", #"it's "quoted""#]).text.contains(#"it's "quoted""#))
         #expect(try session.run(["exec", "vm", "--", "Get-Date", "-Format", "yyyy"]).text.count >= 4)
+        #expect(try session.run(["exec", "vm", "--", "Get-Item", #"C:\nosuchfile"#]).status == 1)
         let binary = try powerShell("[Console]::OpenStandardOutput().Write([byte[]](0,1,13,10,255),0,5)")
         #expect(binary.data == Data([0, 1, 13, 10, 255]))
 

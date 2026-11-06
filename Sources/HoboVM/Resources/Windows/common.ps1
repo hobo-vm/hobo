@@ -35,7 +35,8 @@ function Resolve-Command([string[]]$Arguments) {
     }
     # Quoted except for what looks like a parameter name, which PowerShell would otherwise take for a value.
     $words = @($Arguments | ForEach-Object { if ($_ -cmatch '^-[A-Za-z][A-Za-z0-9]*:?$') { $_ } else { "'" + $_.Replace("'", "''") + "'" } })
-    $line = '$ProgressPreference = ''SilentlyContinue''; & ' + ($words -join ' ') + '; if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE } elseif (-not $?) { exit 1 }'
+    $line = '$ProgressPreference = ''SilentlyContinue''; & ' + ($words -join ' ') + '; $failed = -not $?; if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE } elseif ($failed) { exit 1 }'
+    # $? is read straight away, since evaluating the if's condition resets it.
     # Not -EncodedCommand, which reports errors as CLIXML when its input is redirected.
     return @{
         Program = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
