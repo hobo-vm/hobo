@@ -243,7 +243,8 @@ public enum WindowsInstallMedia {
         defer {
             for (partition, directory) in mounted {
                 try? runQuietly("/usr/sbin/diskutil", ["unmount", partition])
-                try? FileManager.default.removeItem(at: directory)
+                // Not removeItem, which would empty the volume if it's still mounted there.
+                rmdir(directory.path)
             }
         }
         for partition in partitions {
