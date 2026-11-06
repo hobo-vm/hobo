@@ -5,10 +5,10 @@ param([int]$ProcessId)
 $ProgressPreference = 'SilentlyContinue'
 $name = "hobo-gui-$ProcessId"
 $directory = "$PSScriptRoot\gui\$name"
-$command = if (Test-Path "$directory\pid") { (Get-Content "$directory\pid" -Raw).Trim() }
+$commandProcessId = if (Test-Path "$directory\pid") { (Get-Content "$directory\pid" -Raw).Trim() }
 # The script first, so that it isn't cleaning up alongside this.
 taskkill.exe /T /F /PID $ProcessId 2>&1 | Out-Null
-if ($command) { taskkill.exe /T /F /PID $command 2>&1 | Out-Null }
+if ($commandProcessId) { taskkill.exe /T /F /PID $commandProcessId 2>&1 | Out-Null }
 Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force $directory -ErrorAction SilentlyContinue

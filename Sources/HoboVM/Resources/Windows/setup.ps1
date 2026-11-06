@@ -50,5 +50,6 @@ Start-ScheduledTask -TaskName hobo-network-watchdog
 
 $action = New-ScheduledTaskAction -Execute powershell.exe -Argument "-NoProfile -ExecutionPolicy Bypass -File $hobo\finish-setup.ps1"
 Register-ScheduledTask -TaskName hobo-finish-setup -Action $action -Trigger $trigger -Settings $settings -User SYSTEM -RunLevel Highest | Out-Null
+# Volatile, so that it's gone after a restart: finish-setup.ps1 tells from it whether one has happened.
 [void][Microsoft.Win32.Registry]::LocalMachine.CreateSubKey('SOFTWARE\Hobo\SetupBoot', $true, [Microsoft.Win32.RegistryOptions]::Volatile)
 Start-ScheduledTask -TaskName hobo-finish-setup

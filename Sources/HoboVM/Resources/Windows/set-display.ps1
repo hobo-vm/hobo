@@ -22,7 +22,7 @@ public static class HoboDisplay {
 '@
 $mode = New-Object HoboDisplay+DEVMODE
 $mode.size = [Runtime.InteropServices.Marshal]::SizeOf($mode)
-[HoboDisplay]::EnumDisplaySettingsA($null, -1, [ref]$mode) | Out-Null
+[HoboDisplay]::EnumDisplaySettingsA($null, -1, [ref]$mode) | Out-Null # ENUM_CURRENT_SETTINGS
 $mode.pelsWidth = $Width
 $mode.pelsHeight = $Height
 $mode.fields = 0x180000 # DM_PELSWIDTH | DM_PELSHEIGHT

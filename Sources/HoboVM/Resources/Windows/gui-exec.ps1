@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\common.ps1"
 Write-Marker $Marker
 
-# Auto-login can finish after SSH answers. 125 is what plain exec's macOS counterpart exits with.
+# Auto-login can finish after SSH answers. 125 is what exec --gui exits with for this on macOS too.
 $deadline = (Get-Date).AddSeconds(60)
 while (-not (Get-Process explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -gt 0 })) {
     if ((Get-Date) -gt $deadline) {
@@ -53,6 +53,7 @@ try {
         Copy-New $outFile $toOut $buffer
         Copy-New $errFile $toErr $buffer
         if ($done) { break }
+        # Checked again: having just finished is fine, and the next pass reads the last of its output.
         if ($stopped -and -not (Test-Path "$directory\status")) {
             [Console]::Error.WriteLine("the desktop session's task ended without an exit status")
             exit 1

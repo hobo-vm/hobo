@@ -25,8 +25,8 @@ public protocol VMBundle: Sendable {
     /// Grows the guest's root filesystem, live, into a disk `hobo set --disk` enlarged. It runs
     /// again at the next start if it fails, so it must be safe to repeat.
     static var growDiskCommand: String { get }
-    /// The shell script that runs `command` (`exec --gui`) in the SSH user's desktop session, or nil
-    /// if this kind of guest can't yet.
+    /// The shell script that runs `command` (`exec --gui`) in the SSH user's desktop session, for the
+    /// default `guiExecLine`. Nil if this kind of guest can't yet, or doesn't go through a script.
     static func guiExecScript(_ command: [String]) -> String?
     /// Shuts the guest down, over SSH.
     static var shutdownCommand: String { get }
