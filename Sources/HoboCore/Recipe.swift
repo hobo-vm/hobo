@@ -134,7 +134,7 @@ public struct Recipe: Equatable, Sendable {
         case (nil, nil, let iso?): (.windows, iso)
         default: throw RecipeError.sourceKind
         }
-        // Only Apple's API resolves a "latest"; there is none for Linux images.
+        // Only Apple's API resolves a "latest"; there is none for Linux images or Windows ISOs.
         if os == .macOS && location == "latest" { return (os, .latest) }
         guard let sha = raw.sha256?.lowercased() else { throw RecipeError.missingSHA256(location) }
         guard sha.count == 64, sha.allSatisfy(\.isHexDigit) else { throw RecipeError.invalidSHA256(sha) }

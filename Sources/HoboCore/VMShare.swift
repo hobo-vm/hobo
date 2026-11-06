@@ -1,8 +1,9 @@
 import Foundation
 
 /// A host folder shared into the guest over virtio-fs. A macOS guest mounts every share at
-/// `/Volumes/My Shared Files/<name>`, a Linux guest at `/mnt/hobo/<name>` (decision 9). Persistent
-/// shares live in `config.json` (`hobo set --share`); `hobo start --share` adds one for a single run.
+/// `/Volumes/My Shared Files/<name>`, a Linux guest at `/mnt/hobo/<name>` (decision 9), and a
+/// Windows guest at `Z:\<name>`. Persistent shares live in `config.json` (`hobo set --share`);
+/// `hobo start --share` adds one for a single run.
 public struct VMShare: Codable, Equatable, Sendable {
     /// The folder's name in the guest: the host folder's basename.
     public var name: String

@@ -153,7 +153,7 @@ struct Images: OutputCommand {
             """
     )
 
-    @Option(help: "The guest OS: macos (IPSWs) or linux (Ubuntu cloud images).")
+    @Option(help: "The guest OS: macos (IPSWs) or linux (Ubuntu cloud images). With windows, says where to get an ISO, since there is no catalog.")
     var os: GuestOSOption = .macos
 
     @Argument(help: ArgumentHelp(
@@ -640,7 +640,8 @@ struct Exec: OutputCommand {
         abstract: "Run a command in a running VM.",
         discussion: """
             The command runs as the vagrant user, without stdin or a TTY, and hobo exits with its status. \
-            Its arguments are quoted for the guest's shell, so use sh -c '<script>' for pipes and the like. \
+            Its arguments are quoted for the guest's shell, so use sh -c '<script>' (on Windows, powershell.exe -Command '<script>') \
+            for pipes and the like. \
             With --gui (macOS and Windows guests) it waits up to a minute for the desktop session, and exits 125 if it never comes up.
             """
     )
@@ -812,8 +813,8 @@ struct SetCommand: OutputCommand {
             The disk only grows. Its image grows now, and the guest's filesystem grows into the new space \
             at the next hobo start.
 
-            A shared folder appears in the guest at /Volumes/My Shared Files/<folder name> (macOS) or \
-            /mnt/hobo/<folder name> (Linux). --unshare runs before --share, so \
+            A shared folder appears in the guest at /Volumes/My Shared Files/<folder name> (macOS), \
+            /mnt/hobo/<folder name> (Linux) or Z:\\<folder name> (Windows). --unshare runs before --share, so \
             --unshare src --share ~/src:ro makes a share read-only.
 
             --keep works on a running or suspended VM too.
