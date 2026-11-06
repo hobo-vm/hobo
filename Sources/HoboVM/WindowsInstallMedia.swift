@@ -10,33 +10,27 @@ import Synchronization
 ///   here, then the answer file, drivers and guest files, and the script's result afterwards.
 public enum WindowsInstallMedia {
     /// Where a create's copies of the files Hobo puts in every Windows guest are.
-    public struct PackageFiles: Sendable {
-        public var virtioWin: URL
-        public var openSSH: URL
-        public var winFsp: URL
-
-        public init(virtioWin: URL, openSSH: URL, winFsp: URL) {
-            self.virtioWin = virtioWin
-            self.openSSH = openSSH
-            self.winFsp = winFsp
-        }
+    struct PackageFiles: Sendable {
+        var virtioWin: URL
+        var openSSH: URL
+        var winFsp: URL
     }
 
     /// A download of one of those files.
-    public struct PinnedPackage: Sendable {
-        public var url: URL
-        public var sha256: String
+    struct PinnedPackage: Sendable {
+        var url: URL
+        var sha256: String
     }
 
-    public static let virtioWin = PinnedPackage(
+    static let virtioWin = PinnedPackage(
         url: URL(string: "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.302-1/virtio-win-0.1.302.iso")!,
         sha256: "303f7ae40dad495d6ae474fdc571df58958a4dbc5c37a522d80f9a203867949d"
     )
-    public static let openSSH = PinnedPackage(
+    static let openSSH = PinnedPackage(
         url: URL(string: "https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.4.0.0p1-Preview/OpenSSH-ARM64-v10.4.0.0.msi")!,
         sha256: "75fa139d8975eedb706d9180f454e2148af09d417692825f383fe00610b00e21"
     )
-    public static let winFsp = PinnedPackage(
+    static let winFsp = PinnedPackage(
         url: URL(string: "https://github.com/winfsp/winfsp/releases/download/v2.1/winfsp-2.1.25156.msi")!,
         sha256: "073a70e00f77423e34bed98b86e600def93393ba5822204fac57a29324db9f7a"
     )
@@ -49,9 +43,9 @@ public enum WindowsInstallMedia {
         """
 
     /// What each guest needs from virtio-win: the display, network, entropy, memory balloon and shares.
-    static let drivers = ["viogpudo", "NetKVM", "viorng", "Balloon", "viofs"]
-    static let resultFile = "hobo/result"
-    static let logFile = "hobo/install.log"
+    private static let drivers = ["viogpudo", "NetKVM", "viorng", "Balloon", "viofs"]
+    private static let resultFile = "hobo/result"
+    private static let logFile = "hobo/install.log"
     private static let bootVolume = "HOBOBOOT"
     private static let dataVolume = "HOBOINST"
     /// Beyond the ISO: the boot partition, the drivers and the packages.
@@ -234,11 +228,11 @@ public enum WindowsInstallMedia {
 
     private static func attachUnmounted(_ image: URL) throws -> String {
         let attached = try output("/usr/sbin/diskutil", ["image", "attach", "--noMount", image.path])
-        guard let disk = String(decoding: attached, as: UTF8.self).split(whereSeparator: \.isWhitespace).first else {
+        guard let disk = String(decoding: attached, as: UTF8.self).split(whereSeparator: \.isWhitespace).first.map(String.init) else {
             throw VMError.unexpectedAttachOutput(image.path)
         }
-        attachedDisks.withLock { _ = $0.insert(String(disk)) }
-        return String(disk)
+        attachedDisks.withLock { _ = $0.insert(disk) }
+        return disk
     }
 
     private static func eject(_ disk: String) {

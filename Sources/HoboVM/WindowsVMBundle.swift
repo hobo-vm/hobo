@@ -61,13 +61,13 @@ public struct WindowsVMBundle: VMBundle {
     private static let sectorBytes: UInt64 = 512
     private static let primaryHeaderLBA: UInt64 = 1
 
-    private func withDiskDevice<Result>(_ body: (FileHandle) throws -> Result) throws -> Result {
+    private func withDiskDevice<T>(_ body: (FileHandle) throws -> T) throws -> T {
         let attached = try output("/usr/sbin/diskutil", ["image", "attach", "--noMount", disk.path])
-        guard let device = String(decoding: attached, as: UTF8.self).split(whereSeparator: \.isWhitespace).first else {
+        guard let device = String(decoding: attached, as: UTF8.self).split(whereSeparator: \.isWhitespace).first.map(String.init) else {
             throw VMError.unexpectedAttachOutput(disk.path)
         }
-        defer { try? runQuietly("/usr/sbin/diskutil", ["eject", String(device)]) }
-        let handle = try FileHandle(forUpdating: URL(filePath: String(device)))
+        defer { try? runQuietly("/usr/sbin/diskutil", ["eject", device]) }
+        let handle = try FileHandle(forUpdating: URL(filePath: device))
         defer { try? handle.close() }
         return try body(handle)
     }
