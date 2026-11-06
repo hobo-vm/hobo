@@ -20,6 +20,7 @@
 #define FLUSH_INTERVAL_100NS 400000 // 40 ms
 #define MAX_GOPS 8
 #define MAX_DRIVER_OPTIONS 32
+#define LOAD_OPTION_DESCRIPTION_OFFSET 6
 
 static const CHAR16 DriverDescription[] = u"Hobo framebuffer";
 static const CHAR16 DriverPath[] = u"\\EFI\\hobo\\framebuffer.efi";
@@ -200,14 +201,16 @@ static VOID Flush(EFI_EVENT event, VOID *context) {
   UINTN width = gop->Mode->Info->HorizontalResolution;
   UINTN height = gop->Mode->Info->VerticalResolution;
   UINTN stride = width * BYTES_PER_PIXEL;
-  UINTN first = height;
+  // Blts each run of changed rows as one. A pass over the row past the end finishes a run reaching it.
+  UINTN noRun = height;
+  UINTN runStart = noRun;
   for (UINTN y = 0; y <= height; y++) {
     BOOLEAN changed = y < height && RowChanged(Framebuffer + y * stride, Shadow + y * stride, stride);
-    if (changed && first == height) first = y;
-    if (!changed && first != height) {
-      gop->Blt(gop, Framebuffer, EfiBltBufferToVideo, 0, first, 0, first, width, y - first, stride);
-      hobo_copy(Shadow + first * stride, Framebuffer + first * stride, (y - first) * stride);
-      first = height;
+    if (changed && runStart == noRun) runStart = y;
+    if (!changed && runStart != noRun) {
+      gop->Blt(gop, Framebuffer, EfiBltBufferToVideo, 0, runStart, 0, runStart, width, y - runStart, stride);
+      hobo_copy(Shadow + runStart * stride, Framebuffer + runStart * stride, (y - runStart) * stride);
+      runStart = noRun;
     }
   }
 }
@@ -256,7 +259,8 @@ static VOID RegisterDriverOption(EFI_RUNTIME_SERVICES *runtime) {
     UINTN size = sizeof(option);
     DriverVariableName(name, order[i]);
     if (EFI_ERROR(runtime->GetVariable(name, &GlobalVariableGuid, 0, &size, option))) continue;
-    if (size >= 6 + descriptionBytes && BytesEqual(option + 6, DriverDescription, descriptionBytes)) return;
+    if (size >= LOAD_OPTION_DESCRIPTION_OFFSET + descriptionBytes &&
+        BytesEqual(option + LOAD_OPTION_DESCRIPTION_OFFSET, DriverDescription, descriptionBytes)) return;
   }
 
   UINT16 number = 0;
