@@ -48,7 +48,8 @@ public struct GuestChannel: Sendable {
         let vm = try store.find(name)
         var png = Data()
         var errors = Data()
-        let status = try exec(name, command: GuestScreenshot.command, gui: true) { stream, data in
+        let config = try VMConfig.load(from: vm.bundle.appending(path: VMStore.configFile))
+        let status = try exec(name, command: GuestScreenshot.command(for: config.os), gui: true) { stream, data in
             switch stream {
             case .stdout: png += data
             case .stderr: errors += data

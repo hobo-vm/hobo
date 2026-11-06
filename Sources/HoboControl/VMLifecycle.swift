@@ -257,6 +257,7 @@ public struct VMLifecycle: Sendable {
         var listing = store.listing()
         for index in listing.vms.indices where listing.vms[index].state == .running {
             guard let status = await runStatus(listing.vms[index].name) else { continue }
+            listing.vms[index].ipAddress = status.ipAddress
             listing.vms[index].windowShown = status.windowShown
             listing.vms[index].idleTimeoutSeconds = status.idleTimeoutSeconds
             listing.vms[index].idleSecondsRemaining = status.idleSecondsRemaining

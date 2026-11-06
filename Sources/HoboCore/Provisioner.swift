@@ -55,6 +55,13 @@ public struct Provisioner: Equatable, Sendable, Decodable {
         let sudo = (privileged ?? true) ? ["sudo", "-n", "-H"] : []
         return (sudo + ["env"] + assignments + ["/bin/bash", "-l", shellQuote(script)]).joined(separator: " ")
     }
+
+    /// `shellCommand` for a Windows guest, whose steps are PowerShell scripts: its exit status, or
+    /// failure if PowerShell itself stopped on an error. Single quotes only, as `WindowsGuest` says.
+    public func powerShellCommand(running script: String) -> String {
+        let assignments = (env ?? [:]).sorted { $0.key < $1.key }.map { "$env:\($0.key) = '\($0.value.replacingOccurrences(of: "'", with: "''"))'; " }
+        return assignments.joined() + "& powershell.exe -NoProfile -ExecutionPolicy Bypass -File '\(script)'; exit $LASTEXITCODE"
+    }
 }
 
 /// Resolves a host path written in a recipe against the directory of that file.

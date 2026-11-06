@@ -16,7 +16,7 @@ import Testing
         )
     }
     let config = VMConfig(
-        engine: .vz, os: .macOS, cpus: 4, memory: 8 << 30, disk: 80 << 30, macAddress: "5a:00:00:00:00:01",
+        os: .macOS, cpus: 4, memory: 8 << 30, disk: 80 << 30, macAddress: "5a:00:00:00:00:01",
         guestOSVersion: "27.2.0 (26B123)", created: Date(timeIntervalSince1970: 1_800_000_000),
         recipeSHA256: String(repeating: "a", count: 64), sourceSHA256: String(repeating: "b", count: 64)
     )
@@ -68,7 +68,6 @@ import Testing
         try made("dev")
         let json = try String(contentsOf: store.bundle(for: "dev").appending(path: VMStore.configFile), encoding: .utf8)
         #expect(json.contains("\"created\" : \"2027-01-15T08:00:00Z\""))
-        #expect(json.contains("\"engine\" : \"vz\""))
         #expect(json.contains("\"memory\" : 8589934592"))
     }
 

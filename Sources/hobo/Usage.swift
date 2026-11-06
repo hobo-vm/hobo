@@ -59,10 +59,12 @@ struct Usage: ParsableCommand {
               VMs         Each VM is a bundle, ~/Hobo/<name>.hobovm (HOBO_VMS overrides the directory).
                           `hobo list` shows every VM, its state and its disk use.
               Recipes     `create` builds from a \(Recipe.fileName) recipe, ./\(Recipe.fileName) by default.
-                          `hobo init` writes a starter (macOS, or Ubuntu with --os linux) and
-                          `hobo validate` checks one. [source] ipsw makes a macOS guest, image a Linux one.
+                          `hobo init` writes a starter (macOS, Ubuntu with --os linux, or Windows with
+                          --os windows <iso>) and `hobo validate` checks one. [source] ipsw makes a macOS
+                          guest, image a Linux one, iso a Windows one.
               Guest user  `exec`, `cp` and `ssh` act as the \(Conventions.username) user over SSH
-                          (password \(Conventions.password), passwordless sudo).
+                          (password \(Conventions.password), passwordless sudo; on Windows an elevated
+                          administrator, with PowerShell as the shell).
               JSON        Every command takes --json except \(codeList(json.withoutJSON)).
                           Quick commands print one JSON document. These print JSON Lines instead,
                           {"event":"log","message":…} as they go, then {"event":"result","result":…}:

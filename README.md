@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-A command-line tool for named macOS (and later Linux and Windows) VMs on Apple Silicon Macs,
+A command-line tool for named macOS, Linux and Windows VMs on Apple Silicon Macs,
 built on Apple's Virtualization framework. Vagrant-inspired, not a Vagrant clone.
 
 ```sh
@@ -51,6 +51,8 @@ destination = "/Users/vagrant/.zshrc"
 
 - Apple Silicon Mac, macOS 27+
 - Xcode 27 (Swift 6.4+)
+- `brew install lld`, to build: the Windows boot driver is compiled from source during the build
+- To run Windows guests, a Windows on Arm ISO from [Microsoft](https://www.microsoft.com/en-us/software-download/windows11arm64). Windows runs through a private Virtualization framework setting a macOS update could remove, and Microsoft authorizes only Parallels for Windows 11 on Apple Silicon, so check the licence before relying on it for work ([design decision 20](docs/design.md))
 
 ## Build
 

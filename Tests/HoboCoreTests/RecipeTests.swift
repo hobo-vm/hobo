@@ -100,6 +100,37 @@ import Testing
         #expect(throws: RecipeError.macOSOnly(name)) { try Recipe.parse(recipe, directory: directory) }
     }
 
+    @Test(arguments: ["[security]\nsip = false", "[gui_testing]\nenabled = true"])
+    func macOSOnlyTablesAreRejectedForWindows(_ table: String) {
+        let recipe = minimal(source: "iso = \"x.iso\"\nsha256 = \"\(sha)\"") + "\n" + table
+        let name = String(table.prefix { $0 != "\n" })
+        #expect(throws: RecipeError.macOSOnly(name)) { try Recipe.parse(recipe, directory: directory) }
+    }
+
+    @Test func anISOMakesAWindowsGuest() throws {
+        let recipe = try Recipe.parse("[source]\niso = \"win.iso\"\nsha256 = \"\(sha)\"", directory: directory)
+        #expect(recipe.os == .windows)
+        #expect(recipe.source == .local(URL(filePath: "/recipes/win.iso"), sha256: sha))
+        #expect(recipe.memory.bytes == 8 << 30)
+        #expect(recipe.disk.bytes == 64 << 30)
+    }
+
+    @Test func windowsHasNoLatest() {
+        #expect(throws: RecipeError.self) { try Recipe.parse("[source]\niso = \"latest\"", directory: directory) }
+    }
+
+    @Test func aWindowsStepCantDropPrivileges() {
+        let recipe = minimal(source: "iso = \"x.iso\"\nsha256 = \"\(sha)\"")
+            + "\n[[provision]]\ntype = \"shell\"\ninline = \"exit 0\"\nprivileged = false"
+        #expect(throws: RecipeError.self) { try Recipe.parse(recipe, directory: directory) }
+    }
+
+    @Test func theWindowsTemplateParses() throws {
+        let recipe = try Recipe.parse(Recipe.template(windowsISO: "/isos/win.iso", sha256: sha), directory: directory)
+        #expect(recipe.os == .windows)
+        #expect(recipe.source == .local(URL(filePath: "/isos/win.iso"), sha256: sha))
+    }
+
     @Test func localPathResolvesAgainstRecipeDirectory() throws {
         let recipe = try Recipe.parse(minimal(source: "ipsw = \"../ipsw/mac.ipsw\"\nsha256 = \"\(sha)\""), directory: directory)
         #expect(recipe.source == .local(URL(filePath: "/ipsw/mac.ipsw"), sha256: sha))

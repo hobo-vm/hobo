@@ -38,6 +38,8 @@ public struct VMSummary: Encodable, Equatable, Sendable {
     public var snapshots: [Snapshot]?
     /// The VM process (`running`) or the build process (`building`).
     public var pid: Int32?
+    /// A `running` VM's IP address, once its process knows it. Only from `VMLifecycle.listing()`.
+    public var ipAddress: String?
     /// The VM process's last exit status if `crashed`: negative for a signal.
     public var exitStatus: Int32?
     /// Bytes the saved state occupies, if `suspended`.

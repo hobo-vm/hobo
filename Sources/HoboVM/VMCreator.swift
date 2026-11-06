@@ -9,6 +9,8 @@ import Virtualization
 ///   recoveryOS) → `[gui_testing]` grants → recipe steps → cleanup → clean shutdown.
 /// - Linux: cloud image → ASIF disk → a boot with a cloud-init seed that applies the Vagrant
 ///   conventions → recipe steps → cleanup → clean shutdown.
+/// - Windows: ISO → install media → a boot that installs from it → a boot that runs Windows' own
+///   setup and the Vagrant conventions → recipe steps → cleanup → clean shutdown.
 @MainActor
 public struct VMCreator {
     public struct Options: Sendable {
@@ -81,7 +83,7 @@ public struct VMCreator {
         switch recipe.os {
         case .macOS: try await buildMac(recipe, recipeSHA256: recipeSHA256, in: directory)
         case .linux: try await buildLinux(recipe, recipeSHA256: recipeSHA256, in: directory)
-        case .windows: throw VMError.unsupportedOS(recipe.os)
+        case .windows: try await buildWindows(recipe, recipeSHA256: recipeSHA256, in: directory)
         }
     }
 
@@ -109,10 +111,76 @@ public struct VMCreator {
         }
         log("Disk uses \(ByteCountFormatter.string(fromByteCount: Int64(bundle.allocatedDiskBytes()), countStyle: .file))")
         return VMConfig(
-            engine: .vz, os: .linux, cpus: machine.cpus, memory: machine.memory, disk: recipe.disk.bytes,
+            os: .linux, cpus: machine.cpus, memory: machine.memory, disk: recipe.disk.bytes,
             macAddress: machine.macAddress.string, guestOSVersion: version,
             created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256, nicMatchedByDriver: true
         )
+    }
+
+    private func buildWindows(_ recipe: Recipe, recipeSHA256: String, in directory: URL) async throws -> VMConfig {
+        let (iso, sourceSHA256) = try await resolveSource(recipe.source)
+        try WindowsInstallMedia.validate(iso)
+        let packages = try await fetchWindowsPackages()
+        let machine = Machine(cpus: recipe.cpus, memory: recipe.memory.bytes, macAddress: .randomLocallyAdministered())
+        var bundle = try WindowsVMBundle.create(at: directory, diskBytes: recipe.disk.bytes)
+
+        log("Building the install media")
+        let media = directory.appending(path: "install-media.img")
+        defer { try? FileManager.default.removeItem(at: media) }
+        try WindowsInstallMedia.create(
+            at: media, iso: iso, packages: packages,
+            computerName: WindowsGuest.computerName(for: options.name), timeZone: WindowsInstallMedia.hostTimeZone()
+        )
+        bundle.installMedia = media
+
+        log("Installing Windows (a few minutes)")
+        let installer = try GuestVM(bundle: bundle, machine: machine)
+        try await installer.start()
+        // Nothing in the guest can be asked how it's going, and its display is frozen on the logo.
+        let stoppedItself = try await installer.waitForPowerOffOrForce(timeout: .seconds(30 * 60))
+        try WindowsInstallMedia.checkResult(of: media)
+        if !stoppedItself { throw VMError.timedOut("installing Windows") }
+        bundle.installMedia = nil
+        try? FileManager.default.removeItem(at: media)
+
+        log("Waiting for Windows to finish setting up, and for the Vagrant conventions")
+        let version = try await withVM(bundle, machine: machine) { vm, ssh in
+            try await setWindowsDisplay(ssh)
+            let version = try await ssh.output(WindowsGuest.versionCommand, what: "reading the Windows version")
+            try await Provisioning.run(recipe, ssh: ssh, log: log)
+            log("Cleaning up")
+            try await ssh.check(WindowsGuest.cleanupCommand, what: "cleanup")
+            try await shutDown(vm, ssh: ssh, command: WindowsGuest.shutdownCommand)
+            return version
+        }
+        log("Disk uses \(ByteCountFormatter.string(fromByteCount: Int64(bundle.allocatedDiskBytes()), countStyle: .file))")
+        return VMConfig(
+            os: .windows, cpus: machine.cpus, memory: machine.memory, disk: recipe.disk.bytes,
+            macAddress: machine.macAddress.string, guestOSVersion: version,
+            created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256
+        )
+    }
+
+    private func fetchWindowsPackages() async throws -> WindowsInstallMedia.Packages {
+        let images = ImageIndex.standard(home: home)
+        let fetch = { (package: WindowsInstallMedia.Package) async throws -> URL in
+            try await images.fetch(package.url, expectedSHA256: package.sha256, log: log, progress: ProgressLine(log: log).report).file
+        }
+        return WindowsInstallMedia.Packages(
+            virtioWin: try await fetch(WindowsInstallMedia.virtioWin),
+            openSSH: try await fetch(WindowsInstallMedia.openSSH),
+            winFsp: try await fetch(WindowsInstallMedia.winFsp)
+        )
+    }
+
+    /// Windows starts at 1024×768 whatever the display offers, and remembers this from then on.
+    private func setWindowsDisplay(_ ssh: GuestSSH) async throws {
+        let command = WindowsGuest.setDisplayCommand(width: Int(GuestDisplay.pixels.width), height: Int(GuestDisplay.pixels.height))
+        let status = try await ssh.exec(
+            line: { WindowsGuest.guiExecLine(command, marker: $0) }, cancel: { WindowsGuest.cancelCommand(pid: $0) },
+            onOutput: { [log] _, data in log(String(decoding: data, as: UTF8.self)) }
+        )
+        if status != 0 { throw VMError.commandFailed("setting the display size", status) }
     }
 
     private func logConsoleTail(_ consoleLog: URL, lines: Int = 30) {
@@ -159,7 +227,7 @@ public struct VMCreator {
         }
         log("Disk uses \(ByteCountFormatter.string(fromByteCount: Int64(bundle.allocatedDiskBytes()), countStyle: .file))")
         return VMConfig(
-            engine: .vz, os: .macOS, cpus: machine.cpus, memory: machine.memory, disk: recipe.disk.bytes,
+            os: .macOS, cpus: machine.cpus, memory: machine.memory, disk: recipe.disk.bytes,
             macAddress: machine.macAddress.string,
             guestOSVersion: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion) (\(image.buildVersion))",
             created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256,
@@ -234,7 +302,7 @@ public struct VMCreator {
             log("Waiting for the first login")
             try await ssh.upload(contents: Conventions.waitForLoginScript, to: "/tmp/hobo-wait-login.sh")
             try await ssh.check("sudo -n /bin/bash /tmp/hobo-wait-login.sh && rm /tmp/hobo-wait-login.sh", what: "waiting for the first login")
-            try await shutDown(vm, ssh: ssh, sudo: passwordSudo)
+            try await shutDown(vm, ssh: ssh, command: "\(passwordSudo) shutdown -h now")
         } catch {
             try await holdForDebugging(vm, auth: auth, error: error)
             throw error
@@ -300,10 +368,10 @@ public struct VMCreator {
         }
     }
 
-    private func shutDown(_ vm: GuestVM, ssh: GuestSSH, sudo: String = "sudo -n") async throws {
+    private func shutDown(_ vm: GuestVM, ssh: GuestSSH, command: String = "sudo -n shutdown -h now") async throws {
         log("Shutting down")
         // ssh usually drops mid-command here; the VM state is what matters.
-        try await ssh.run("\(sudo) shutdown -h now", quiet: true)
+        try await ssh.run(command, quiet: true)
         if try await !vm.waitForPowerOffOrForce(timeout: .seconds(5 * 60)) {
             log("warning: guest did not power off within 5 minutes; forced it off")
         }

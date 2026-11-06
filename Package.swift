@@ -23,6 +23,8 @@ let package = Package(
             dependencies: ["HoboCore", "HoboControl"],
             // Compiled in: `make install` copies only the binary, so a resource bundle wouldn't follow it.
             resources: [.embedInCode("Resources/Signs"), .embedInCode("Resources/Windows")],
+            // For `ucal_getWindowsTimeZoneID`, which Foundation doesn't surface.
+            linkerSettings: [.linkedLibrary("icucore")],
             plugins: ["WindowsBootPlugin"]
         ),
         .plugin(name: "WindowsBootPlugin", capability: .buildTool()),

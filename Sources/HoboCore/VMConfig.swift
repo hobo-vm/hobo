@@ -3,17 +3,16 @@ import Foundation
 /// A VM's runtime configuration, the bundle's `config.json`. `create` copies the recipe's defaults
 /// here; from then on this, not the recipe, is the truth (`hobo set` changes it).
 public struct VMConfig: Codable, Equatable, Sendable {
-    public enum Engine: String, Codable, Sendable { case vz, qemu }
     public enum OS: String, Codable, Sendable { case macOS, linux, windows }
 
-    public var engine: Engine
     public var os: OS
     public var cpus: Int
     public var memory: UInt64
     public var disk: UInt64
     /// Fixed for the VM's life, so its DHCP lease (and `hobo ip`) is stable; a clone gets a new one.
     public var macAddress: String
-    /// e.g. `27.2.0 (26B123)` for macOS; for Linux it names the distribution, e.g. `Ubuntu 26.04`.
+    /// e.g. `27.2.0 (26B123)` for macOS; otherwise it names the OS, e.g. `Ubuntu 26.04` or
+    /// `Microsoft Windows 11 Pro (26300)`.
     public var guestOSVersion: String
     public var created: Date
     /// SHA-256 of the recipe file as built (copied verbatim to the bundle's `recipe.toml`).
@@ -38,12 +37,11 @@ public struct VMConfig: Codable, Equatable, Sendable {
     @MissingAsFalse public var nicMatchedByDriver: Bool
 
     public init(
-        engine: Engine, os: OS, cpus: Int, memory: UInt64, disk: UInt64, macAddress: String,
+        os: OS, cpus: Int, memory: UInt64, disk: UInt64, macAddress: String,
         guestOSVersion: String, created: Date, recipeSHA256: String, sourceSHA256: String,
         sip: Bool = true, amfi: Bool = true, diskGrowPending: Bool = false,
         shares: [VMShare] = [], ephemeral: Bool = false, nicMatchedByDriver: Bool = false
     ) {
-        self.engine = engine
         self.os = os
         self.cpus = cpus
         self.memory = memory

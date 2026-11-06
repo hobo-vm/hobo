@@ -64,7 +64,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         try #require(try run(hobo, ["create", "itest", recipe.path], in: work, environment: env) == 0)
 
         let config = try VMConfig.load(from: vms.appending(path: "itest.hobovm/config.json"))
-        #expect(config.engine == .vz && config.os == .macOS)
+        #expect(config.os == .macOS)
         #expect(config.guestOSVersion.hasPrefix("27."))
         #expect(config.disk == 64 << 30)
         #expect(!config.macAddress.isEmpty)
@@ -275,7 +275,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         try #require(try run(hobo, ["create", "litest", recipe.path], in: work, environment: env) == 0)
         let bundle = vms.appending(path: "litest.hobovm")
         let config = try VMConfig.load(from: bundle.appending(path: "config.json"))
-        #expect(config.engine == .vz && config.os == .linux)
+        #expect(config.os == .linux)
         #expect(config.guestOSVersion.hasPrefix("Ubuntu "))
         #expect(config.disk == 32 << 30 && config.memory == 4 << 30)
         #expect(!FileManager.default.fileExists(atPath: bundle.appending(path: "cidata.iso").path), "the seed is only for create")

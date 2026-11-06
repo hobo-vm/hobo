@@ -145,7 +145,8 @@ public enum VMError: Error, CustomStringConvertible {
     case cancelled
     case securityMismatch(wanted: Recipe.Security, actual: Recipe.Security)
     case noDataVolume(String)
-    case unsupportedOS(VMConfig.OS)
+    case windowsUnsupportedHere
+    case windowsInstallFailed(String)
     case missingQEMUImg
     case diskTooSmall(wanted: UInt64, image: UInt64)
     case spawnFailed(String, String)
@@ -168,7 +169,8 @@ public enum VMError: Error, CustomStringConvertible {
         case .securityMismatch(let wanted, let actual):
             "the guest runs with SIP \(actual.sip ? "on" : "off") and AMFI \(actual.amfi ? "on" : "off"); the recipe asks for SIP \(wanted.sip ? "on" : "off") and AMFI \(wanted.amfi ? "on" : "off")"
         case .noDataVolume(let disk): "\(disk) has no single APFS Data volume"
-        case .unsupportedOS(let os): "\(os.rawValue) VMs aren't supported yet"
+        case .windowsUnsupportedHere: "Windows VMs need a private Virtualization framework setting this version of macOS doesn't have"
+        case .windowsInstallFailed(let details): "installing Windows failed: \(details)"
         case .missingQEMUImg: "converting a Linux cloud image needs qemu-img: brew install qemu"
         case .spawnFailed(let executable, let reason): "couldn't run \(executable): \(reason)"
         case .diskTooSmall(let wanted, let image):

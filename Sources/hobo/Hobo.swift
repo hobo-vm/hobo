@@ -42,21 +42,22 @@ struct HoboCommand: AsyncParsableCommand {
 
 /// The guest OS a catalog command is about.
 enum GuestOSOption: String, ExpressibleByArgument, CaseIterable {
-    case macos, linux
+    case macos, linux, windows
 }
 
 struct Init: OutputCommand {
     static let configuration = CommandConfiguration(abstract: "Write a starter \(Recipe.fileName) in the current directory.")
 
-    @Option(help: "The guest OS: macos (an IPSW) or linux (an Ubuntu cloud image, with a desktop unless --server).")
+    @Option(help: "The guest OS: macos (an IPSW), linux (an Ubuntu cloud image, with a desktop unless --server) or windows (an installer ISO you downloaded).")
     var os: GuestOSOption = .macos
 
     @Argument(help: ArgumentHelp(
         """
         What to pin the source to: a macOS build from `hobo images` (e.g. 26B123), or with --os linux an Ubuntu \
-        version from `hobo images --os linux` (e.g. 26.04). Without one, macOS uses "latest" and Linux the newest LTS.
+        version from `hobo images --os linux` (e.g. 26.04), or with --os windows the path of a Windows on Arm ISO. \
+        Without one, macOS uses "latest" and Linux the newest LTS; Windows needs one.
         """,
-        valueName: "build-or-version"
+        valueName: "build-version-or-iso"
     ))
     var build: String?
 
@@ -98,31 +99,46 @@ struct Init: OutputCommand {
             let pinned = try build.map { try UbuntuCatalog.image(version: $0, in: catalog) } ?? UbuntuCatalog.newestLTS(in: catalog)
             if !pinned.supported { throw UbuntuCatalogError.unsupportedVersion(pinned.version) }
             image = .linux(pinned)
+        case .windows:
+            guard let build else { throw ValidationError(WindowsInstallMedia.bringYourOwnISO) }
+            let iso = URL(filePath: build)
+            try WindowsInstallMedia.validate(iso)
+            image = .windows(WindowsISO(path: iso.path, sha256: try ImageIndex.sha256(of: iso, log: output.log)))
         }
         let template = switch image {
         case .macOS(let image): Recipe.template(pinnedTo: image)
         case .linux(let image): Recipe.template(pinnedTo: image, desktop: !server)
+        case .windows(let iso): Recipe.template(windowsISO: iso.path, sha256: iso.sha256)
         case nil: Recipe.template
         }
         try template.write(to: url, atomically: true, encoding: .utf8)
         let pinned = switch image {
         case .macOS(let image): " pinned to \(image.name) \(image.version) (\(image.build))"
         case .linux(let image): " pinned to \(image.name), release \(image.serial)\(server ? "" : ", with a desktop")"
+        case .windows(let iso): " pinned to \(URL(filePath: iso.path).lastPathComponent)"
         case nil: ""
         }
         return Reply(Result(path: url.path, image: image), text: "Wrote \(Recipe.fileName)\(pinned)")
     }
 }
 
-/// An image from either catalog, encoded as the catalog's own record.
+/// A Windows installer the user downloaded, since Microsoft has no catalog to pick one from.
+struct WindowsISO: Encodable {
+    var path: String
+    var sha256: String
+}
+
+/// The image a recipe was pinned to: from a catalog, encoded as the catalog's own record, or an ISO.
 enum CatalogImage: Encodable {
     case macOS(IPSWCatalog.Image)
     case linux(UbuntuCatalog.Image)
+    case windows(WindowsISO)
 
     func encode(to encoder: Encoder) throws {
         switch self {
         case .macOS(let image): try image.encode(to: encoder)
         case .linux(let image): try image.encode(to: encoder)
+        case .windows(let iso): try iso.encode(to: encoder)
         }
     }
 }
@@ -178,6 +194,8 @@ struct Images: OutputCommand {
             var images = UbuntuCatalog.supported(catalog)
             if !all { images = UbuntuCatalog.latestPerSeries(images) }
             return Reply(images, text: table(images))
+        case .windows:
+            throw ValidationError(WindowsInstallMedia.bringYourOwnISO)
         }
     }
 
@@ -239,8 +257,13 @@ struct Validate: OutputCommand {
         let recipe = try Recipe.load(from: URL(filePath: path))
         try recipe.checkFilesExist()
         let warning = recipe.source.isPinned ? "" : "warning: source is unpinned (ipsw = \"latest\")\n"
+        let os = switch recipe.os {
+        case .macOS: "macOS"
+        case .linux: "Linux"
+        case .windows: "Windows"
+        }
         var settings = [
-            recipe.os == .macOS ? "macOS" : "Linux",
+            os,
             "\(recipe.cpus) CPUs", "\(recipe.memory) memory", "\(recipe.disk) disk",
             "\(recipe.provisioners.count) provision step(s)",
         ]
@@ -302,7 +325,7 @@ struct List: OutputCommand {
     static let configuration = CommandConfiguration(
         abstract: "List VMs and the disk space they use.",
         discussion: """
-            USED is a VM's own files, in full even where a clone shares them. SNAPSHOTS is how many it \
+            ADDRESS is a running VM's IP address. USED is a VM's own files, in full even where a clone shares them. SNAPSHOTS is how many it \
             has and what they hold beyond its own files. TOTAL counts every block once, snapshots \
             included, so it can be less than the rows add up to when clones share blocks.
             """
@@ -326,8 +349,8 @@ struct List: OutputCommand {
         let vmRows = listing.vms.map { summary in
             Self.row(summary) + [Self.snapshotsCell(count: summary.snapshots?.count ?? 0, bytes: summary.snapshotBytes ?? 0)]
         }
-        let total = ["TOTAL", "", "", "", "", fileSize(listing.totalBytes), Self.snapshotsCell(count: listing.snapshotCount, bytes: listing.totalSnapshotBytes)]
-        let rows = [["NAME", "STATE", "OS", "CPUS", "MEMORY", "DISK (USED/SIZE)", "SNAPSHOTS"]] + vmRows + [total]
+        let total = ["TOTAL", "", "", "", "", "", fileSize(listing.totalBytes), Self.snapshotsCell(count: listing.snapshotCount, bytes: listing.totalSnapshotBytes)]
+        let rows = [["NAME", "STATE", "ADDRESS", "OS", "CPUS", "MEMORY", "DISK (USED/SIZE)", "SNAPSHOTS"]] + vmRows + [total]
         return verbose ? Self.tableWithSnapshots(rows, snapshots: listing.vms.map { $0.snapshots ?? [] }) : formatTable(rows)
     }
 
@@ -354,8 +377,9 @@ struct List: OutputCommand {
         let used = fileSize(summary.allocatedBytes)
         let state = stateCell(summary)
         // Building, failed and broken VMs have no config.
-        guard let config = summary.config else { return [summary.name, state, "—", "—", "—", "\(used) / —"] }
-        return [summary.name, state] + columns(config, used: used)
+        let address = summary.ipAddress ?? ""
+        guard let config = summary.config else { return [summary.name, state, address, "—", "—", "—", "\(used) / —"] }
+        return [summary.name, state, address] + columns(config, used: used)
     }
 
     private static func stateCell(_ summary: VMSummary) -> String {

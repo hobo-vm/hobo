@@ -32,13 +32,16 @@ public enum Provisioning {
     private static func runStep(_ step: Provisioner, index: Int, recipe: Recipe, ssh: GuestSSH) async throws {
         switch step.type {
         case .shell:
-            let remote = "/tmp/hobo-provision-\(index + 1).sh"
+            let windows = recipe.os == .windows
+            let remote = windows
+                ? "\(WindowsGuest.temporaryDirectory)/hobo-provision-\(index + 1).ps1" : "/tmp/hobo-provision-\(index + 1).sh"
             if let inline = step.inline {
                 try await ssh.upload(contents: inline + "\n", to: remote)
             } else if let path = step.path {
                 try await ssh.upload(recipe.resolve(path), to: remote)
             }
-            try await ssh.check(step.shellCommand(running: remote), what: "provision step \(index + 1)")
+            let command = windows ? step.powerShellCommand(running: remote) : step.shellCommand(running: remote)
+            try await ssh.check(command, what: "provision step \(index + 1)")
         case .file:
             guard let source = step.source, let destination = step.destination else { return }
             try await ssh.upload(recipe.resolve(source), to: destination)

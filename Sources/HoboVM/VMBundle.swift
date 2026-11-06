@@ -3,8 +3,8 @@ import HoboCore
 import Virtualization
 
 /// The files that make up one VM on the Virtualization framework, and the VZ configuration to boot
-/// them: `MacVMBundle` for a macOS guest, `LinuxVMBundle` for a Linux one. Everything else (the
-/// create pipeline, the VM process, the window) works on any bundle.
+/// them: `MacVMBundle` for a macOS guest, `LinuxVMBundle` for a Linux one, `WindowsVMBundle` for a
+/// Windows one. Everything else (the create pipeline, the VM process, the window) works on any bundle.
 public protocol VMBundle: Sendable {
     var directory: URL { get }
     /// The guest's disk, always ASIF, so freed blocks return to the host.
@@ -28,11 +28,35 @@ public protocol VMBundle: Sendable {
     /// The shell script that runs `command` (`exec --gui`) in the SSH user's desktop session, or nil
     /// if this kind of guest can't yet.
     static func guiExecScript(_ command: [String]) -> String?
+    /// Shuts the guest down, over SSH.
+    static var shutdownCommand: String { get }
+    /// The guest command that prints `marker` and a process ID (`GuestSSH.PIDMarker`), then runs `command`.
+    static func execLine(_ command: [String], marker: String) -> String
+    /// `execLine` in the SSH user's desktop session, or nil if this kind of guest can't yet.
+    static func guiExecLine(_ command: [String], marker: String) -> String?
+    /// Ends what `execLine` or `guiExecLine` started, given the process ID it printed.
+    static func cancelCommand(pid: Int32) -> String
     /// Gives the bundle a new machine identifier, so a clone and its source can run side by side.
     func writeNewMachineIdentifier() throws
     func configuration(
         cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare]
     ) throws -> VZVirtualMachineConfiguration
+}
+
+/// A POSIX shell's way of doing these, which macOS and Linux guests share.
+extension VMBundle {
+    public static var shutdownCommand: String { "sudo -n shutdown -h now" }
+
+    /// sshd made the guest shell a process group leader, so its PID names the group `cancelCommand` kills.
+    public static func execLine(_ command: [String], marker: String) -> String {
+        "echo \(marker)$$; exec " + shellQuote(command)
+    }
+
+    public static func guiExecLine(_ command: [String], marker: String) -> String? {
+        guiExecScript(command).map { "echo \(marker)$$; " + $0 }
+    }
+
+    public static func cancelCommand(pid: Int32) -> String { "kill -TERM -- -\(pid)" }
 }
 
 extension VMBundle {
@@ -69,7 +93,7 @@ public func vmBundle(at directory: URL, os: VMConfig.OS) throws -> any VMBundle 
     switch os {
     case .macOS: MacVMBundle(directory: directory)
     case .linux: LinuxVMBundle(directory: directory)
-    case .windows: throw VMError.unsupportedOS(os)
+    case .windows: WindowsVMBundle(directory: directory)
     }
 }
 

@@ -80,7 +80,6 @@ public final class VMRunner {
         if config.ephemeral, case .after(let seconds) = idleTimeout ?? .standard {
             idleTimer = IdleTimer(timeout: .seconds(seconds))
         }
-        guard config.engine == .vz, config.os != .windows else { throw RunnerError.unsupported(config.engine, config.os) }
         guard let mac = VZMACAddress(string: config.macAddress) else { throw RunnerError.badMACAddress(config.macAddress) }
 
         server = try ControlServer(path: job.socket) { [weak self] request, reply in
@@ -290,17 +289,21 @@ public final class VMRunner {
             guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
             showWindow(guest)
             return .accepted
-        case .exec(let command, gui: false):
-            return await withGuest(reply: reply) { ssh, onOutput in
-                try await ssh.exec(command, onOutput: onOutput)
-            }
-        case .exec(let command, gui: true):
+        case .exec(let command, let gui):
             guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
-            guard let script = type(of: guest.bundle).guiExecScript(command) else {
-                return .error("exec --gui and screenshot need a macOS guest for now")
+            let platform = type(of: guest.bundle)
+            if gui, platform.guiExecLine(command, marker: "") == nil {
+                return .error("exec --gui and screenshot don't work on a Linux guest yet")
             }
             return await withGuest(reply: reply) { ssh, onOutput in
-                try await ssh.exec(script: script, onOutput: onOutput)
+                try await ssh.exec(
+                    line: { marker in
+                        // Checked above.
+                        gui ? platform.guiExecLine(command, marker: marker)! : platform.execLine(command, marker: marker)
+                    },
+                    cancel: { platform.cancelCommand(pid: $0) },
+                    onOutput: onOutput
+                )
             }
         case .copy(let copy):
             return await withGuest(reply: reply) { ssh, onOutput in
@@ -481,7 +484,7 @@ public final class VMRunner {
         Task { await stop(force: force) }
     }
 
-    /// Decision 11: `shutdown -h now` over SSH if the guest answers, otherwise ask it (a virtual
+    /// Decision 11: the guest's own shutdown over SSH if the guest answers, otherwise ask it (a virtual
     /// power-button press, which a macOS guest may only answer with a dialog), then power off.
     private func stop(force: Bool) async {
         guard let guest else { finish(0) }
@@ -491,10 +494,10 @@ public final class VMRunner {
             // keep the VM up, and the next boot clears what it leaves.
             _ = await snapshotSave?.value
             if let ip = status.ipAddress ?? DHCPLeases.ipAddress(forMAC: guest.macAddress.string),
-               let ssh = try? ssh(ip), (try? await ssh.run("true", quiet: true)) == 0 {
+               let ssh = try? ssh(ip), (try? await ssh.run("exit 0", quiet: true)) == 0 {
                 status.detail = "shutting down over SSH"
                 // ssh usually drops mid-command here; the VM state is what matters.
-                _ = try? await ssh.run("sudo -n shutdown -h now", quiet: true)
+                _ = try? await ssh.run(type(of: guest.bundle).shutdownCommand, quiet: true)
                 if await stopped(guest, within: Self.sshShutdownTimeout) { finish(0) }
             } else {
                 status.detail = "asking the guest to shut down"
@@ -533,13 +536,11 @@ public final class VMRunner {
 
 enum RunnerError: Error, CustomStringConvertible {
     case notUnderLaunchd(String)
-    case unsupported(VMConfig.Engine, VMConfig.OS)
     case badMACAddress(String)
 
     var description: String {
         switch self {
         case .notUnderLaunchd(let name): "the VM process for \(name) must be started by launchd (use hobo start \(name))"
-        case .unsupported(let engine, let os): "\(os.rawValue) VMs on the \(engine.rawValue) engine can't run yet"
         case .badMACAddress(let mac): "config.json has an invalid MAC address \(mac)"
         }
     }

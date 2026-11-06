@@ -20,7 +20,7 @@ global VMs on 2026-11-01.
 ### Product
 
 1. **Host and guests.** macOS hosts only. Guests: macOS first-class, then Linux, then Windows 11 on Arm
-   (on a second engine, decision 20).
+   (decision 20).
 2. **Model.** Hobo manages **named, global VMs**. There are no boxes, no box store, no box packaging or
    catalog, and no project-scoped machines (decided 2026-11-01). macOS IPSWs and VMs are 20 GB+, so a
    build → `.box` tar → untarred box → machine pipeline tripled disk use for no benefit when nobody
@@ -116,9 +116,10 @@ global VMs on 2026-11-01.
    `ubuntu-desktop-minimal`, has GDM log `vagrant` in at boot, masks GNOME's welcome wizards
    (`gnome-initial-setup`'s first-login and post-upgrade user services) and turns off screen
    blanking and lock; `--server` leaves it out.
-   Windows and simulator images may join `--os` later.
+   `--os windows` has no catalog: Microsoft offers no download Hobo could pin, so `init` takes the
+   path of an ISO the user downloaded, and hashes and checks it. Simulator images may join `--os` later.
 9. **Runtime config.** The recipe supplies defaults; `create` copies them into the bundle's
-   `config.json`, which is the truth thereafter: `engine`, `os`, `cpus`, `memory` and `disk` (bytes),
+   `config.json`, which is the truth thereafter: `os`, `cpus`, `memory` and `disk` (bytes),
    `macAddress` (fixed at create, so the DHCP lease and `hobo ip` are stable), `guestOSVersion`,
    `created`, `recipeSHA256` and `sourceSHA256` (`guestOSVersion` is `27.2.0 (26B123)` for
    macOS, and names the distribution for Linux, e.g. `Ubuntu 26.04` from `/etc/os-release`),
@@ -538,36 +539,59 @@ global VMs on 2026-11-01.
       namespace if another agent ever matters.
     - `usage` ships in M1; the skill, `hobo claude` and the shared text ship in M3 with `hobo mcp`,
       since the workflow they teach (ephemeral clones, `exec --gui`, `screenshot`) is M3's.
-20. **Engines.** `config.json` records `engine = "vz" | "qemu"`. macOS and Linux use VZ. Windows 11
-    on Arm needs QEMU (`qemu-system-aarch64 -accel hvf`, as UTM does), because VZ's only display
-    device is virtio-gpu, which Windows on Arm can't drive. The QEMU engine keeps the same bundle,
-    CLI, clone, snapshot (QEMU state save for running snapshots), suspend, leases and MCP; it runs
-    under the same launchd process model, and QEMU is a Homebrew dependency. Windows recipes use
-    `[source] iso` + `sha256` and an `autounattend.xml` that creates the `vagrant` user and enables
-    OpenSSH. SSH runs in session 0, so `exec --gui` goes through a scheduled task in the interactive
-    session; UI driving uses UI Automation or WinAppDriver. The spike (2026-11-02,
-    `spikes/windows-qemu/README.md`) proved all of this on QEMU 11.1: `nvme` disk and USB input
-    (inbox drivers), `virtio-net` with NetKVM, `ramfb` display, the Win32-OpenSSH MSI installed
-    offline, LabConfig TPM/Secure Boot bypasses, and QMP for screendump and keys. It took about
-    50 minutes to an SSH-ready guest, mostly ISO reads over emulated USB, and the guest boots to
-    SSH in 26 s. A follow-up (hobo-f8e, same README) proved a real vTPM and Secure Boot, with
-    BitLocker sealed to the TPM. A per-VM `swtpm` (Homebrew) is a second child of `_vm-run`,
-    started before QEMU; it exits by itself when QEMU disconnects, so it needs no launchd job.
-    Its ~10 KB state lives in the bundle, and `clone` and snapshots copy it with the disk and
-    `vars.fd`. `tpm-tis-device` needs `ppi=off` on HVF. Homebrew's edk2 has no Secure Boot, and
-    Debian's AAVMF hangs booting Windows under HVF; UTM's Secure Boot build works, with
-    Microsoft's KEK and db enrolled per VM. Open for M5: install speed, the 800×600
-    `ramfb` resolution, hostfwd versus `vmnet` networking (`hobo ip`), and where Hobo gets a
-    Secure Boot edk2 build (vendor UTM's, or build ArmVirtQemu itself) and how it enrolls keys
-    (Python `virt-fw-vars`, or Hobo writing the edk2 varstore itself).
-    **Licensing:** Microsoft's authorized way to virtualize Windows 11 on Arm on Apple Silicon is
-    Parallels; check this before relying on the QEMU engine for work use.
+20. **Windows guests.** Windows 11 on Arm runs on the Virtualization framework like the others, so
+    there is one engine and `config.json` doesn't name one. This replaces the plan of a QEMU engine
+    (spike 2026-11-02), dropped 2026-11-05 once `spikes/windows-qemu/README.md` (findings 19 to 21)
+    had Windows running on VZ, after [Mustafa Akın's post](https://mustafaakin.dev/blog/windows-on-tart/)
+    named the two obstacles. Its fork of Tart is FSL-licensed, so nothing is copied from it.
+    - **A private API, the main risk.** Windows' boot loader spins forever on one vCPU without PMU
+      emulation, which VZ offers only through `VZGenericPlatformConfiguration`'s private
+      `_setPerformanceMonitoringUnitEmulationEnabled:`. Hobo checks for the selector and fails with
+      a clear error. A macOS release may remove it, which ends Windows guests until there's another
+      way; Beads hobo-9ni rechecks on each release, with QEMU the fallback.
+    - **A framebuffer driver of our own.** Windows Boot Manager needs a linear framebuffer, and VZ's
+      GOP is Blt-only. `Firmware/WindowsBoot` holds a small UEFI driver and a loader, built from
+      source by a SwiftPM build plugin with `clang` and `lld-link` (`brew install lld`), so no binary
+      is in git. The driver registers itself as `Driver####` by a bare file path, so an installed
+      disk needs no loader of its own but does need its NVRAM: `efi-vars.fd` is a platform file,
+      which clones and snapshots copy.
+    - **Install with no Setup.** `create` builds a raw disk image with a FAT32 partition (boot files)
+      and an exFAT one (the whole ISO, which Setup looks for, then the answer file, drivers and guest
+      files), attached as USB storage. Setup's windowsPE pass calls our `install.cmd`, which
+      partitions the NVMe disk with Windows last (so `hobo set --disk` can grow it), applies the
+      image with DISM, adds the virtio-win drivers (viogpudo, NetKVM, viorng, Balloon, viofs),
+      runs `bcdboot` and powers off, leaving its result on the media. The next boot, without the
+      media, runs specialize and OOBE, and `SetupComplete.cmd` runs `setup.ps1` as SYSTEM. OOBE then
+      restarts the machine about a minute after the first logon, clearing the auto-login settings,
+      so a startup task (`finish-setup.ps1`) restores them after that restart, enables sshd and
+      restarts once more. SSH answering means it's done. Blank disk to SSH takes under 5 minutes, and about 11 GB of ASIF.
+      The bypass of Setup is what makes it fast and is also why no TPM or Secure Boot is needed.
+    - **Conventions.** `vagrant`/`vagrant` is an administrator, logged in at boot. The clock is
+      `RealTimeIsUniversal`, since VZ's runs on UTC. Win32-OpenSSH
+      (pinned MSI) has PowerShell 5.1 as its shell, so what Hobo sends is PowerShell
+      (`WindowsGuest`), kept free of double quotes, which sshd would have to escape; a command's argv
+      travels as base64 of JSON. The ISO is the user's, and virtio-win, OpenSSH and WinFsp are
+      pinned downloads through the image index.
+    - **Exec.** SSH runs in session 0, so `exec --gui` (and `screenshot`) go through a one-shot
+      scheduled task in `vagrant`'s desktop session, with output tailed from files. UI driving
+      uses Windows' built-in UI Automation from PowerShell, in the guest; no WinAppDriver, which
+      Microsoft no longer develops. `[security]` and `[gui_testing]` are rejected, since no grant
+      is needed; `privileged = false` too, since SSH gives an elevated token.
+    - **Network after a restore.** The virtio NIC doesn't pass traffic after a VM restore, and
+      nothing on the host side fixes it; `Restart-NetAdapter` in the guest does. A startup task
+      (`network-watchdog.ps1`) pings the gateway every second and restarts the adapter when it stops
+      answering. The first plan was to also compare wall-clock jumps; the ping alone proved enough,
+      with SSH back about 10 s after a resume.
+    - **Shares** use viofs and WinFsp: one virtio-fs tag, `hobo`, always attached, with each share a
+      folder of `Z:\`. `read_only` holds.
+    - **Licensing.** Microsoft's authorized way to virtualize Windows 11 on Arm on Apple Silicon is
+      Parallels; check this before relying on Windows guests for work use. Hobo downloads no Windows.
 21. **Linux guests.** Recipe `[source] image` + `sha256` (cloud image), set up by cloud-init on VZ;
     all lifecycle commands work the same. Decided 2026-11-02 and verified with Ubuntu 26.04:
     - Ubuntu LTS arm64 server cloud images are the verified distro. Nothing is Ubuntu-specific
       beyond `apt` in the conventions and cleanup, so other cloud-init images may work unverified.
     - The disk: Ubuntu ships compressed qcow2, which VZ can't attach. `qemu-img convert` (Homebrew
-      `qemu`, which M5 needs anyway; `create` names it if missing) makes a raw image, `diskutil
+      `qemu`, for this tool only; `create` names it if missing) makes a raw image, `diskutil
       image create from --format ASIF` converts that (it stores the zeros too, so a 940 MB image
       becomes 3.6 GB until the guest TRIMs), and `diskutil image resize --image-only` grows it to the
       recipe's `disk`, moving the backup GPT; cloud-init's growpart grows the root filesystem on
@@ -614,8 +638,8 @@ global VMs on 2026-11-01.
 23. **Layout.** One Swift package, one `hobo` executable:
     - `HoboCore`: recipes, the VM store (`VMStore`: bundle paths, names, list, rename, delete) and
       `config.json` (`VMConfig`), image index, provisioners
-    - `HoboVM`: engines (Virtualization framework, later QEMU), VM bundles (`VMBundle`:
-      `MacVMBundle`, `LinuxVMBundle`, each building its VZ configuration), VM creation, the VM
+    - `HoboVM`: VM bundles (`VMBundle`: `MacVMBundle`, `LinuxVMBundle`, `WindowsVMBundle`, each
+      building its VZ configuration), VM creation, the VM
       process (`VMRunner`), display
     - `HoboControl`: client ↔ VM-process socket protocol, and the client side of `start`/`stop` (`VMLifecycle`)
     - `HoboMCP`: MCP tools
@@ -660,8 +684,8 @@ builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` ind
 - **M3, agents:** leases, `[gui_testing]`, `exec --gui`, `screenshot`, `hobo mcp`, the Claude
   skill and `hobo claude install|uninstall`.
 - **M4, Linux guests:** done (2026-11-02): `[source] image`, cloud-init conventions, `images`/`init --os linux`.
-- **M5:** Windows on the QEMU engine. The Windows spike (unattended install, headless boot, SSH,
-  GUI-session screenshot) is done (2026-11-02, decision 20).
+- **M5, Windows guests:** on VZ (decision 20): `[source] iso`, `init --os windows`, install with our
+  own WinPE script, `exec --gui` through a scheduled task, UI Automation.
 - **Later:** see Beads (`bd list --status deferred`).
 
 ## Comparison with Tart and Lume
@@ -683,7 +707,7 @@ Both are Swift CLIs on the Virtualization framework with named VMs, so the core 
 | Ephemeral VMs | left to Orchard/CI | Cua sandboxes | `--ephemeral` + idle-timeout leases |
 | Networking | NAT, bridged, Softnet isolation | NAT, bridged | shared NAT only |
 | MCP | no | yes | `hobo mcp` |
-| Windows | no | no | QEMU engine (M5) |
+| Windows | no | no | yes, through a private VZ setting (M5) |
 | Host | macOS 13+ | macOS 13+ | macOS 27+ |
 | Licence | Fair Source | MIT | Apache-2.0 |
 

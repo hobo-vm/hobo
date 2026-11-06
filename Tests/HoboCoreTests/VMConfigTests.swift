@@ -4,7 +4,7 @@ import Testing
 
 @Suite struct VMConfigTests {
     static let json = """
-        {"cpus":4,"created":"2026-11-01T12:00:00Z","disk":85899345920,"engine":"vz","guestOSVersion":"27.2.0 (26B123)",
+        {"cpus":4,"created":"2026-11-01T12:00:00Z","disk":85899345920,"guestOSVersion":"27.2.0 (26B123)",
          "macAddress":"aa:bb:cc:dd:ee:ff","memory":8589934592,"os":"macOS","recipeSHA256":"r","sourceSHA256":"s"%@}
         """
 

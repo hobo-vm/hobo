@@ -13,6 +13,11 @@ public struct GuestScreenshot: Equatable, Sendable {
 
     public static let pngSignature = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
 
+    /// What to run in the desktop session of a guest running `os`.
+    public static func command(for os: VMConfig.OS) -> [String] {
+        os == .windows ? WindowsGuest.screenshotCommand : command
+    }
+
     /// Run in the guest's desktop session; the PNG is its stdout. `screencapture` can't write to
     /// stdout, so it goes through a temp file, which an interrupted capture cleans up too, exiting
     /// with the status a signal would give. Without the grant, `screencapture` still succeeds but

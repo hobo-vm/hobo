@@ -6,7 +6,7 @@ import HoboControl
 
 struct ListTableTests {
     private let config = VMConfig(
-        engine: .vz, os: .macOS, cpus: 4, memory: 8 << 30, disk: 80 << 30, macAddress: "5a:00:00:00:00:01",
+        os: .macOS, cpus: 4, memory: 8 << 30, disk: 80 << 30, macAddress: "5a:00:00:00:00:01",
         guestOSVersion: "27.2.0 (26B123)", created: .now, recipeSHA256: "", sourceSHA256: ""
     )
 
@@ -97,13 +97,13 @@ struct ListTableTests {
 
     @Test func aRowWithAConfigFillsItsColumnsFromIt() {
         let cells = List.row(summary(.stopped(config)))
-        #expect(cells == ["dev", "stopped", config.osDescription, "4", "8 GB", "1 GB / 80 GB"])
+        #expect(cells == ["dev", "stopped", "", config.osDescription, "4", "8 GB", "1 GB / 80 GB"])
     }
 
     /// The table lines its columns up by zipping, so a row one cell short would lose a column silently.
     @Test func aRowWithNoConfigKeepsEveryColumn() {
         for (status, state) in [(VMStore.Status.failed, "failed"), (.broken, "broken"), (.building(pid: 7), "building")] {
-            #expect(List.row(summary(status)) == ["dev", state, "—", "—", "—", "1 GB / —"])
+            #expect(List.row(summary(status)) == ["dev", state, "", "—", "—", "—", "1 GB / —"])
         }
     }
 

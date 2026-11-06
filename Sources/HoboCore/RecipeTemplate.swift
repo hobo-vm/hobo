@@ -63,6 +63,37 @@ extension Recipe {
         """
     }
 
+    /// The starter `Hobo.toml` written by `hobo init --os windows <iso>`, pinned to that ISO.
+    public static func template(windowsISO path: String, sha256: String) -> String {
+        """
+        # Hobo recipe: build a VM from it with `hobo create <name>`.
+        # The install adds the Vagrant conventions (vagrant/vagrant, an administrator, SSH with PowerShell
+        # as its shell, logged in to the desktop at boot); add your own setup as [[provision]] steps.
+
+        cpus   = 4
+        memory = "8GB"
+        disk   = "64GB"
+
+        [source]
+        # A Windows on Arm installer's URL or local path, with its SHA-256.
+        iso    = "\(path)"
+        sha256 = "\(sha256)"
+
+        # Steps run once each, in order, over SSH. Scripts are PowerShell. Paths are relative to this file.
+        #
+        # [[provision]]
+        # type = "shell"
+        # path = "setup.ps1"
+        # env  = { GREETING = "hello" }
+        #
+        # [[provision]]
+        # type        = "file"
+        # source      = "files/settings.json"
+        # destination = "C:/Users/vagrant/settings.json"
+
+        """
+    }
+
     /// Installs `ubuntu-desktop-minimal` and sets it up for unattended use: GDM logs vagrant in at
     /// boot, GNOME's first-login and post-upgrade welcome wizards never run (the second ignores
     /// `gnome-initial-setup-done`), and the session never blanks or locks, so screenshots and UI

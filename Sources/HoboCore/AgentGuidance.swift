@@ -8,10 +8,10 @@ public enum AgentGuidance {
 
     /// The skill's trigger: when Claude should load it.
     public static let skillDescription = """
-        Test software in a clean macOS or Linux VM with hobo: run a build, a test suite or a UI test \
+        Test software in a clean macOS, Linux or Windows VM with hobo: run a build, a test suite or a UI test \
         in a throwaway clone of a prepared VM and screenshot the guest's desktop. Use when asked to \
-        test, UI-test or reproduce something in a clean VM or on a fresh macOS install, or to use \
-        hobo VMs.
+        test, UI-test or reproduce something in a clean VM or on a fresh macOS or Windows install, or \
+        to use hobo VMs.
         """
 
     /// The skill's Markdown body, after its frontmatter.
@@ -19,7 +19,7 @@ public enum AgentGuidance {
         """
         # Hobo
 
-        Hobo runs named macOS and Linux VMs on this Mac. The commands below are `hobo` subcommands. \
+        Hobo runs named macOS, Linux and Windows VMs on this Mac. The commands below are `hobo` subcommands. \
         This skill covers how to work with them; for every command's flags, `--json` output and \
         errors, run `hobo usage` once and read it.
 
@@ -30,7 +30,7 @@ public enum AgentGuidance {
     /// The MCP server's `instructions`.
     public static var mcpInstructions: String {
         """
-        This server runs named macOS and Linux VMs on this Mac. Its tools mirror the hobo CLI, so a \
+        This server runs named macOS, Linux and Windows VMs on this Mac. Its tools mirror the hobo CLI, so a \
         command below such as `start --ephemeral` is the `start` tool with `ephemeral` set, and \
         `exec --gui` is `exec` with `gui`. The server stops the ephemeral VMs it started when the \
         session ends.
@@ -70,11 +70,18 @@ public enum AgentGuidance {
         that session. That scripting and `screencapture` need the VM to be built from a recipe with \
         `[gui_testing]`, which grants Accessibility and Screen Recording. Linux guests have neither \
         `exec --gui` nor `screenshot` yet.
+        - On a Windows guest, `exec` runs a program or a PowerShell command as `vagrant`, an elevated \
+        administrator, in session 0, which has no desktop; `cp` takes guest paths like \
+        `dev:C:/Users/vagrant/file`. For a pipeline or anything else needing a shell, run \
+        `powershell.exe -Command '...'`. `exec --gui` runs it on the desktop, where it can drive apps \
+        with no grant: from PowerShell, Windows' UI Automation (`Add-Type -AssemblyName \
+        UIAutomationClient, UIAutomationTypes`, then `[Windows.Automation.AutomationElement]::RootElement` \
+        and `FindFirst`, or `GetCurrentPattern` to act on what it finds). Shares are at `Z:\\<name>`.
 
         ## Capacity
 
         macOS allows at most 2 running macOS guests per host, counting VMs the user or other agents \
-        have running. Linux guests are uncapped. Stop your session as soon as you are done. If \
+        have running. Linux and Windows guests are uncapped. Stop your session as soon as you are done. If \
         `start` fails because two are running, say so; never stop a VM you didn't start.
         """
 }

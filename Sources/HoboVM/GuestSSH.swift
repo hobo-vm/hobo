@@ -52,24 +52,21 @@ public struct GuestSSH: Sendable {
         try await launch(Self.sshPath, sshArguments([command]), output: .capture(onOutput))
     }
 
-    /// Runs `command` (an argv, quoted for the guest's shell) like `stream`, but cancelling also
-    /// ends the command in the guest: without a TTY, closing the ssh session doesn't signal it.
-    /// Before exec'ing the command, the guest shell prints its PID (sshd made it a process group
-    /// leader) after a marker unique to this run. The marker line is kept out of the output and
-    /// the PID used to kill the group on cancel; anything a startup file printed first passes through.
-    public func exec(_ command: [String], onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
-        try await exec(script: "exec " + shellQuote(command), onOutput: onOutput)
-    }
-
-    /// `exec` for a shell script rather than an argv. What it runs must stay in the guest shell's
-    /// process group, so that cancelling reaches it.
-    public func exec(script: String, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
+    /// Runs the guest command `line` builds, like `stream`, but cancelling also ends it in the guest:
+    /// without a TTY, closing the ssh session doesn't signal it. `line` takes a marker unique to this
+    /// run and must print it and a process ID on a line of their own before anything else it runs
+    /// (`VMBundle.execLine`). The marker line is kept out of the output and the ID passed to `cancel`
+    /// for the command that ends it; anything a startup file printed first passes through.
+    public func exec(
+        line: @Sendable (String) -> String, cancel: @escaping @Sendable (Int32) -> String,
+        onOutput: @escaping @Sendable (GuestStream, Data) -> Void
+    ) async throws -> Int32 {
         let pidMarker = PIDMarker(onOutput)
-        let status = try await stream("echo \(pidMarker.marker)$$; " + script, onOutput: pidMarker.receive)
+        let status = try await stream(line(pidMarker.marker), onOutput: pidMarker.receive)
         pidMarker.finish()
         if Task.isCancelled, let pid = pidMarker.pid {
             // A task of its own, since this one's cancellation would end the kill's ssh at once.
-            _ = try? await Task { try await run("kill -TERM -- -\(pid)", quiet: true) }.value
+            _ = try? await Task { try await run(cancel(pid), quiet: true) }.value
         }
         return status
     }
@@ -110,11 +107,11 @@ public struct GuestSSH: Sendable {
         try await upload(local, to: remote)
     }
 
-    /// Retries a no-op command until sshd accepts us.
+    /// Retries a no-op command until sshd accepts us. `exit 0` is one in any guest's shell.
     public func waitUntilReachable(timeout: Duration) async throws {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
-            if try await run("true", quiet: true) == 0 { return }
+            if try await run("exit 0", quiet: true) == 0 { return }
             try await Task.sleep(for: .seconds(5))
         }
         throw VMError.timedOut("waiting for SSH on \(host)")

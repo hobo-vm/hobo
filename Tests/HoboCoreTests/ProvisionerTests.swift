@@ -19,6 +19,21 @@ import Testing
             == "provision step 2: file needs source and destination")
     }
 
+    @Test func powerShellCommandSetsSortedEnvAndPassesOnTheExitStatus() throws {
+        let step = try #require(try Recipe.parse("""
+            [source]
+            iso = "x.iso"
+            sha256 = "\(String(repeating: "a", count: 64))"
+            [[provision]]
+            type = "shell"
+            inline = "exit 0"
+            env = { B = "it's", A = "1" }
+            """, directory: URL(filePath: "/r/")).provisioners.first)
+        #expect(step.powerShellCommand(running: "C:/Windows/Temp/s.ps1") == """
+            $env:A = '1'; $env:B = 'it''s'; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:/Windows/Temp/s.ps1'; exit $LASTEXITCODE
+            """)
+    }
+
     @Test func shellCommandIsPrivilegedByDefaultWithQuotedSortedEnv() {
         let step = Provisioner(type: .shell, inline: "true", env: ["B": "two words", "A": "it's"])
         #expect(step.shellCommand(running: "/tmp/s.sh")

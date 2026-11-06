@@ -3,23 +3,29 @@ import TOMLKit
 
 /// A VM recipe, conventionally `Hobo.toml`: the source, default hardware and `[[provision]]` steps
 /// to build a VM from. It holds no host-specific state, so it can be handed to someone else.
-/// `[source] ipsw` builds a macOS guest and `[source] image` a Linux one (a cloud image).
+/// `[source] ipsw` builds a macOS guest, `[source] image` a Linux one (a cloud image), and
+/// `[source] iso` a Windows one (an installer ISO).
 public struct Recipe: Equatable, Sendable {
     /// The file `hobo init` writes and `hobo validate` reads by default.
     public static let fileName = "Hobo.toml"
     public static let defaultCPUs = 4
 
-    /// Memory when the recipe gives none: enough for macOS, or for a Linux desktop.
+    /// Memory when the recipe gives none: enough for macOS or Windows, or for a Linux desktop.
     public static func defaultMemory(for os: VMConfig.OS) -> ByteSize {
-        ByteSize(bytes: os == .macOS ? 8 << 30 : 4 << 30)
+        ByteSize(bytes: os == .linux ? 4 << 30 : 8 << 30)
     }
 
-    /// Disk when the recipe gives none. macOS updates can fail under about 50 GB.
+    /// Disk when the recipe gives none. macOS updates can fail under about 50 GB, and Windows 11's
+    /// own minimum is 64 GB.
     public static func defaultDisk(for os: VMConfig.OS) -> ByteSize {
-        ByteSize(bytes: os == .macOS ? 80 << 30 : 32 << 30)
+        switch os {
+        case .macOS: ByteSize(bytes: 80 << 30)
+        case .linux: ByteSize(bytes: 32 << 30)
+        case .windows: ByteSize(bytes: 64 << 30)
+        }
     }
 
-    /// `.macOS` for `[source] ipsw`, `.linux` for `[source] image`.
+    /// `.macOS` for `[source] ipsw`, `.linux` for `[source] image`, `.windows` for `[source] iso`.
     public var os: VMConfig.OS
     public var cpus: Int
     public var memory: ByteSize
@@ -33,7 +39,7 @@ public struct Recipe: Equatable, Sendable {
     /// The recipe's directory; relative `path`/`source` values resolve against it.
     public var directory: URL
 
-    /// Where the install image (an IPSW, or a Linux cloud image) comes from.
+    /// Where the install image (an IPSW, a Linux cloud image, or a Windows ISO) comes from.
     public enum Source: Equatable, Sendable {
         /// The newest IPSW this host supports. Unpinned, so builds warn. macOS only.
         case latest
@@ -65,7 +71,8 @@ public struct Recipe: Equatable, Sendable {
         let raw = try TOMLDecoder().decode(RawRecipe.self, from: toml)
         let (os, source) = try source(from: raw.source, directory: directory)
         if os != .macOS {
-            // Both are TCC, SIP and AMFI: macOS mechanisms with no Linux counterpart here yet.
+            // Both are TCC, SIP and AMFI: macOS mechanisms with no counterpart here. On Windows a
+            // desktop-session process can drive other apps with no grant at all.
             if raw.security != nil { throw RecipeError.macOSOnly("[security]") }
             if raw.guiTesting != nil { throw RecipeError.macOSOnly("[gui_testing]") }
         }
@@ -86,6 +93,10 @@ public struct Recipe: Equatable, Sendable {
         if recipe.disk.bytes == 0 { throw RecipeError.invalidHardware("disk must be more than 0") }
         for (index, step) in recipe.provisioners.enumerated() {
             if let problem = step.problem { throw RecipeError.invalidProvisioner(index, problem) }
+            // Over SSH, vagrant is an elevated administrator with no way to run as anything less.
+            if os == .windows, step.privileged == false {
+                throw RecipeError.invalidProvisioner(index, "privileged = false isn't available on Windows, where steps run as vagrant, an administrator")
+            }
         }
         if !recipe.security.amfi && recipe.security.sip { throw RecipeError.amfiNeedsSIPOff }
         for client in recipe.guiTesting?.allow ?? [] {
@@ -117,9 +128,10 @@ public struct Recipe: Equatable, Sendable {
     }
 
     private static func source(from raw: RawRecipe.RawSource, directory: URL) throws -> (VMConfig.OS, Source) {
-        let (os, location): (VMConfig.OS, String) = switch (raw.ipsw, raw.image) {
-        case (let ipsw?, nil): (.macOS, ipsw)
-        case (nil, let image?): (.linux, image)
+        let (os, location): (VMConfig.OS, String) = switch (raw.ipsw, raw.image, raw.iso) {
+        case (let ipsw?, nil, nil): (.macOS, ipsw)
+        case (nil, let image?, nil): (.linux, image)
+        case (nil, nil, let iso?): (.windows, iso)
         default: throw RecipeError.sourceKind
         }
         // Only Apple's API resolves a "latest"; there is none for Linux images.
@@ -152,8 +164,8 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
         case .notFound(let path):
             "no recipe at \(path)" + (path == Recipe.fileName ? " (run hobo init, or pass a recipe path)" : "")
         case .invalidSize(let value): "invalid size \"\(value)\" (expected e.g. \"512MB\" or \"8GB\")"
-        case .sourceKind: "[source] needs exactly one of ipsw (a macOS guest) or image (a Linux cloud image)"
-        case .macOSOnly(let table): "\(table) is for macOS guests only; this recipe's [source] is a Linux image"
+        case .sourceKind: "[source] needs exactly one of ipsw (a macOS guest), image (a Linux cloud image) or iso (a Windows installer)"
+        case .macOSOnly(let table): "\(table) is for macOS guests only; this recipe's [source] isn't an IPSW"
         case .missingSHA256(let source): "source \"\(source)\" needs a sha256 (only ipsw = \"latest\" may omit it)"
         case .invalidSHA256(let sha): "invalid sha256 \"\(sha)\" (expected 64 hex digits)"
         case .invalidHardware(let reason): reason
@@ -170,6 +182,7 @@ private struct RawRecipe: Decodable {
     struct RawSource: Decodable {
         var ipsw: String?
         var image: String?
+        var iso: String?
         var sha256: String?
     }
 

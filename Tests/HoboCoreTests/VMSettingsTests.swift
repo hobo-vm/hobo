@@ -4,7 +4,7 @@ import Testing
 
 @Suite struct VMSettingsTests {
     static let config = VMConfig(
-        engine: .vz, os: .macOS, cpus: 4, memory: 8 << 30, disk: 80 << 30, macAddress: "aa:bb:cc:dd:ee:ff",
+        os: .macOS, cpus: 4, memory: 8 << 30, disk: 80 << 30, macAddress: "aa:bb:cc:dd:ee:ff",
         guestOSVersion: "27.2.0 (26B123)", created: Date(timeIntervalSince1970: 0), recipeSHA256: "r", sourceSHA256: "s"
     )
     static let limits = VMSettings.Limits(cpus: 1...10, memory: (1 << 30)...(32 << 30))
