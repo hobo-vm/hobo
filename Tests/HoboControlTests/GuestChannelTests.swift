@@ -173,6 +173,24 @@ import Testing
         #expect(requests.withLock { $0 } == [.exec(command: GuestScreenshot.command, gui: true)])
     }
 
+    /// The command is the stored VM's: a Windows guest has no `sh` to run the macOS one.
+    @Test func aScreenshotAsksForTheCommandOfTheVMsOS() async throws {
+        defer { cleanUp() }
+        let channel = channel
+        let file = try store.find("dev").bundle.appending(path: VMStore.configFile)
+        var config = try VMConfig.load(from: file)
+        config.os = .windows
+        try config.write(to: file)
+        let requests = Mutex<[ControlRequest]>([])
+        let server = try serve { request, _ in
+            requests.withLock { $0.append(request) }
+            return .exited(1)
+        }
+        defer { server.close() }
+        _ = try? await offPool { try channel.screenshot("dev") }
+        #expect(requests.withLock { $0 } == [.exec(command: WindowsGuest.screenshotCommand, gui: true)])
+    }
+
     @Test func aFailedScreenshotSaysWhatTheGuestSaid() async throws {
         defer { cleanUp() }
         let channel = channel

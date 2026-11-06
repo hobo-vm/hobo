@@ -57,6 +57,11 @@ import Testing
         #expect(throws: (any Error).self) { try screenshot.save(to: nil, in: missing, date: date) }
     }
 
+    @Test func aWindowsGuestCapturesWithItsOwnScript() {
+        #expect(GuestScreenshot.command(for: .windows) == WindowsGuest.screenshotCommand)
+        #expect(GuestScreenshot.command(for: .macOS) == GuestScreenshot.command)
+    }
+
     @Test func resultShape() throws {
         let json = String(decoding: try HoboJSON.line(ScreenshotResult(name: "dev", path: "/tmp/a.png")), as: UTF8.self)
         #expect(json == #"{"name":"dev","path":"/tmp/a.png"}"#)
