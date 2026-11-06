@@ -61,6 +61,7 @@ make install                 # release build, ad-hoc signed, installs to ~/.loca
 HOBO_SIGN_IDENTITY="Developer ID Application: …" make install
 make test                    # unit tests
 make integration-test        # tests that drive the signed binary
+HOBO_WINDOWS_ISO=<path> make integration-test   # also build and test a Windows guest from that ISO
 ```
 
 ## License

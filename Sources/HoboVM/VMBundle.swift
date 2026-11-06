@@ -36,6 +36,9 @@ public protocol VMBundle: Sendable {
     static func guiExecLine(_ command: [String], marker: String) -> String?
     /// Ends what `execLine` or `guiExecLine` started, given the process ID it printed.
     static func cancelCommand(pid: Int32) -> String
+    /// Runs `resize`, which rewrites the disk's partition table, leaving whatever the guest's boot
+    /// depends on as it was.
+    func keepingDiskIdentity(_ resize: () throws -> Void) throws
     /// Gives the bundle a new machine identifier, so a clone and its source can run side by side.
     func writeNewMachineIdentifier() throws
     func configuration(
@@ -60,6 +63,9 @@ extension VMBundle {
 }
 
 extension VMBundle {
+    /// macOS and Linux guests don't care what `resize` does to the table's identity.
+    public func keepingDiskIdentity(_ resize: () throws -> Void) throws { try resize() }
+
     /// Bytes the disk image actually occupies on the host.
     public func allocatedDiskBytes() -> UInt64 {
         let values = try? disk.resourceValues(forKeys: [.totalFileAllocatedSizeKey])

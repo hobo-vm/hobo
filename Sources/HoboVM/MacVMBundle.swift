@@ -146,6 +146,7 @@ public enum VMError: Error, CustomStringConvertible {
     case securityMismatch(wanted: Recipe.Security, actual: Recipe.Security)
     case noDataVolume(String)
     case windowsUnsupportedHere
+    case diskHasNoGPT(UInt64)
     case windowsInstallFailed(String)
     case missingQEMUImg
     case diskTooSmall(wanted: UInt64, image: UInt64)
@@ -171,6 +172,7 @@ public enum VMError: Error, CustomStringConvertible {
         case .noDataVolume(let disk): "\(disk) has no single APFS Data volume"
         case .windowsUnsupportedHere: "Windows VMs need a private Virtualization framework setting this version of macOS doesn't have"
         case .windowsInstallFailed(let details): "installing Windows failed: \(details)"
+        case .diskHasNoGPT(let lba): "the VM's disk has no partition table header at sector \(lba)"
         case .missingQEMUImg: "converting a Linux cloud image needs qemu-img: brew install qemu"
         case .spawnFailed(let executable, let reason): "couldn't run \(executable): \(reason)"
         case .diskTooSmall(let wanted, let image):

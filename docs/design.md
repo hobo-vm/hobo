@@ -567,7 +567,8 @@ global VMs on 2026-11-01.
       restarts once more. SSH answering means it's done. Blank disk to SSH takes under 5 minutes, and about 11 GB of ASIF.
       The bypass of Setup is what makes it fast and is also why no TPM or Secure Boot is needed.
     - **Conventions.** `vagrant`/`vagrant` is an administrator, logged in at boot. The clock is
-      `RealTimeIsUniversal`, since VZ's runs on UTC. Win32-OpenSSH
+      `RealTimeIsUniversal`, since VZ's runs on UTC. Growing the disk restores the GPT disk GUID
+      afterwards: `diskutil image resize` replaces it, and Windows' BCD names its disk by it. Win32-OpenSSH
       (pinned MSI) has PowerShell 5.1 as its shell, so what Hobo sends is PowerShell
       (`WindowsGuest`), kept free of double quotes, which sshd would have to escape; a command's argv
       travels as base64 of JSON. The ISO is the user's, and virtio-win, OpenSSH and WinFsp are

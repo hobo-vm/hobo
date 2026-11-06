@@ -48,6 +48,49 @@ public struct WindowsVMBundle: VMBundle {
         return bundle
     }
 
+    /// `diskutil image resize` gives the GPT a new disk GUID, which Windows' boot configuration names
+    /// its disk by: without the old one it can't find itself, and powers off.
+    public func keepingDiskIdentity(_ resize: () throws -> Void) throws {
+        let guid = try withDiskDevice { device in try Self.readHeader(of: device, lba: 1).diskGUID }
+        try resize()
+        try withDiskDevice { device in
+            var primary = try Self.readHeader(of: device, lba: 1)
+            var backup = try Self.readHeader(of: device, lba: primary.alternateLBA)
+            let backupLBA = primary.alternateLBA
+            primary.diskGUID = guid
+            backup.diskGUID = guid
+            try Self.write(primary, to: device, lba: 1)
+            try Self.write(backup, to: device, lba: backupLBA)
+        }
+    }
+
+    private static let sectorBytes: UInt64 = 512
+
+    private func withDiskDevice<Result>(_ body: (FileHandle) throws -> Result) throws -> Result {
+        let attached = try output("/usr/sbin/diskutil", ["image", "attach", "--noMount", disk.path])
+        guard let device = String(decoding: attached, as: UTF8.self).split(whereSeparator: \.isWhitespace).first else {
+            throw VMError.unexpectedAttachOutput(disk.path)
+        }
+        defer { try? runQuietly("/usr/sbin/diskutil", ["eject", String(device)]) }
+        let handle = try FileHandle(forUpdating: URL(filePath: String(device)))
+        defer { try? handle.close() }
+        return try body(handle)
+    }
+
+    private static func readHeader(of device: FileHandle, lba: UInt64) throws -> GPTHeader {
+        try device.seek(toOffset: lba * sectorBytes)
+        guard let header = GPTHeader(sector: try device.read(upToCount: Int(sectorBytes)) ?? Data()) else {
+            throw VMError.diskHasNoGPT(lba)
+        }
+        return header
+    }
+
+    private static func write(_ header: GPTHeader, to device: FileHandle, lba: UInt64) throws {
+        try device.seek(toOffset: lba * sectorBytes)
+        try device.write(contentsOf: header.sector)
+        try device.synchronize()
+    }
+
     public func writeNewMachineIdentifier() throws {
         try VZGenericMachineIdentifier().dataRepresentation.write(to: machineIdentifier, options: .atomic)
     }
