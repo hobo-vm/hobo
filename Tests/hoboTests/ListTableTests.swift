@@ -100,6 +100,12 @@ struct ListTableTests {
         #expect(cells == ["dev", "stopped", "", config.osDescription, "4", "8 GB", "1 GB / 80 GB"])
     }
 
+    @Test func aRunningRowHasItsAddress() {
+        var running = summary(.running(config, pid: 4242))
+        running.ipAddress = "192.168.64.5"
+        #expect(List.row(running)[2] == "192.168.64.5")
+    }
+
     /// The table lines its columns up by zipping, so a row one cell short would lose a column silently.
     @Test func aRowWithNoConfigKeepsEveryColumn() {
         for (status, state) in [(VMStore.Status.failed, "failed"), (.broken, "broken"), (.building(pid: 7), "building")] {

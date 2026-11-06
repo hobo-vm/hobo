@@ -48,6 +48,11 @@ import Testing
         // Cut at 15 characters, which would otherwise end on a hyphen.
         ("fourteen-chars-x", "fourteen-chars"),
         ("12345", "hobo-12345"),
+        // Still at most 15 characters with the prefix.
+        ("1234567890123456", "hobo-1234567890"),
+        // Windows' letters and digits are ASCII ones, whatever Swift counts as a letter or a number.
+        ("café", "caf"),
+        ("١٢٣", "hobo"),
         ("---", "hobo"),
     ])
     func computerNames(_ name: String, _ expected: String) {

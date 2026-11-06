@@ -115,6 +115,12 @@ import Testing
         #expect(recipe.disk.bytes == 64 << 30)
     }
 
+    @Test func anISOCantJoinAnotherSource() {
+        #expect(throws: RecipeError.sourceKind) {
+            try Recipe.parse(minimal(source: "iso = \"x.iso\"\nimage = \"x.img\"\nsha256 = \"\(sha)\""), directory: directory)
+        }
+    }
+
     @Test func windowsHasNoLatest() {
         #expect(throws: RecipeError.self) { try Recipe.parse("[source]\niso = \"latest\"", directory: directory) }
     }
@@ -245,6 +251,17 @@ import Testing
         let path = #"/isos/my "win" \ 11.iso"#
         let recipe = try Recipe.parse(Recipe.template(windowsISO: path, sha256: sha), directory: directory)
         #expect(recipe.source == .local(URL(filePath: path), sha256: sha))
+    }
+
+    @Test func windowsTemplateExampleStepsParse() throws {
+        let uncommented = Recipe.template(windowsISO: "/isos/win.iso", sha256: sha)
+            .replacingOccurrences(of: "# [[provision]]", with: "[[provision]]")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.hasPrefix("# ") && $0.contains("=") ? $0.dropFirst(2) : $0 }
+            .joined(separator: "\n")
+        let recipe = try Recipe.parse(uncommented, directory: directory)
+        #expect(recipe.provisioners.map(\.type) == [.shell, .file])
+        #expect(recipe.provisioners[0].env == ["GREETING": "hello"])
     }
 
     /// The template's commented-out steps and `[gui_testing]` are well formed once uncommented.

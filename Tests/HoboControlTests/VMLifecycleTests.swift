@@ -82,6 +82,15 @@ import Testing
         #expect(summary.phase == "stopping" && summary.phaseDetail == "saving state")
     }
 
+    @Test func listingHasARunningVMsAddress() async throws {
+        defer { cleanUp() }
+        launchctl.pid.withLock { $0 = 4242 }
+        let server = try serve(.status(VMRunStatus(state: .running, pid: 4242, ipAddress: "192.168.64.5")))
+        defer { server.close() }
+        let summary = try #require(await lifecycle.listing().vms.first)
+        #expect(summary.ipAddress == "192.168.64.5")
+    }
+
     @Test func listingGivesNoPhaseForAVMPlainlyRunning() async throws {
         defer { cleanUp() }
         launchctl.pid.withLock { $0 = 4242 }
