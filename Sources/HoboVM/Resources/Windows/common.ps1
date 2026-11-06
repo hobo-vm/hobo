@@ -20,7 +20,7 @@ function Write-Marker([string]$Marker) {
 function Format-Argument([string]$Argument) {
     if ($Argument -ne '' -and $Argument -notmatch '[\s"]') { return $Argument }
     $escaped = [regex]::Replace($Argument, '(\\*)"', '$1$1\"')
-    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+    $escaped = [regex]::Replace($escaped, '(\\+)\z', '$1$1')
     return '"' + $escaped + '"'
 }
 
