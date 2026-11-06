@@ -256,8 +256,25 @@ public enum WindowsInstallMedia {
         try body(mounted.map(\.directory))
     }
 
+    /// Holds a lock named after `image` for the length of `body`. Attaching an image that's already
+    /// attached gets the same disk, which ejecting then takes from whoever else is using it: `hobo init`
+    /// or another create, say, while a create copies the same ISO. So its users take turns, across
+    /// processes. Without the lock file, they carry on as if there were no one else.
+    private static func takingTurns(with image: URL, _ body: () throws -> Void) throws {
+        let key = VMStore.sha256(Data(image.resolvingSymlinksInPath().path.utf8)).prefix(16)
+        let lock = FileManager.default.temporaryDirectory.appending(path: "hobo-image-\(key).lock")
+        let descriptor = open(lock.path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+        defer { if descriptor >= 0 { close(descriptor) } }
+        if descriptor >= 0 { flock(descriptor, LOCK_EX) }
+        try body()
+    }
+
     /// Mounts an ISO or the media read-only, out of Finder's sight, for the length of `body`.
-    private static func withAttached(_ image: URL, _ body: ([URL]) throws -> Void) throws {
+    static func withAttached(_ image: URL, _ body: ([URL]) throws -> Void) throws {
+        try takingTurns(with: image) { try attachAndMount(image, body) }
+    }
+
+    private static func attachAndMount(_ image: URL, _ body: ([URL]) throws -> Void) throws {
         let attached = String(decoding: try output("/usr/sbin/diskutil", [
             "image", "attach", "--readOnly", "--nobrowse", image.path,
         ]), as: UTF8.self)
