@@ -34,7 +34,8 @@ function Resolve-Command([string[]]$Arguments) {
         return @{ Program = $found.Source; Arguments = (@($rest | ForEach-Object { Format-Argument $_ }) -join ' ') }
     }
     # Quoted except for what looks like a parameter name, which PowerShell would otherwise take for a value.
-    $words = @($Arguments | ForEach-Object { if ($_ -cmatch '^-[A-Za-z][A-Za-z0-9]*:?$') { $_ } else { "'" + $_.Replace("'", "''") + "'" } })
+    # PowerShell ends a single-quoted string at any of these four quotes as well as at the plain one.
+    $words = @($Arguments | ForEach-Object { if ($_ -cmatch '^-[A-Za-z][A-Za-z0-9]*:?$') { $_ } else { "'" + [regex]::Replace($_, "['\u2018\u2019\u201A\u201B]", '$0$0') + "'" } })
     # $? is read straight away, since evaluating the if's condition resets it.
     $line = '$ProgressPreference = ''SilentlyContinue''; & ' + ($words -join ' ') + '; $failed = -not $?; if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE } elseif ($failed) { exit 1 }'
     # Not -EncodedCommand, which reports errors as CLIXML when its input is redirected.

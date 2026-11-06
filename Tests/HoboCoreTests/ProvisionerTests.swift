@@ -29,9 +29,20 @@ import Testing
             inline = "exit 0"
             env = { B = "it's", A = "1" }
             """, directory: URL(filePath: "/r/")).provisioners.first)
+        let decode = { (base64: String) in "[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('\(base64)'))" }
         #expect(step.powerShellCommand(running: "C:/Windows/Temp/s.ps1") == """
-            $env:A = '1'; $env:B = 'it''s'; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:/Windows/Temp/s.ps1'; exit $LASTEXITCODE
+            $env:A = \(decode("MQ==")); $env:B = \(decode("aXQncw==")); & powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:/Windows/Temp/s.ps1'; exit $LASTEXITCODE
             """)
+    }
+
+    /// Double quotes don't survive sshd, a curly quote ends a PowerShell string, and a newline the command.
+    @Test func powerShellCommandCarriesAnyEnvValueIntact() throws {
+        let value = "say \"hi\" it\u{2019}s\nnext"
+        let step = Provisioner(type: .shell, inline: "exit 0", env: ["A": value])
+        let command = step.powerShellCommand(running: "C:/s.ps1")
+        #expect(!command.contains("\""))
+        #expect(!command.contains("\n"))
+        #expect(command.contains(Data(value.utf8).base64EncodedString()))
     }
 
     @Test func shellCommandIsPrivilegedByDefaultWithQuotedSortedEnv() {

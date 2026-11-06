@@ -57,9 +57,12 @@ public struct Provisioner: Equatable, Sendable, Decodable {
     }
 
     /// `shellCommand` for a Windows guest, whose steps are PowerShell scripts: its exit status, or
-    /// failure if PowerShell itself stopped on an error. Single quotes only, as `WindowsGuest` says.
+    /// failure if PowerShell itself stopped on an error. Values travel as base64: `WindowsGuest` says why
+    /// a command can't hold a double quote, and PowerShell ends a single-quoted string at a curly quote too.
     public func powerShellCommand(running script: String) -> String {
-        let assignments = (env ?? [:]).sorted { $0.key < $1.key }.map { "$env:\($0.key) = '\($0.value.replacingOccurrences(of: "'", with: "''"))'; " }
+        let assignments = (env ?? [:]).sorted { $0.key < $1.key }.map {
+            "$env:\($0.key) = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('\(Data($0.value.utf8).base64EncodedString())')); "
+        }
         return assignments.joined() + "& powershell.exe -NoProfile -ExecutionPolicy Bypass -File '\(script)'; exit $LASTEXITCODE"
     }
 }
