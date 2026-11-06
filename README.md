@@ -52,7 +52,7 @@ destination = "/Users/vagrant/.zshrc"
 - Apple Silicon Mac, macOS 27+
 - Xcode 27 (Swift 6.4+)
 - `brew install lld`, to build: the Windows boot driver is compiled from source during the build
-- To run Windows guests, a Windows on Arm ISO from [Microsoft](https://www.microsoft.com/en-us/software-download/windows11arm64). Windows runs through a private Virtualization framework setting a macOS update could remove, and Microsoft authorizes only Parallels for Windows 11 on Apple Silicon, so check the licence before relying on it for work ([design decision 20](docs/design.md))
+- To run Windows guests, a Windows on Arm ISO from [Microsoft](https://www.microsoft.com/en-us/software-download/windows11arm64). Windows runs through a private Virtualization framework setting a macOS update could remove, and Microsoft authorizes only Parallels for Windows 11 on Apple Silicon, so check the licence before relying on it for work ([design decision 20](docs/design.md)). Windows guests run at a fixed 1024×768 for now; resizing the window scales the picture
 
 ## Build
 

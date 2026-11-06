@@ -403,7 +403,8 @@ global VMs on 2026-11-01.
       so the socket keeps being served.
     - The guest display follows the window's size while it shows, and is set back to the configured
       1920×1200 when it is hidden, so headless runs and screenshots always see that size unless
-      someone is watching. `[gui_testing]` may turn resizing off if that matters.
+      someone is watching. `[gui_testing]` may turn resizing off if that matters. Windows guests
+      are the exception: fixed at 1024×768, with the window scaling it (decision 20).
     Agents drive the UI **inside the guest**:
     - SSH sessions run outside the GUI session and TCC blocks them from Accessibility and Screen
       Recording, so recipe `[gui_testing]` (opt-in) pre-grants them. **SIP stays on** (decided
