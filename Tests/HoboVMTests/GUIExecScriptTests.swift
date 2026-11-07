@@ -67,10 +67,10 @@ import Testing
         defer { cleanUp() }
         try guest(console: "root")
         let result = try run(["true"])
-        #expect(result.status == MacVMBundle.guiSessionUnavailableStatus)
+        #expect(result.status == GUISession.unavailableStatus)
         #expect(result.stdout.isEmpty, "never ran the command")
         #expect(result.stderr.contains("desktop session isn't up"))
-        #expect(sleeps == MacVMBundle.guiSessionWaitSeconds - 1)
+        #expect(sleeps == GUISession.waitSeconds - 1)
     }
 
     /// The console can be the user's before launchd has their GUI domain.
@@ -78,7 +78,7 @@ import Testing
         defer { cleanUp() }
         try guest(console: me, session: false)
         let result = try run(["true"])
-        #expect(result.status == MacVMBundle.guiSessionUnavailableStatus)
+        #expect(result.status == GUISession.unavailableStatus)
     }
 
     @Test func aLoginPartWayThroughTheWaitRunsTheCommand() throws {

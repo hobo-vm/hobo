@@ -114,8 +114,9 @@ global VMs on 2026-11-01.
    Ubuntu publishes no desktop cloud images, so a Linux recipe gets a desktop from a step:
    `init --os linux` writes one first, by default (decided 2026-11-02), that installs
    `ubuntu-desktop-minimal`, has GDM log `vagrant` in at boot, masks GNOME's welcome wizards
-   (`gnome-initial-setup`'s first-login and post-upgrade user services) and turns off screen
-   blanking and lock; `--server` leaves it out.
+   (`gnome-initial-setup`'s first-login and post-upgrade user services), turns off screen
+   blanking and lock, and turns accessibility on for GUI testing (decision 21); `--server` leaves
+   it out.
    `--os windows` has no catalog: Microsoft offers no download Hobo could pin, so `init` takes the
    path of an ISO the user downloaded, and hashes and checks it. Simulator images may join `--os` later.
 9. **Runtime config.** The recipe supplies defaults; `create` copies them into the bundle's
@@ -482,7 +483,8 @@ global VMs on 2026-11-01.
       the recipe wouldn't. By default the PNG goes to a new `./<vm>-<timestamp>.png`, numbered if
       taken, so a session's shots never replace each other; `-o -` is stdout, and it prints the path
       (`--json`: `{name, path}`). Decided 2026-11-05.
-    - On a Linux guest the VM process refuses both (`VMBundle.guiExecLine` is nil) until hobo-938.
+    - Linux guests have their own `exec --gui` and `screenshot` (decision 21), and Windows guests
+      theirs (decision 20).
     - A host-side framebuffer screenshot for wedged guests is deferred.
 18. **Agent sessions and leases.** Agents work in sessions, not one-shot commands: `start --ephemeral`,
     many `exec`/`screenshot` calls, `stop`. There is no `hobo run`. An agent that dies or forgets
@@ -630,9 +632,32 @@ global VMs on 2026-11-01.
       `/etc/cloud/cloud-init.disabled` and runs `fstrim`, so later boots and clones never re-run
       cloud-init. Recipe-supplied cloud-init user-data was rejected: `[[provision]]` is the one
       provisioning language. Boot to SSH takes about 10 s; a create, about a minute.
-    - `[security]` and `[gui_testing]` are macOS-only and fail validation on a Linux recipe. Linux
-      GUI testing (a desktop session, `exec --gui`, `screenshot`) waits for the macOS design
-      (Beads hobo-938). Rosetta for Linux (the `VZLinuxRosettaDirectoryShare` + binfmt) is
+    - `[security]` and `[gui_testing]` are macOS-only and fail validation on a Linux recipe: GUI
+      testing needs no grant there, only the desktop `init --os linux` writes a step for (decision
+      8), so `--server` is the only opt-out. Decided 2026-11-07 and verified on Ubuntu 26.04
+      (GNOME 50, Wayland only):
+      - `exec --gui` runs as `vagrant` straight from the SSH shell, with no `sudo`, so streaming,
+        exit status and cancelling (a kill of the process group, which reaches the app) are
+        `exec`'s. It waits up to 60 s, like macOS, for `loginctl` to give `vagrant` a graphical
+        session and for the systemd user manager to hold its display, then imports that manager's
+        environment, which GNOME fills and apps launched from the desktop get (`WAYLAND_DISPLAY`,
+        `DISPLAY`, `XAUTHORITY`, `XDG_SESSION_TYPE=wayland` over SSH's `tty`, the accessibility
+        variables), keeping SSH's `PATH`. With no display manager enabled (`--server`) it exits 125
+        at once rather than waiting.
+      - `screenshot` goes through the desktop portal's Screenshot API (`interactive=false`), from a
+        `python3` script using GLib, since GNOME's own Shell screenshot API refuses callers it
+        doesn't know and there is no X session. Unsandboxed callers are app ID `""`, and without
+        that ID's `screenshot` permission GNOME asks with a dialog that stays up, with later
+        requests waiting behind it. So the script grants it first, each time, through the
+        permission store, which covers clones and a grant someone withdrew with no recipe key. The
+        portal saves to `~/Pictures`; the script sends the file to stdout and removes it.
+      - UI driving is AT-SPI from Python (`gir1.2-atspi-2.0`), in the guest: walking trees, actions,
+        and setting and reading text all work. Its synthetic key and mouse events don't reach
+        Wayland apps, and raw input (`ydotool` via `/dev/uinput`) was left out. The desktop step
+        sets `toolkit-accessibility` in the system dconf database and locks it, since `vagrant`'s
+        own settings end up holding `false`; Chromium and Electron expose their trees only with
+        it on.
+    - Rosetta for Linux (the `VZLinuxRosettaDirectoryShare` + binfmt) is
       deferred (hobo-zdb): Apple has said general Rosetta winds down after macOS 27.
 
 ### Engineering
@@ -691,7 +716,7 @@ builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` ind
   disk usage in `list` (it reports snapshot sizes, so it follows them).
 - **M3, agents:** leases, `[gui_testing]`, `exec --gui`, `screenshot`, `hobo mcp`, the Claude
   skill and `hobo claude install|uninstall`.
-- **M4, Linux guests:** done (2026-11-02): `[source] image`, cloud-init conventions, `images`/`init --os linux`.
+- **M4, Linux guests:** done (2026-11-02): `[source] image`, cloud-init conventions, `images`/`init --os linux`; GUI testing (`exec --gui`, `screenshot`, AT-SPI) on 2026-11-07.
 - **M5, Windows guests:** on VZ (decision 20): `[source] iso`, `init --os windows`, install with our
   own WinPE script, `exec --gui` through a scheduled task, UI Automation.
 - **Later:** see Beads (`bd list --status deferred`).

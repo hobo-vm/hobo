@@ -35,12 +35,7 @@ public struct MacVMBundle: VMBundle {
     public static let growDiskCommand =
         #"sudo -n diskutil apfs resizeContainer "$(diskutil info / | awk '/APFS Physical Store:/ { print $NF }')" 0"#
 
-    /// How long `exec --gui` waits for the desktop session, which auto-login can finish after SSH answers.
-    static let guiSessionWaitSeconds = 60
-    /// What `exec --gui` exits with when the session never comes up, like `env` failing to run a command.
-    static let guiSessionUnavailableStatus: Int32 = 125
-
-    public static func guiExecLine(_ command: [String], marker: String) -> String? {
+    public static func guiExecLine(_ command: [String], marker: String) -> String {
         "echo \(marker)$$; " + guiExecScript(command)
     }
 
@@ -54,9 +49,9 @@ public struct MacVMBundle: VMBundle {
         i=0
         until [ "$(stat -f %Su /dev/console)" = "$(id -un)" ] && launchctl print "gui/$(id -u)" >/dev/null 2>&1; do
           i=$((i + 1))
-          if [ "$i" -ge \(guiSessionWaitSeconds) ]; then
-            echo "$(id -un)'s desktop session isn't up after \(guiSessionWaitSeconds) seconds" >&2
-            exit \(guiSessionUnavailableStatus)
+          if [ "$i" -ge \(GUISession.waitSeconds) ]; then
+            echo "$(id -un)'s desktop session isn't up after \(GUISession.waitSeconds) seconds" >&2
+            exit \(GUISession.unavailableStatus)
           fi
           sleep 1
         done

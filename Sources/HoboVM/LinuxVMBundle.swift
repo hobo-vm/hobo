@@ -22,8 +22,44 @@ public struct LinuxVMBundle: VMBundle {
     /// cloud-init's growpart did this at create but is off afterwards. growpart exits 1 when the
     /// partition already fills the disk, as on a retry after `resize2fs` failed.
     public static let growDiskCommand = #"root=$(findmnt -no SOURCE /) && part=$(cat "/sys/class/block/${root#/dev/}/partition") && { sudo -n growpart "/dev/$(lsblk -no PKNAME "$root")" "$part" || [ $? -eq 1 ]; } && sudo -n resize2fs "$root""#
-    /// Linux GUI testing waits on its own design (Beads hobo-938).
-    public static func guiExecLine(_ command: [String], marker: String) -> String? { nil }
+    public static func guiExecLine(_ command: [String], marker: String) -> String {
+        "echo \(marker)$$; " + guiExecScript(command)
+    }
+
+    /// Waits for `vagrant`'s graphical session, then runs the command with that session's
+    /// environment: the one GNOME hands the systemd user manager, which is what apps started from the
+    /// desktop get (`WAYLAND_DISPLAY`, `DISPLAY`, `XAUTHORITY`, `XDG_SESSION_TYPE`, the accessibility
+    /// variables). SSH's `PATH` stays, so it finds what plain `exec` finds. SSH runs as the same user,
+    /// so there is no `sudo`, and the command stays in the process group a cancel kills. A guest
+    /// with no display manager, built with `init --os linux --server`, fails at once rather than
+    /// waiting. `systemctl` quotes values with bash's `$'…'`, so this needs bash, the login shell
+    /// cloud-init gives `vagrant`.
+    static func guiExecScript(_ command: [String]) -> String {
+        """
+        if ! systemctl is-enabled --quiet display-manager.service 2>/dev/null; then
+          echo "this guest has no desktop: no display manager is enabled (a recipe from hobo init --os linux --server leaves it out)" >&2
+          exit \(GUISession.unavailableStatus)
+        fi
+        i=0
+        until session=$(loginctl show-user "$(id -un)" -p Display --value 2>/dev/null) && [ -n "$session" ] \\
+            && environment=$(systemctl --user show-environment 2>/dev/null) \\
+            && printf '%s\\n' "$environment" | grep -Eq '^(WAYLAND_)?DISPLAY='; do
+          i=$((i + 1))
+          if [ "$i" -ge \(GUISession.waitSeconds) ]; then
+            echo "$(id -un)'s desktop session isn't up after \(GUISession.waitSeconds) seconds" >&2
+            exit \(GUISession.unavailableStatus)
+          fi
+          sleep 1
+        done
+        while IFS= read -r line; do
+          case $line in ""|PATH=*) ;; *) eval "export $line" ;; esac
+        done <<EOF
+        $environment
+        EOF
+        export XDG_SESSION_ID="$session"
+        exec \(shellQuote(command))
+        """
+    }
 
     public var directory: URL
     /// The cloud-init seed ISO, attached read-only as a second disk while `create` runs.

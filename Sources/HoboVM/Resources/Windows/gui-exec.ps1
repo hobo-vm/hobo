@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\common.ps1"
 Write-Marker $Marker
 
-# Auto-login can finish after SSH answers. 125 is what exec --gui exits with for this on macOS too.
+# Auto-login can finish after SSH answers. 125 is what exec --gui exits with for this on every guest.
 $deadline = (Get-Date).AddSeconds(60)
 while (-not (Get-Process explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -gt 0 })) {
     if ((Get-Date) -gt $deadline) {

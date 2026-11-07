@@ -170,7 +170,7 @@ import Testing
         defer { server.close() }
         let screenshot = try await offPool { try channel.screenshot("DEV") }
         #expect(screenshot == GuestScreenshot(name: "dev", png: GuestScreenshot.pngSignature + Data("rest".utf8)))
-        #expect(requests.withLock { $0 } == [.exec(command: GuestScreenshot.command, gui: true)])
+        #expect(requests.withLock { $0 } == [.exec(command: GuestScreenshot.macOSCommand, gui: true)])
     }
 
     /// The command is the stored VM's: a Windows guest has no `sh` to run the macOS one.

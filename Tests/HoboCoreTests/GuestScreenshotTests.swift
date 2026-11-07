@@ -57,9 +57,10 @@ import Testing
         #expect(throws: (any Error).self) { try screenshot.save(to: nil, in: missing, date: date) }
     }
 
-    @Test func aWindowsGuestCapturesWithItsOwnScript() {
+    @Test func eachGuestOSCapturesWithItsOwnCommand() {
         #expect(GuestScreenshot.command(for: .windows) == WindowsGuest.screenshotCommand)
-        #expect(GuestScreenshot.command(for: .macOS) == GuestScreenshot.command)
+        #expect(GuestScreenshot.command(for: .macOS) == GuestScreenshot.macOSCommand)
+        #expect(GuestScreenshot.command(for: .linux) == GuestScreenshot.linuxCommand)
     }
 
     @Test func resultShape() throws {
@@ -80,8 +81,8 @@ import Testing
         try stub("osascript", "echo \(granted)")
         try stub("screencapture", "for last; do :; done; printf %s \"$last\" > '\(note.path)'; \(screencapture)")
         let process = Process()
-        process.executableURL = URL(filePath: "/bin/\(GuestScreenshot.command[0])")
-        process.arguments = Array(GuestScreenshot.command.dropFirst())
+        process.executableURL = URL(filePath: "/bin/\(GuestScreenshot.macOSCommand[0])")
+        process.arguments = Array(GuestScreenshot.macOSCommand.dropFirst())
         process.environment = ["PATH": "\(directory.path):/usr/bin:/bin"]
         let out = Pipe(), err = Pipe()
         process.standardOutput = out

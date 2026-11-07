@@ -18,8 +18,9 @@ extension Recipe {
     /// (the default; `--server` turns it off), its first step installs Ubuntu's desktop.
     public static func template(pinnedTo image: UbuntuCatalog.Image, desktop: Bool) -> String {
         let desktopStep = desktop ? """
-            # The desktop, for `hobo view` and GUI testing: Ubuntu's minimal desktop, vagrant logged in at
-            # boot, and no screen blanking or lock. It starts from the next boot.
+            # The desktop, for `hobo view` and GUI testing (`hobo exec --gui`, `hobo screenshot`): Ubuntu's
+            # minimal desktop, vagrant logged in at boot, no screen blanking or lock, and accessibility on
+            # for AT-SPI. It starts from the next boot.
             [[provision]]
             type   = "shell"
             inline = '''
@@ -98,12 +99,14 @@ extension Recipe {
     /// Installs `ubuntu-desktop-minimal` and sets it up for unattended use: GDM logs vagrant in at
     /// boot, GNOME's first-login and post-upgrade welcome wizards never run (the second ignores
     /// `gnome-initial-setup-done`), and the session never blanks or locks, so screenshots and UI
-    /// tests see the desktop.
+    /// tests see the desktop. For GUI testing, toolkits that only expose their accessibility tree
+    /// when asked (Chromium, Electron) always do, and the Python bindings that `hobo screenshot`
+    /// and AT-SPI scripts use are named, though the desktop pulls them in today.
     static let desktopScript = """
         set -eu
         export DEBIAN_FRONTEND=noninteractive
         apt-get update
-        apt-get install -y -o DPkg::Lock::Timeout=300 ubuntu-desktop-minimal
+        apt-get install -y -o DPkg::Lock::Timeout=300 ubuntu-desktop-minimal python3-gi gir1.2-atspi-2.0
         cat > /etc/gdm3/custom.conf <<'EOF'
         [daemon]
         AutomaticLoginEnable=true
@@ -117,7 +120,13 @@ extension Recipe {
 
         [org/gnome/desktop/screensaver]
         lock-enabled=false
+
+        [org/gnome/desktop/interface]
+        toolkit-accessibility=true
         EOF
+        # Locked: vagrant's own settings end up holding false (seen on 26.04), which would otherwise win.
+        mkdir -p /etc/dconf/db/local.d/locks
+        echo /org/gnome/desktop/interface/toolkit-accessibility > /etc/dconf/db/local.d/locks/00-hobo
         dconf update
         systemctl --global mask gnome-initial-setup-first-login.service gnome-initial-setup-upgrade-login.service
 

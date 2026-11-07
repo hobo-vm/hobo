@@ -295,9 +295,11 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(started.contains("(\(ip))"))
         #expect(try output(hobo, ["exec", "litest", "--", "uname", "-m"], environment: env) == "aarch64\n")
         #expect(try output(hobo, ["ssh", "litest", "--", "whoami"], environment: env) == "vagrant\n")
-        // No desktop session to run in yet (Beads hobo-938).
-        #expect(try run(hobo, ["exec", "litest", "--gui", "--", "true"], in: work, environment: env) != 0)
+        // --server left the desktop out, so --gui fails at once rather than waiting for one.
+        let noDesktop = Date.now
+        #expect(try run(hobo, ["exec", "litest", "--gui", "--", "true"], in: work, environment: env) == 125)
         #expect(try run(hobo, ["screenshot", "litest"], in: work, environment: env) != 0)
+        #expect(Date.now.timeIntervalSince(noDesktop) < 30)
         // Cloud-init ran once, at create, and stays off.
         #expect(try run(hobo, ["exec", "litest", "--", "test", "-e", "/etc/cloud/cloud-init.disabled"], in: work, environment: env) == 0)
         // The root filesystem grew to the recipe's disk.
@@ -410,6 +412,77 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
 
         #expect(try run(hobo, ["delete", "litest", "--yes"], in: work, environment: env) == 0)
         #expect(try FileManager.default.contentsOfDirectory(atPath: vms.path).isEmpty)
+    }
+
+    /// Creates an Ubuntu VM with the desktop `init --os linux` adds by default and tests GUI work in it
+    /// (decision 21): `exec --gui` in the Wayland session, an app driven over AT-SPI, and a
+    /// screenshot, taken twice so the second shows no permission dialog left by the first.
+    @Test(.timeLimit(.minutes(40)))
+    func linuxDesktop() throws {
+        let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
+        let work = FileManager.default.temporaryDirectory.appending(path: "hobo-linux-desktop-\(UUID().uuidString)")
+        let vms = work.appending(path: "vms")
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: work) }
+        let env = ["HOBO_VMS": vms.path]
+
+        #expect(try run(hobo, ["init", "--os", "linux"], in: work) == 0)
+        try #require(try run(hobo, ["create", "ldesk", work.appending(path: "Hobo.toml").path], in: work, environment: env) == 0)
+        defer { _ = try? run(hobo, ["stop", "--force", "ldesk"], in: work, environment: env) }
+        #expect(try run(hobo, ["start", "ldesk"], in: work, environment: env) == 0)
+
+        // Plain exec has no display; --gui waits for the session, then has the desktop's.
+        #expect(try output(hobo, ["exec", "ldesk", "--", "sh", "-c", "echo ${WAYLAND_DISPLAY:-none}"], environment: env) == "none\n")
+        let session = try output(hobo, ["exec", "ldesk", "--gui", "--", "sh", "-c", "echo $XDG_SESSION_TYPE $WAYLAND_DISPLAY; whoami"], environment: env)
+        #expect(session == "wayland wayland-0\nvagrant\n", "\(session)")
+        #expect(try run(hobo, ["exec", "ldesk", "--gui", "--", "sh", "-c", "exit 7"], in: work, environment: env) == 7)
+        #expect(try output(hobo, ["exec", "ldesk", "--gui", "--", "gsettings", "get", "org.gnome.desktop.interface", "toolkit-accessibility"], environment: env) == "true\n")
+
+        // An app started with exec --gui shows up over AT-SPI, which can drive it.
+        let calculator = Process()
+        calculator.executableURL = URL(filePath: hobo)
+        calculator.arguments = ["exec", "ldesk", "--gui", "--", "gnome-calculator"]
+        calculator.environment = ProcessInfo.processInfo.environment.merging(env) { $1 }
+        calculator.standardOutput = FileHandle.nullDevice
+        calculator.standardError = FileHandle.nullDevice
+        try calculator.run()
+        defer { if calculator.isRunning { calculator.terminate() } }
+        let driven = try output(hobo, ["exec", "ldesk", "--gui", "--", "python3", "-c", """
+            import time, gi
+            gi.require_version("Atspi", "2.0")
+            from gi.repository import Atspi
+            def find(node, test):
+                if test(node): return node
+                for i in range(node.get_child_count()):
+                    found = find(node.get_child_at_index(i), test)
+                    if found: return found
+            app = None
+            for _ in range(30):
+                app = find(Atspi.get_desktop(0), lambda n: n.get_role_name() == "application" and n.get_name() == "gnome-calculator")
+                if app: break
+                time.sleep(1)
+            Atspi.Action.do_action(find(app, lambda n: n.get_role_name() == "button" and n.get_name() == "7"), 0)
+            time.sleep(1)
+            print(Atspi.Text.get_text(find(app, lambda n: n.get_role_name() == "text"), 0, -1))
+            """], environment: env)
+        #expect(driven == "7\n", "\(driven)")
+
+        // The screenshot is the whole 1920x1200 display, twice, and leaves nothing in ~/Pictures.
+        for attempt in 1...2 {
+            let shot = work.appending(path: "shot\(attempt).png")
+            #expect(try output(hobo, ["screenshot", "ldesk", "-o", shot.path], environment: env) == shot.standardizedFileURL.path + "\n")
+            let size = try output("/usr/bin/sips", ["-g", "pixelWidth", "-g", "pixelHeight", shot.path], environment: env)
+            #expect(size.contains("pixelWidth: 1920") && size.contains("pixelHeight: 1200"), "\(size)")
+        }
+        #expect(try output(hobo, ["exec", "ldesk", "--", "sh", "-c", "ls ~/Pictures | wc -l"], environment: env) == "0\n")
+
+        // Cancelling exec --gui (the client going away) ends the app too.
+        calculator.terminate()
+        calculator.waitUntilExit()
+        #expect(try run(hobo, ["exec", "ldesk", "--", "sh", "-c", "sleep 2; ! pgrep -f [g]nome-calculator"], in: work, environment: env) == 0)
+
+        #expect(try output(hobo, ["stop", "ldesk"], environment: env).contains("Stopped ldesk"))
+        #expect(try run(hobo, ["delete", "ldesk", "--yes"], in: work, environment: env) == 0)
     }
 
     /// Decision 18 on a real clone of the stopped VM `litest`: a renewal restarts the timeout, a request

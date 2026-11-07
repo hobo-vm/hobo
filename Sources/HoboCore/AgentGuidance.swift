@@ -62,14 +62,21 @@ public enum AgentGuidance {
         - Never drive the VM's window from the host: don't click, type or take host screenshots of \
         it, or script it with AppleScript or computer use. `view` and `start --gui` are for a person \
         to watch. To drive the guest's UI, run the automation inside the guest (AppleScript and \
-        System Events, XCUITest) and look with `screenshot`, which fails rather than leave windows out \
-        if the VM lacks the Screen Recording grant.
+        System Events, XCUITest; AT-SPI on Linux; UI Automation on Windows) and look with `screenshot`, \
+        which fails rather than leave windows out if a macOS VM lacks the Screen Recording grant.
         - On a macOS guest, plain `exec` runs in a background session, though `open`, System Events \
         scripting and `screencapture` work from it. `exec --gui` runs the command in the `vagrant` \
         user's desktop session instead, waiting for it after a boot: use it for anything that needs \
         that session. That scripting and `screencapture` need the VM to be built from a recipe with \
-        `[gui_testing]`, which grants Accessibility and Screen Recording. Linux guests have neither \
-        `exec --gui` nor `screenshot` yet.
+        `[gui_testing]`, which grants Accessibility and Screen Recording.
+        - On a Linux guest, plain `exec` has no display. `exec --gui` runs the command with the GNOME \
+        (Wayland) session's environment, waiting for it after a boot: start apps with it, and drive \
+        them with AT-SPI from Python, which needs no grant. After `gi.require_version('Atspi', '2.0')`, \
+        walk each app's tree from `Atspi.get_desktop(0)` (`get_child_at_index`, `get_role_name`, \
+        `get_name`), then act and read through the interface classes: `Atspi.Action.do_action(node, 0)`, \
+        `Atspi.EditableText.set_text_contents(node, text)`, `Atspi.Text.get_text(node, 0, -1)`. AT-SPI's \
+        synthetic key and mouse events don't reach Wayland apps. A guest built with \
+        `init --os linux --server` has no desktop, so `exec --gui` and `screenshot` fail at once.
         - On a Windows guest, `exec` runs a program or a PowerShell command as `vagrant`, an elevated \
         administrator, in session 0, which has no desktop; `cp` takes guest paths like \
         `dev:C:/Users/vagrant/file`. For a pipeline or anything else needing a shell, run \

@@ -292,14 +292,10 @@ public final class VMRunner {
         case .exec(let command, let gui):
             guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
             let platform = type(of: guest.bundle)
-            if gui, platform.guiExecLine(command, marker: "") == nil {
-                return .error("exec --gui and screenshot don't work on a Linux guest yet")
-            }
             return await withGuest(reply: reply) { ssh, onOutput in
                 try await ssh.exec(
                     line: { marker in
-                        // Checked above.
-                        gui ? platform.guiExecLine(command, marker: marker)! : platform.execLine(command, marker: marker)
+                        gui ? platform.guiExecLine(command, marker: marker) : platform.execLine(command, marker: marker)
                     },
                     cancel: { platform.cancelCommand(pid: $0) },
                     onOutput: onOutput

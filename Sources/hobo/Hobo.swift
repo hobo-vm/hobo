@@ -642,7 +642,8 @@ struct Exec: OutputCommand {
             The command runs as the vagrant user, without stdin or a TTY, and hobo exits with its status. \
             Its arguments are quoted for the guest's shell, so use sh -c '<script>' (on Windows, powershell.exe -Command '<script>') \
             for pipes and the like. \
-            With --gui (macOS and Windows guests) it waits up to a minute for the desktop session, and exits 125 if it never comes up.
+            With --gui it waits up to a minute for the desktop session, and exits 125 if it never comes up \
+            (at once on a Linux guest with no desktop).
             """
     )
 
@@ -709,9 +710,10 @@ struct Screenshot: OutputCommand {
     private static let standardOutput = "-"
 
     static let configuration = CommandConfiguration(
-        abstract: "Save a PNG of a running VM's screen (macOS and Windows guests).",
+        abstract: "Save a PNG of a running VM's screen.",
         discussion: """
-            Captures from inside the guest's desktop session, which on macOS needs a VM built from a recipe with [gui_testing]. \
+            Captures from inside the guest's desktop session, which on macOS needs a VM built from a recipe with [gui_testing], \
+            and on Linux a desktop (left out by init --os linux --server). \
             Prints the file's path; by default it is a new <vm>-<timestamp>.png in the current directory.
             """
     )

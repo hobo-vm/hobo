@@ -34,8 +34,10 @@ public protocol VMBundle: Sendable {
     static var shutdownCommand: String { get }
     /// The guest command that prints `marker` and a process ID (`GuestSSH.PIDMarker`), then runs `command`.
     static func execLine(_ command: [String], marker: String) -> String
-    /// `execLine` in the SSH user's desktop session (`exec --gui`), or nil if this kind of guest can't yet.
-    static func guiExecLine(_ command: [String], marker: String) -> String?
+    /// `execLine` in the SSH user's desktop session (`exec --gui`). It waits `GUISession.waitSeconds`
+    /// for the session, which auto-login can finish after SSH answers, then exits
+    /// `GUISession.unavailableStatus`.
+    static func guiExecLine(_ command: [String], marker: String) -> String
     /// Ends what `execLine` or `guiExecLine` started, given the process ID it printed.
     static func cancelCommand(pid: Int32) -> String
     /// Runs `resize`, which rewrites the disk's partition table, leaving whatever the guest's boot
@@ -102,6 +104,14 @@ public func vmBundle(at directory: URL, os: VMConfig.OS) throws -> any VMBundle 
     case .linux: LinuxVMBundle(directory: directory)
     case .windows: WindowsVMBundle(directory: directory)
     }
+}
+
+/// What every guest's `exec --gui` does when the desktop session isn't there.
+enum GUISession {
+    /// How long it waits for the session, which auto-login can finish after SSH answers.
+    static let waitSeconds = 60
+    /// What it exits with when the session never comes up, like `env` failing to run a command.
+    static let unavailableStatus: Int32 = 125
 }
 
 /// The guest display's configured size. A window resizes it while showing (`VMWindow`), and

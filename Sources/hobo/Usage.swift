@@ -75,7 +75,8 @@ struct Usage: ParsableCommand {
               exec, cp    hobo exits with the guest command's (or scp's) status. With --json their output
                           goes to stderr and stdout gets {"exitStatus":…}.
               screenshot  Prints where the PNG went; --json gives {"name":…,"path":…}. It and exec --gui
-                          work on macOS and Windows guests; on macOS a screenshot needs [gui_testing].
+                          need a desktop: on macOS a screenshot needs [gui_testing], and a Linux guest
+                          built with `init --os linux --server` has none.
               Ephemeral   `start <vm> --ephemeral` boots a new clone of a stopped VM, named <vm>-<4 hex>
                           (printed, and "name" in its JSON). An ephemeral VM is deleted when it stops,
                           even by crashing, but not when it is suspended. `set <name> --keep` keeps it.
