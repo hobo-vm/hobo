@@ -34,9 +34,9 @@ public protocol VMBundle: Sendable {
     static var shutdownCommand: String { get }
     /// The guest command that prints `marker` and a process ID (`GuestSSH.PIDMarker`), then runs `command`.
     static func execLine(_ command: [String], marker: String) -> String
-    /// `execLine` in the SSH user's desktop session (`exec --gui`). It waits `GUISession.waitSeconds`
-    /// for the session, which auto-login can finish after SSH answers, then exits
-    /// `GUISession.unavailableStatus`.
+    /// `execLine` in the SSH user's desktop session (`exec --gui`). It waits up to
+    /// `GUISession.waitSeconds` for the session, which auto-login can finish after SSH answers, and
+    /// exits `GUISession.unavailableStatus` if it never comes up.
     static func guiExecLine(_ command: [String], marker: String) -> String
     /// Ends what `execLine` or `guiExecLine` started, given the process ID it printed.
     static func cancelCommand(pid: Int32) -> String

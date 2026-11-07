@@ -101,7 +101,8 @@ extension Recipe {
     /// `gnome-initial-setup-done`), and the session never blanks or locks, so screenshots and UI
     /// tests see the desktop. For GUI testing, toolkits that only expose their accessibility tree
     /// when asked (Chromium, Electron) always do, and the Python bindings that `hobo screenshot`
-    /// and AT-SPI scripts use are named, though the desktop pulls them in today.
+    /// and AT-SPI scripts use are installed by name rather than relied on as the desktop's
+    /// dependencies, which they are today.
     static let desktopScript = """
         set -eu
         export DEBIAN_FRONTEND=noninteractive
