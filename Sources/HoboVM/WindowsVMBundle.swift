@@ -7,8 +7,8 @@ import Virtualization
 public struct WindowsVMBundle: VMBundle {
     public static let platformFiles = ["disk.asif", "efi-vars.fd", "machine-identifier.bin"]
     public static let hiDPIDisplay = false
-    /// viogpudo's startup mode, the only one that reaches the window intact: at the four larger sizes
-    /// tried, Windows accepts the mode but the window goes almost black (Beads hobo-n64).
+    /// viogpudo's startup mode. After a mode change the driver's updates stop reaching the window
+    /// intact, though Windows accepts the mode (design.md decision 20; Beads hobo-y70).
     public static let displayPixels = CGSize(width: 1024, height: 768)
     /// viogpudo doesn't follow the display, so the window scales this one instead.
     public static let displayFollowsWindow = false

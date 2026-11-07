@@ -579,7 +579,23 @@ global VMs on 2026-11-01.
       1280×800, Windows accepts the mode and in-guest screenshots look right, but the window is
       96–99% black, with smeared fragments at some sizes (measured 2026-11-06; row pitch isn't the
       cause). So the VM's display is 1024×768, the driver doesn't follow the window, and the window
-      scales it. Beads hobo-n64 tracks going higher.
+      scales it. Investigated 2026-11-07 (hobo-n64), comparing the window with in-guest captures:
+      - What's lost is the driver's transfers to the host after a mode change from 1024×768, not
+        the mode. Small updates arrive and big ones don't, so a static desktop stays black. At
+        1024×769, 1024×800 and 1024×1000, any update touching row 768 or below is dropped and the
+        rest arrives intact; at 1920×768 updates land shifted and striped, as if read with a
+        1024-pixel stride. 1152×768 works fully; 1280×800, 1360×768, 1376×768 and 1920×1200 don't.
+        It's the same after a reboot into the saved mode, since Windows commits 1024×768 first.
+      - The likely cause is viogpudo's mode change (`SetCurrentMode`): it detaches and unrefs the
+        resource still on the scanout, then creates the new size under the same resource ID (its
+        allocator hands the freed ID straight back) and sets the scanout to it. Linux, which
+        resizes fine on VZ, creates the new resource first and unrefs the old one after the
+        scanout moves. Unconfirmed without a driver build.
+      - Nothing outside the driver helps: older releases have the same sequence and ID reuse (back
+        to 2023's source, so they weren't installed); `bcdedit highestmode`, clearing Windows'
+        saved display configuration and the driver's registry settings don't change the first
+        commit; and restarting the display device makes VZ stop the VM, as uninstalling the
+        driver does. Beads hobo-y70 tracks patching viogpudo.
     - **Exec.** SSH runs in session 0, so `exec --gui` (and `screenshot`) go through a one-shot
       scheduled task in `vagrant`'s desktop session, with output tailed from files. UI driving
       uses Windows' built-in UI Automation from PowerShell, in the guest; no WinAppDriver, which
