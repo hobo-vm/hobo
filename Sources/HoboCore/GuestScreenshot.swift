@@ -23,8 +23,9 @@ public struct GuestScreenshot: Equatable, Sendable {
     }
 
     /// The macOS capture. `screencapture` can't write to stdout, so it goes through a temp file,
-    /// which an interrupted capture cleans up too, exiting with the status a signal would give. Without the grant, `screencapture` still succeeds but
-    /// leaves windows out, and the desktop it returns could pass for an app that never opened.
+    /// which an interrupted capture cleans up too, exiting with the status a signal would give.
+    /// Without the grant, `screencapture` still succeeds but leaves windows out, and the desktop it
+    /// returns could pass for an app that never opened.
     public static let macOSCommand = ["sh", "-c", """
         f=$(mktemp /tmp/hobo-screenshot.XXXXXX) || exit 1
         trap 'rm -f "$f"' EXIT
