@@ -59,6 +59,19 @@ struct WindowsIntegrationTests {
             try session.run(["exec", "vm"] + (gui ? ["--gui"] : []) + ["--", "powershell.exe", "-NoProfile", "-Command", line])
         }
 
+        // Setup has finished: vagrant stays logged on past the point where an unfinished OOBE logs it
+        // off (about a minute after logon) and clears the auto-login settings, here and after a restart.
+        func staysLoggedOn(_ when: String) throws {
+            Thread.sleep(forTimeInterval: 90)
+            #expect(try powerShell("cmd.exe /c 'quser 2>nul'").text.contains("vagrant"), "vagrant has a session \(when)")
+            let autoLogon = #"(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon').AutoAdminLogon"#
+            #expect(try powerShell(autoLogon).text.contains("1"), "auto-login is still on \(when)")
+        }
+        try staysLoggedOn("on the first boot")
+        #expect(try session.run(["stop", "vm"]).status == 0)
+        try #require(try session.run(["start", "vm"]).status == 0)
+        try staysLoggedOn("after a restart")
+
         // Plain exec: output, exit statuses, quoting, PowerShell commands, binary output.
         #expect(try powerShell(#"Get-Content C:\Users\vagrant\provisioned.txt"#).text.contains("it's here"))
         #expect(try session.run(["exec", "vm", "--", "cmd.exe", "/c", "exit 7"]).status == 7)

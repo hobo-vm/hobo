@@ -565,10 +565,14 @@ global VMs on 2026-11-01.
       partitions the NVMe disk with Windows last (so `hobo set --disk` can grow it), applies the
       image with DISM, adds the virtio-win drivers (viogpudo, NetKVM, viorng, Balloon, viofs),
       runs `bcdboot` and powers off, leaving its result on the media. The next boot, without the
-      media, runs specialize and OOBE, and `SetupComplete.cmd` runs `setup.ps1` as SYSTEM. OOBE then
-      restarts the machine about a minute after the first logon, clearing the auto-login settings,
-      so a startup task (`finish-setup.ps1`) restores them after that restart, enables sshd and
-      restarts once more. SSH answering means it's done. A whole `hobo create` takes about 8 minutes and about 11 GB of ASIF; a clone then boots to SSH in about 11 s.
+      media, runs specialize and OOBE, and `SetupComplete.cmd` runs `setup.ps1` as SYSTEM. OOBE runs
+      in a session of its own temporary user, `defaultuser0`: it restarts the machine about a minute
+      after the first logon, then logs that user on again to finish, clearing the auto-login settings.
+      A startup task (`finish-setup.ps1`) waits for that second session to end (up to 5 minutes),
+      restores them, enables sshd and restarts once more. SSH answering means it's done. Restarting
+      without waiting raced OOBE by seconds, and when OOBE lost, it finished on the VM's first boot
+      after create, logging vagrant off (hobo-2o4). `OOBEInProgress` and the other Setup flags stay
+      0 throughout, so they can't be waited on. A whole `hobo create` takes about 8 minutes and about 11 GB of ASIF; a clone then boots to SSH in about 11 s.
       The bypass of Setup is what makes it fast and is also why no TPM or Secure Boot is needed.
     - **Conventions.** `vagrant`/`vagrant` is an administrator, logged in at boot. The clock is
       `RealTimeIsUniversal`, since VZ's runs on UTC. Growing the disk restores the GPT disk GUID
