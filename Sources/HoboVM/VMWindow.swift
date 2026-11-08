@@ -91,8 +91,11 @@ final class VMWindow: NSObject, NSWindowDelegate {
     /// use backing pixels. Not during a live resize, so a drag reconfigures once, at the end.
     private func followWindowInPoints() {
         guard displayFollowsWindow, !hiDPI, isShown, !window.inLiveResize else { return }
-        let size = view.bounds.size
-        guard size.width >= 1, size.height >= 1 else { return }
+        // A width that's a multiple of 4 pixels: the host draws the guest's frames through an IOSurface
+        // of 4-byte pixels, which Core Animation refuses unless its rows are 16-byte aligned, leaving the
+        // window black (seen with Windows guests at 929 and 1330 wide). The view scales the few pixels away.
+        let size = CGSize(width: (view.bounds.width / 4).rounded(.down) * 4, height: view.bounds.height.rounded(.down))
+        guard size.width >= 4, size.height >= 1 else { return }
         do {
             try machine.graphicsDevices.first?.displays.first?.reconfigure(sizeInPixels: size)
         } catch {
