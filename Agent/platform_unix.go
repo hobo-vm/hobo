@@ -44,9 +44,30 @@ func (a account) environment() []string {
 // command runs line in the account's login shell, in a process group of its own so a cancel
 // reaches everything it started.
 func (a account) command(line string) *exec.Cmd {
-	cmd := exec.Command(a.shell, "-l", "-c", line)
-	a.configure(cmd)
-	return cmd
+	return a.loginCommand([]string{a.shell, "-l", "-c", line})
+}
+
+// login is `hobo-agent login <user> <argv...>`: it becomes the user and execs argv, for a platform
+// whose loginCommand has to start somewhere as root first (macOS's `launchctl asuser`).
+func login(name string, argv []string) error {
+	a, err := lookupAccount(name)
+	if err != nil {
+		return err
+	}
+	var groups []int
+	for _, gid := range a.groups() {
+		groups = append(groups, int(gid))
+	}
+	if err := syscall.Setgroups(groups); err != nil {
+		return err
+	}
+	if err := syscall.Setgid(int(a.gid)); err != nil {
+		return err
+	}
+	if err := syscall.Setuid(int(a.uid)); err != nil {
+		return err
+	}
+	return syscall.Exec(argv[0], argv, os.Environ())
 }
 
 // configure makes cmd run as the account, from its home, with its login environment.

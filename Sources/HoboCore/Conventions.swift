@@ -27,6 +27,15 @@ public enum Conventions {
 
     """
 
+    /// Where create uploads hobo-agent before `script` runs, which installs it as the stub
+    /// (decision 15) at `agentPath`, run at boot by the `agentDaemon` LaunchDaemon. The stub
+    /// fetches the agent and execs it, but launchd made the stub's path the responsible process,
+    /// and an exec doesn't change that: TCC sees `agentPath` as the client for everything the agent
+    /// runs (`GUITestingGrants`; checked in tccd's log on 27.2, 2026-11-08).
+    public static let agentUpload = "/tmp/hobo-agent"
+    public static let agentPath = "/usr/local/libexec/hobo-agent"
+    public static let agentDaemon = "com.hobo.agent"
+
     /// Root script run once, over password SSH, right after unattended setup.
     public static var script: String {
         """
@@ -44,6 +53,21 @@ public enum Conventions {
         defaults write /Library/Preferences/com.apple.screensaver loginWindowIdleTime -int 0
         defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticDownload -bool false
         defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticallyInstallMacOSUpdates -bool false
+        install -d -m 755 \((agentPath as NSString).deletingLastPathComponent)
+        install -m 755 \(agentUpload) \(agentPath)
+        rm -f \(agentUpload)
+        cat > /Library/LaunchDaemons/\(agentDaemon).plist <<'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict>
+        <key>Label</key><string>\(agentDaemon)</string>
+        <key>ProgramArguments</key><array><string>\(agentPath)</string><string>stub</string></array>
+        <key>RunAtLoad</key><true/>
+        <key>KeepAlive</key><true/>
+        <key>StandardErrorPath</key><string>/var/log/hobo-agent.log</string>
+        </dict></plist>
+        EOF
+        launchctl bootstrap system /Library/LaunchDaemons/\(agentDaemon).plist
 
         """
     }

@@ -6,6 +6,7 @@ import (
 	"os/user"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 func init() {
@@ -15,6 +16,20 @@ func init() {
 
 func platformEnvironment(a account) []string {
 	return []string{"LANG=en_US.UTF-8"}
+}
+
+// loginCommand runs argv as the account in its launchd bootstrap: the desktop's (Aqua) once the
+// user is logged in. A daemon's children are in the System bootstrap, where much of a user's
+// world is missing: nohup fails ("can't detach from console"), for one. SSH logins got a session
+// of their own from pam_launchd, which has no public API; `launchctl asuser` needs root, so it
+// starts `hobo-agent login`, which then becomes the user. Both stay in the process group.
+func (a account) loginCommand(argv []string) *exec.Cmd {
+	args := append([]string{"asuser", strconv.FormatUint(uint64(a.uid), 10), selfPath(), "login", a.name}, argv...)
+	cmd := exec.Command("/bin/launchctl", args...)
+	cmd.Dir = a.home
+	cmd.Env = a.environment()
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	return cmd
 }
 
 // lookupAccount asks Directory Services, which holds macOS's local users (/etc/passwd doesn't):

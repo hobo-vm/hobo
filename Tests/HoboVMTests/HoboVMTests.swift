@@ -84,8 +84,8 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["exec", "itest", "--", "sh", "-c", "exit 7"], in: work, environment: env) == 7)
         #expect(try run(hobo, ["exec", "itest", "--", "zsh", "-c", GUITestingGrants.checkCommand], in: work, environment: env) == 0)
         #expect(try output(hobo, ["ssh", "itest", "--", "whoami"], environment: env) == "hobo\n")
-        // exec --gui is in the desktop session, as the same user; plain exec isn't.
-        #expect(try output(hobo, ["exec", "itest", "--", "launchctl", "managername"], environment: env) == "Background\n")
+        // Both run in hobo's launchd bootstrap, the desktop's once it is logged in, which --gui waits for.
+        #expect(try output(hobo, ["exec", "itest", "--", "launchctl", "managername"], environment: env) == "Aqua\n")
         #expect(try output(hobo, ["exec", "itest", "--gui", "--", "launchctl", "managername"], environment: env) == "Aqua\n")
         #expect(try output(hobo, ["exec", "itest", "--gui", "--", "whoami"], environment: env) == "hobo\n")
         #expect(try run(hobo, ["exec", "itest", "--gui", "--", "sh", "-c", "exit 7"], in: work, environment: env) == 7)
@@ -108,6 +108,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["cp", payload.path, "itest:/tmp/payload.txt"], in: work, environment: env) == 0)
         #expect(try run(hobo, ["cp", "itest:/tmp/payload.txt", "back.txt"], in: work, environment: env) == 0)
         #expect(try String(contentsOf: work.appending(path: "back.txt"), encoding: .utf8) == "over and back\n")
+        try checkAgent("itest", hobo: hobo, work: work, env: env, nicDown: ["sudo", "-n", "ifconfig", "en0", "down"], nicUp: ["sudo", "-n", "ifconfig", "en0", "up"])
         #expect(try run(hobo, ["rename", "itest", "itest2"], in: work, environment: env) != 0, "running")
         #expect(try run(hobo, ["delete", "itest", "--yes"], in: work, environment: env) != 0, "running")
         #expect(try output(hobo, ["start", "itest"], environment: env).contains("already running"))
@@ -311,7 +312,10 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["cp", payload.path, "litest:/var/tmp/payload.txt"], in: work, environment: env) == 0)
         #expect(try run(hobo, ["cp", "litest:/var/tmp/payload.txt", "back.txt"], in: work, environment: env) == 0)
         #expect(try String(contentsOf: work.appending(path: "back.txt"), encoding: .utf8) == "over and back\n")
-        try checkAgent("litest", hobo: hobo, work: work, env: env)
+        try checkAgent(
+            "litest", hobo: hobo, work: work, env: env,
+            nicDown: ["sudo", "-n", "ip", "link", "set", "enp0s1", "down"], nicUp: ["sudo", "-n", "ip", "link", "set", "enp0s1", "up"]
+        )
         #expect(try run(hobo, ["view", "litest"], in: work, environment: env) == 0)
         #expect(try String(contentsOf: bundle.appending(path: "console.log"), encoding: .utf8).contains("litest login:"))
 
@@ -418,7 +422,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
     /// What hobo-agent (decision 15) does beyond plain exec and cp: directories copy both ways as
     /// `scp -r` would, a cancelled exec ends in the guest, `provision` runs in the VM process, and
     /// none of it needs the guest's network.
-    func checkAgent(_ vm: String, hobo: String, work: URL, env: [String: String]) throws {
+    func checkAgent(_ vm: String, hobo: String, work: URL, env: [String: String], nicDown: [String], nicUp: [String]) throws {
         let tree = work.appending(path: "tree")
         try FileManager.default.createDirectory(at: tree.appending(path: "sub"), withIntermediateDirectories: true)
         try "deep\n".write(to: tree.appending(path: "sub/deep.txt"), atomically: true, encoding: .utf8)
@@ -457,11 +461,9 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try output(hobo, ["exec", vm, "--", "cat", "provisioned"], environment: env) == "provisioned as vagrant\n")
 
         // With its network down the guest still answers.
-        let nic = try output(hobo, ["exec", vm, "--", "sh", "-c", "ls /sys/class/net | grep -v lo"], environment: env)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        #expect(try run(hobo, ["exec", vm, "--", "sudo", "-n", "ip", "link", "set", nic, "down"], in: work, environment: env) == 0)
-        #expect(try output(hobo, ["exec", vm, "--", "cat", "/sys/class/net/\(nic)/operstate"], environment: env) == "down\n")
-        #expect(try run(hobo, ["exec", vm, "--", "sudo", "-n", "ip", "link", "set", nic, "up"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["exec", vm, "--"] + nicDown, in: work, environment: env) == 0)
+        #expect(try output(hobo, ["exec", vm, "--", "echo", "still here"], environment: env) == "still here\n")
+        #expect(try run(hobo, ["exec", vm, "--"] + nicUp, in: work, environment: env) == 0)
     }
 
     /// Creates an Ubuntu VM with the desktop `init --os linux` adds by default and tests GUI work in it

@@ -41,12 +41,16 @@ public struct MacVMBundle: VMBundle {
     public static func guiExecLine(_ command: [String], marker: String) -> String {
         "echo \(marker)$$; " + guiExecScript(command)
     }
+    public static let usesAgent = true
+    public static func agentCommand(_ command: [String], gui: Bool) -> String {
+        gui ? guiExecScript(command) : shellQuote(command)
+    }
 
     /// Waits for auto-login, then enters the Aqua session. `launchctl asuser` needs root, and leaves
     /// the command root without the inner `sudo -u`, which in turn resets the environment, so the
     /// `PATH` is carried over to find what plain `exec` finds. TCC still attributes the command to
-    /// sshd, whose grants `[gui_testing]` wrote, and a kill of the process group reaches it (checked
-    /// 2026-11-05 on 27.2).
+    /// the process that started it, hobo-agent, whose grants `[gui_testing]` wrote, and a kill of
+    /// the process group reaches it.
     static func guiExecScript(_ command: [String]) -> String {
         """
         i=0
@@ -122,6 +126,7 @@ public struct MacVMBundle: VMBundle {
             attachment: try VZDiskImageStorageDeviceAttachment(url: disk, readOnly: false)
         )]
         config.networkDevices = [natNetwork(macAddress: macAddress)]
+        config.socketDevices = [agentSocketDevice()]
         config.keyboards = [VZMacKeyboardConfiguration()]
         config.pointingDevices = [VZMacTrackpadConfiguration()]
         config.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]

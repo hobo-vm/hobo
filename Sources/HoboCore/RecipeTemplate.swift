@@ -164,15 +164,15 @@ extension Recipe {
         # sip  = false
         # amfi = false
         #
-        # Let SSH sessions (exec, screenshot, agents) drive the guest UI: grants Accessibility,
-        # Screen Recording and System Events automation to sshd, osascript, screencapture and
+        # Let exec, screenshot and agents drive the guest UI: grants Accessibility, Screen
+        # Recording and System Events automation to hobo-agent, osascript, screencapture and
         # Terminal, plus any absolute paths or bundle IDs in allow. Works with SIP on.
         #
         # [gui_testing]
         # enabled = true
         # allow   = ["com.example.AppUITests.xctrunner"]
         #
-        # Steps run once each, in order, over SSH. Paths are relative to this file.
+        # Steps run once each, in order, in the guest. Paths are relative to this file.
         #
         # [[provision]]
         # type   = "shell"

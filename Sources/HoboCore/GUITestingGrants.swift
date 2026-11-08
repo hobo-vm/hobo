@@ -2,11 +2,12 @@ import Foundation
 import Security
 import SQLite3
 
-/// The TCC grants recipe `[gui_testing]` writes so SSH sessions can drive the guest UI with SIP on.
+/// The TCC grants recipe `[gui_testing]` writes so `exec` can drive the guest UI with SIP on.
 ///
-/// TCC attributes a command run over SSH to `sshd-keygen-wrapper`, so that row is what makes
-/// `osascript`, `screencapture` and scripts work over SSH; the other defaults cover the same tools
-/// run another way. Each client gets Accessibility and Screen Recording in the system TCC.db and
+/// TCC attributes what hobo-agent runs to the agent's stub, the LaunchDaemon that started it
+/// (`Conventions.agentPath`), so that row is what makes `osascript`, `screencapture` and scripts
+/// work through `exec`; the other defaults cover the same tools run another way. The stub is
+/// whatever hobo created the VM, so its row has no `csreq`, like a recipe client's. Each client gets Accessibility and Screen Recording in the system TCC.db and
 /// Automation of System Events in the user's TCC.db (UI scripting goes through System Events).
 ///
 /// The rows are written from the host into the stopped guest's mounted Data volume: inside the
@@ -24,7 +25,7 @@ public enum GUITestingGrants {
     }
 
     public static let defaultClients: [Client] = [
-        apple("/usr/libexec/sshd-keygen-wrapper", "com.apple.sshd-keygen-wrapper"),
+        agent,
         apple("/usr/bin/osascript", "com.apple.osascript"),
         apple("/usr/sbin/screencapture", "com.apple.screencapture"),
         apple("com.apple.Terminal", "com.apple.Terminal"),
@@ -37,6 +38,17 @@ public enum GUITestingGrants {
     public static func clients(allow: [String]) -> [Client] {
         defaultClients + allow.map { Client(identifier: $0, requirement: nil) }
     }
+
+    /// Gives hobo-agent Full Disk Access, in the guest Data volume mounted at `dataVolume`, as every
+    /// macOS VM has: SSH had it (Remote Login allows remote users full disk access by default), so
+    /// commands find the same files through the agent, such as other apps' group containers.
+    public static func applyAgentAccess(dataVolume: URL) throws {
+        let system = try TCCDatabase(dataVolume.appending(path: "Library/Application Support/com.apple.TCC/TCC.db"))
+        try system.grant("kTCCServiceSystemPolicyAllFiles", to: agent)
+    }
+
+    /// The agent's stub (`Conventions.agentPath`), which TCC holds responsible for what the agent runs.
+    static let agent = Client(identifier: Conventions.agentPath, requirement: nil)
 
     /// Writes the grants into the guest Data volume mounted at `dataVolume`.
     public static func apply(_ clients: [Client], dataVolume: URL) throws {
@@ -77,7 +89,7 @@ public enum GUITestingGrants {
         ObjC.import("ApplicationServices"); ObjC.bindFunction("CGPreflightScreenCaptureAccess", ["bool", []])
         """
 
-    /// Run over SSH in the guest: fails unless the session has Accessibility, Screen Recording and
+    /// Run in the guest: fails unless the session has Accessibility, Screen Recording and
     /// Automation of System Events. `screencapture` succeeds without the grant (it just leaves
     /// windows out), so Screen Recording is asked of CoreGraphics. Retried, since System Events
     /// may not answer until the auto-login session is up.
@@ -94,18 +106,18 @@ public enum GUITestingGrants {
         exit 1
         """
 
-    /// Run over SSH in the guest, before anything captures the screen: tells replayd that SSH's
-    /// client has already been alerted. Without a record, its first capture puts up a dialog (the
-    /// grants don't prevent it) that blocks the guest's UI and shows in later screenshots. The
-    /// record is for `sshd-keygen-wrapper`, which everything run over SSH counts as; an app started
-    /// on its own may count separately. Its dates are far ahead so that no new alert falls due.
-    /// Checked 2026-11-05 on 27.2, for 5 captures over 45 s.
+    /// Run in the guest, before anything captures the screen: tells replayd that the agent has
+    /// already been alerted. Without a record, its first capture puts up a dialog (the grants don't
+    /// prevent it) that blocks the guest's UI and shows in later screenshots. The record is for the
+    /// agent, which everything `exec` runs counts as; an app started on its own may count
+    /// separately. Its dates are far ahead so that no new alert falls due. Checked 2026-11-05 on
+    /// 27.2 for SSH's client, for 5 captures over 45 s.
     public static let seedScreenCaptureApprovalCommand = """
         container="$HOME/Library/Group Containers/group.com.apple.replayd"
         mkdir -p "$container" && cat > "$container/ScreenCaptureApprovals.plist" <<'PLIST'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0"><dict><key>/usr/libexec/sshd-keygen-wrapper</key><dict>
+        <plist version="1.0"><dict><key>\(Conventions.agentPath)</key><dict>
         <key>kScreenCaptureAlertableUsageCount</key><integer>0</integer>
         <key>kScreenCaptureApprovalLastAlerted</key><date>2099-01-01T00:00:00Z</date>
         <key>kScreenCaptureApprovalLastUsed</key><date>2099-01-01T00:00:00Z</date>

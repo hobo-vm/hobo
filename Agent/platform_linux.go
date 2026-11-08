@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -15,6 +16,13 @@ import (
 func platformEnvironment(a account) []string {
 	runtime := fmt.Sprintf("/run/user/%d", a.uid)
 	return []string{"LANG=C.UTF-8", "XDG_RUNTIME_DIR=" + runtime, "DBUS_SESSION_BUS_ADDRESS=unix:path=" + runtime + "/bus"}
+}
+
+// loginCommand runs argv as the account, as sshd would.
+func (a account) loginCommand(argv []string) *exec.Cmd {
+	cmd := exec.Command(argv[0], argv[1:]...)
+	a.configure(cmd)
+	return cmd
 }
 
 // lookupAccount reads /etc/passwd: os/user gives no shell, and a static build has no libc to ask.

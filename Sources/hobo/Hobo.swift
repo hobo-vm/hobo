@@ -601,7 +601,7 @@ struct IP: OutputCommand {
     }
 }
 
-struct SSH: ParsableCommand {
+struct SSH: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "ssh",
         abstract: "SSH into a running VM, or run a command there with -- <command>.",
@@ -620,7 +620,7 @@ struct SSH: ParsableCommand {
     @Argument(parsing: .postTerminator, help: ArgumentHelp("A command to run instead of a login shell.", valueName: "command"))
     var command: [String] = []
 
-    func run() throws {
+    func run() async throws {
         let store = VMStore.standard()
         let vm = try store.find(name)
         let ssh = GuestSSH(host: try GuestChannel(store: store).ipAddress(vm.name), auth: try .forVM(bundle: vm.bundle, home: store.home))
@@ -628,6 +628,8 @@ struct SSH: ParsableCommand {
             Swift.print(ssh.commandLine(command))
             return
         }
+        // `start` returns once hobo-agent answers, which can be before sshd does.
+        try await ssh.waitUntilReachable(timeout: .seconds(60))
         let argv = ["ssh"] + ssh.sshArguments(command)
         let cArgs = argv.map { strdup($0) } + [nil]
         execv(GuestSSH.sshPath, cArgs)

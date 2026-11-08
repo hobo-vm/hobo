@@ -188,18 +188,20 @@ global VMs on 2026-11-01.
     2. base install: `VZMacOSInstaller`, then a first boot with `VZMacGuestProvisioningOptions`
        (`hobo`/`hobo`, auto-login, Remote Login);
     3. conventions, over password SSH: passwordless sudo, hobo's own insecure ed25519 key (2026-11-08) in
-       `authorized_keys`, no sleep/screensaver, no automatic updates. The insecure key stays: a
+       `authorized_keys`, no sleep/screensaver, no automatic updates, and hobo-agent's stub with its
+       LaunchDaemon (decision 15). The insecure key stays: a
        per-VM key is deferred (decided 2026-11-01, Beads hobo-cip). The boot then waits (up to
        5 min) for the first auto-login to finish, signalled by the user's tccd opening its TCC.db:
        SSH answers well before then, and shutting down early left the next boot, where recipe steps
        run, with no GUI session at all (2026-11-02, macOS 27.2);
     4. `[security]` if it turns SIP off (decision 17): the one step that needs a person, in
        recoveryOS, then a boot to check it and set the AMFI boot-arg;
-    5. `[gui_testing]` if enabled (decision 17): TCC grants written from the host into the stopped
-       guest's Data volume, then checked over SSH on the next boot;
+    5. TCC grants written from the host into the stopped guest's Data volume (decision 17): Full
+       Disk Access for hobo-agent always, and `[gui_testing]`'s if enabled, checked through the
+       agent on the next boot, where everything from here on goes through the agent;
     6. recipe `[[provision]]` steps (shell inline/path with `privileged` and `env`, and file), run
-       once each over key SSH. `hobo provision <name> [recipe]` runs a recipe's steps again, in
-       order, on a running VM, from the client over key SSH: for iterating on steps without a
+       once each. `hobo provision <name> [recipe]` runs a recipe's steps again, in
+       order, on a running VM, in its VM process (decision 15): for iterating on steps without a
        30-minute rebuild, or bringing a VM up to date with its recipe. The rest of the recipe is
        ignored, steps should be safe to repeat, and the bundle's `recipe.toml` and `recipeSHA256`
        stay the record of what the VM was built from (decided 2026-11-02);
@@ -230,11 +232,11 @@ global VMs on 2026-11-01.
     VM off: the guest never runs past the save, so the disk stays as the state expects. A failed
     save resumes the VM and `suspend` reports it. Resuming restores the state with exactly the
     recorded shares (VZ refuses any other configuration), deletes `suspended/` before the guest
-    runs again, since the disk then moves on, and sets the guest's clock over SSH (checked
+    runs again, since the disk then moves on, and sets the guest's clock through the guest channel (checked
     2026-11-02: a resumed guest is behind by the whole suspension). A macOS guest tries `sntp`, else
     takes the host's time; a Linux guest takes the host's time (`date -s @<epoch>`: Ubuntu 26.04's
     uutils `date` rejects the BSD form) and chrony refines it. A macOS guest's shares are also
-    remounted over SSH: VZ's virtio-fs device restarts on the host, and its old handles fail lookups
+    remounted through the guest channel: VZ's virtio-fs device restarts on the host, and its old handles fail lookups
     with ENOENT until the mount is replaced (files a guest process had open in a share are lost). A
     Linux guest's mount keeps working across the restore, but its lookups stay cached for a few
     seconds of guest time, which stood still: a file the host added during the suspension isn't
@@ -284,7 +286,7 @@ global VMs on 2026-11-01.
     `snapshots/<tag>/` as APFS clones of the platform files (`VMBundle.platformFiles`), deleted with
     the VM. A running VM is paused, its state saved (`saveMachineStateTo`), its disk cloned at the
     same instant, and resumed (`.snapshot` on the control socket); its guest clock, which stood
-    still, is then set over SSH, as a resume does, though its shares need no remount, since the
+    still, is then set through the guest channel, as a resume does, though its shares need no remount, since the
     device never restarts. A suspended VM's state and disk are cloned as they lie, which also makes
     a live snapshot. Stopped VMs get disk-only snapshots. (Replaces the earlier DiskImageKit overlay plan.)
     Decided 2026-11-03 (hobo-di8), and checked then on a 27.2 guest and host: a VM runs on normally
@@ -361,7 +363,7 @@ global VMs on 2026-11-01.
       main actor.
 15. **Guest channel.** hobo-agent over virtio-vsock for everything Hobo itself does in a guest, and
     SSH for people (`hobo ssh`, raw `ssh`) and for the steps of a create before the agent is in
-    place. Linux guests have the agent; macOS and Windows guests are still on SSH until theirs land
+    place. Linux and macOS guests have the agent; Windows guests are still on SSH until theirs lands
     (hobo-yis), and `VMBundle.usesAgent` picks per guest until then. SSH is the `hobo` user with
     hobo's insecure key; host keys aren't checked, since IPs are reused across VMs and rebuilds. `ssh`/`scp` are spawned with responsibility disclaimed
     (`responsibility_spawnattrs_setdisclaim`, as terminals do), so macOS's Local Network privacy
@@ -382,6 +384,9 @@ global VMs on 2026-11-01.
       and execs it, so the agent in a guest is always the hobo running it, clones and old snapshots
       included, with no update step. That exchange is frozen: every stub installed must keep
       working. A stub could have been a script, but no guest has a tool that opens a vsock socket.
+      Linux's is a systemd unit from the cloud-init seed (decision 21); macOS's is a LaunchDaemon
+      (`com.hobo.agent`, logging to `/var/log/hobo-agent.log`) that create's conventions step
+      installs over SSH. A stub that fails to fetch retries every second.
     - **Requests.** The agent runs as root and listens on guest port 1101, accepting only the
       host's CID (2), so a guest process can't reach a root agent over vsock loopback. There is
       no other authentication: only the VM process can reach the device, and `vagrant` has
@@ -394,6 +399,12 @@ global VMs on 2026-11-01.
     - `exec` runs a command line in `vagrant`'s login shell, as sshd does, with a login's
       environment (`HOME`, `USER`, `SHELL`, a system `PATH`, and on Linux the user's runtime
       directory), so the commands written for SSH (`sudo -n …`, the GUI scripts) run unchanged.
+      On macOS the command goes through `launchctl asuser` into `vagrant`'s launchd bootstrap (the
+      agent starts it as root, then becomes `vagrant`): a daemon's children are in the System
+      bootstrap, where `nohup` fails ("can't detach from console") among other things. SSH logins
+      got a Background session from pam_launchd, which has no public API, so plain `exec` is in
+      the desktop's bootstrap (Aqua) once `vagrant` is logged in, as `--gui` is; `--gui` still
+      waits for that login (2026-11-08, macOS 27.2).
     - `cp` is a tar stream: the host's `tar` (no AppleDouble files or extended attributes) makes
       or extracts it, and the agent runs itself as `vagrant` to extract or make the guest's side,
       so files belong to `vagrant` and relative paths are from its home. Both sides give scp's
@@ -404,7 +415,8 @@ global VMs on 2026-11-01.
       timeout like any request.
     - Readiness is a `ping` that answers, polled once a second; the guest refuses the connection
       until the agent listens. The DHCP lease is still read, for `hobo ip` and `hobo ssh`, but
-      nothing waits for it beyond a few seconds so `start` can print it.
+      nothing waits for it beyond a few seconds so `start` can print it. A macOS guest's agent
+      answers before its network and sshd do, so `hobo ssh` waits (up to a minute) for sshd.
     - Alternatives rejected: an agent per guest OS (three codebases); updating an installed agent
       by version handshake (atomic replace and restart under three service managers, and a broken
       agent can lock itself out); a second, per-user agent for the desktop session (each OS has a
@@ -462,17 +474,23 @@ global VMs on 2026-11-01.
       follow it only with `[windows] resizable_display`; otherwise the display is a fixed 1024×768
       and the window scales it (decision 20).
     Agents drive the UI **inside the guest**:
-    - SSH sessions run outside the GUI session and TCC blocks them from Accessibility and Screen
-      Recording, so recipe `[gui_testing]` (opt-in) pre-grants them. **SIP stays on** (decided
+    - Commands from hobo-agent (and from SSH) are outside the GUI session's own TCC approvals, and
+      TCC blocks them from Accessibility and Screen Recording, so recipe `[gui_testing]` (opt-in)
+      pre-grants them. **SIP stays on** (decided
       2026-11-01, replacing "boot to recovery and disable SIP", which needed keystroke scripting of
       recoveryOS): with the VM stopped after the conventions boot, create attaches the ASIF, mounts
       the guest's Data volume (unencrypted, and a regular user's mount ignores ownership, so no root;
       the host's SIP doesn't cover a foreign volume) and writes the rows itself. Inside the guest
       neither database is writable, even by root with Full Disk Access. Verified on a macOS 27.2
       guest (2026-11-01):
-      - TCC attributes everything run over SSH to `/usr/libexec/sshd-keygen-wrapper`, so its rows are
-        what count (also through `sudo launchctl asuser`); the defaults also grant `osascript`,
-        `screencapture` and Terminal. `[gui_testing] allow = [...]` adds clients: an absolute path
+      - TCC attributes everything the agent runs to the path launchd started, the stub
+        `/usr/local/libexec/hobo-agent`, not the agent it execs (tccd logs it as the request's
+        subject; 2026-11-08, macOS 27.2), so its rows are what count, also through `launchctl
+        asuser`. Over SSH that was `/usr/libexec/sshd-keygen-wrapper`, which `hobo ssh` users no
+        longer get grants for. The defaults also grant `osascript`, `screencapture` and Terminal.
+      - Every macOS create grants the agent Full Disk Access (`kTCCServiceSystemPolicyAllFiles`, in
+        the system TCC.db): Remote Login gives sshd it by default, and without it the agent can't
+        write other apps' containers (replayd's, below) or read much of `~/Library`. `[gui_testing] allow = [...]` adds clients: an absolute path
         or a bundle ID (e.g. an `.xctrunner`).
       - Each client gets Accessibility and Screen Recording (`kTCCServiceAccessibility`,
         `kTCCServiceScreenCapture`) in the system TCC.db, and Automation of System Events
@@ -486,22 +504,22 @@ global VMs on 2026-11-01.
         run after).
       - MDM was ruled out: `VZMacGuestProvisioningOptions` has no enrollment option, and a PPPC profile
         can't grant Screen Recording anyway.
-      - Create then checks over SSH, before the provision steps, that Accessibility
+      - Create then checks through the agent, before the provision steps, that Accessibility
         (`AXIsProcessTrusted`), Screen Recording (`CGPreflightScreenCaptureAccess`; `screencapture`
         succeeds without the grant, leaving windows out) and System Events scripting work, and
         fails otherwise.
       - The grants don't stop replayd's own approval dialog ("requesting to bypass the system private
         window picker"): the first capture by a client with no record raises it, from plain `exec` or
         `--gui`, and it blocks the guest's UI and shows in later screenshots. So create then seeds
-        that record over SSH, before anything captures: `ScreenCaptureApprovals.plist` in the user's
-        replayd group container, with its alert dates in 2099, for `sshd-keygen-wrapper` only, which
-        everything run over SSH counts as (decided 2026-11-05). An app started on its own may count
+        that record through the agent, before anything captures: `ScreenCaptureApprovals.plist` in the
+        user's replayd group container, with its alert dates in 2099, for the agent's stub path only,
+        which everything the agent runs counts as (decided 2026-11-05, for `sshd-keygen-wrapper`). An app started on its own may count
         separately and still get the dialog when it captures. Checked on 27.2 for 5 captures over
         45 s; whether the record lasts for weeks or across macOS updates is unknown. A VM built
         before this needs rebuilding.
-      - Running outside the GUI session cuts plain `exec` off less than that might suggest: on a VM
-        with the grants, `screencapture` (windows included), `open` and System Events scripting all
-        work from it, in the same way as from `--gui` (checked 2026-11-05 on 27.2). Automation of
+      - On a VM with the grants, `screencapture` (windows included), `open` and System Events
+        scripting all work from plain `exec`, in the same way as from `--gui` (checked 2026-11-05 on
+        27.2, over SSH's Background session; plain `exec` is now in the desktop's bootstrap anyway). Automation of
         Finder times out from both, since only System Events is granted.
     - Recipe `[security] sip = false` (and `amfi = false`, which needs it) turns SIP and AMFI off,
       for testing ad-hoc signed binaries that claim restricted entitlements (decided 2026-11-02;

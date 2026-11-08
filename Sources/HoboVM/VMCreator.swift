@@ -5,8 +5,9 @@ import Virtualization
 
 /// Creates a named VM from a recipe, built in place in its bundle. Every create is a full install.
 /// A failed or interrupted (^C) create deletes the bundle.
-/// - macOS: IPSW → unattended install → guest conventions → `[security]` (SIP off by hand in
-///   recoveryOS) → `[gui_testing]` grants → recipe steps → cleanup → clean shutdown.
+/// - macOS: IPSW → unattended install → guest conventions and hobo-agent, over password SSH →
+///   `[security]` (SIP off by hand in recoveryOS) → `[gui_testing]` grants → recipe steps, through
+///   the agent → cleanup → clean shutdown.
 /// - Linux: cloud image → ASIF disk → a boot with a cloud-init seed that applies the guest
 ///   conventions and installs hobo-agent → recipe steps, through the agent → cleanup → clean shutdown.
 /// - Windows: ISO → install media → a boot that installs from it → a boot that runs Windows' own
@@ -209,10 +210,13 @@ public struct VMCreator {
         if !recipe.security.sip {
             try await disableSIP(bundle, machine: machine, disableAMFI: !recipe.security.amfi)
         }
-        if let guiTesting = recipe.guiTesting {
-            // The conventions boot ended in a shutdown, so the disk is free to mount.
-            log("Granting GUI testing permissions (Accessibility, Screen Recording, Automation)")
-            try GuestDataVolume.withMounted(bundle.disk) { volume in
+        // The conventions boot ended in a shutdown, so the disk is free to mount.
+        log(recipe.guiTesting == nil
+            ? "Granting hobo-agent Full Disk Access"
+            : "Granting hobo-agent Full Disk Access, and GUI testing permissions (Accessibility, Screen Recording, Automation)")
+        try GuestDataVolume.withMounted(bundle.disk) { volume in
+            try GUITestingGrants.applyAgentAccess(dataVolume: volume)
+            if let guiTesting = recipe.guiTesting {
                 try GUITestingGrants.apply(GUITestingGrants.clients(allow: guiTesting.allow), dataVolume: volume)
             }
         }
@@ -299,6 +303,11 @@ public struct VMCreator {
             // Passwordless sudo doesn't exist until the conventions script has run.
             let passwordSudo = "echo \(shellQuote(Conventions.password)) | sudo -S -p ''"
             log("Applying guest conventions")
+            // The conventions script installs it as the stub, through which the rest of create runs.
+            let agent = FileManager.default.temporaryDirectory.appending(path: "hobo-agent-\(UUID().uuidString)")
+            try HoboAgentBinaries.darwin.write(to: agent)
+            defer { try? FileManager.default.removeItem(at: agent) }
+            try await ssh.upload(agent, to: Conventions.agentUpload)
             try await ssh.upload(contents: Conventions.script, to: "/tmp/hobo-conventions.sh")
             try await ssh.check("\(passwordSudo) /bin/bash /tmp/hobo-conventions.sh && rm /tmp/hobo-conventions.sh", what: "conventions")
             log("Waiting for the first login")
@@ -379,7 +388,7 @@ public struct VMCreator {
     private func shutDown(_ vm: GuestVM, ssh: any GuestShell, command: String? = nil) async throws {
         log("Shutting down")
         // The connection usually drops mid-command here; the VM state is what matters.
-        try await ssh.run(command ?? type(of: vm.bundle).shutdownCommand, quiet: true)
+        _ = try? await ssh.run(command ?? type(of: vm.bundle).shutdownCommand, quiet: true)
         if try await !vm.waitForPowerOffOrForce(timeout: .seconds(5 * 60)) {
             log("warning: guest did not power off within 5 minutes; forced it off")
         }
