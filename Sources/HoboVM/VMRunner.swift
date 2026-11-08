@@ -409,6 +409,11 @@ public final class VMRunner {
         } catch {
             failure = abandonSnapshot(tag, partial: partial, error)
         }
+        // A forced stop during the save leaves nothing to resume; what the save wrote still stands.
+        if guest.isStopped {
+            if failure == nil { log("Saved snapshot \(tag); the VM was forced off meanwhile") }
+            return failure ?? .accepted
+        }
         do {
             try await guest.resume()
         } catch {
