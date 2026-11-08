@@ -213,7 +213,8 @@ struct WindowsIntegrationTests {
             followed = try desktopSize()
         }
         #expect(followed != configured, "the desktop stayed at the display's configured size")
-        #expect(abs(Double(followed.width) / Double(followed.height) - 1.6) < 0.01, "\(followed)")
+        let aspect = { (size: (width: Int, height: Int)) in Double(size.width) / Double(size.height) }
+        #expect(abs(aspect(followed) - aspect(configured)) < 0.01, "\(followed)")
     }
 
     private struct Session {
