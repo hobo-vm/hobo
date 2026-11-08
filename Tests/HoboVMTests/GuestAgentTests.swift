@@ -27,8 +27,7 @@ import Testing
     }
 
     func sendExit(_ status: Int32, on socket: AgentSocket) throws {
-        let bits = UInt32(bitPattern: status)
-        try socket.writeFrame(.exit, Data([UInt8(bits >> 24), UInt8(bits >> 16 & 0xFF), UInt8(bits >> 8 & 0xFF), UInt8(bits & 0xFF)]))
+        try socket.writeFrame(.exit, withUnsafeBytes(of: status.bigEndian) { Data($0) })
     }
 
     /// Everything the host sends in data frames, up to the empty one that ends it.

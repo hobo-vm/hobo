@@ -357,10 +357,8 @@ final class AgentSocket: Sendable {
         var start = payload.startIndex
         repeat {
             let end = min(start + AgentFrame.maxPayload, payload.endIndex)
-            let length = UInt32(end - start)
-            var header = Data([kind.rawValue])
-            header.append(contentsOf: [UInt8(length >> 24), UInt8(length >> 16 & 0xFF), UInt8(length >> 8 & 0xFF), UInt8(length & 0xFF)])
-            try write(header + payload[start..<end])
+            let length = UInt32(end - start).bigEndian
+            try write(Data([kind.rawValue]) + withUnsafeBytes(of: length) { Data($0) } + payload[start..<end])
             start = end
         } while start < payload.endIndex
     }
@@ -383,6 +381,8 @@ final class AgentSocket: Sendable {
 final class HostTar: Sendable {
     private let process = Mutex(Process())
     private let errors = Mutex(Data())
+    /// Signalled once `startWriting`'s tar has closed its stderr; `finish` waits for it.
+    private let finishing = Mutex<DispatchSemaphore?>(nil)
 
     init(arguments: [String]) {
         process.withLock { process in
@@ -440,8 +440,6 @@ final class HostTar: Sendable {
         _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
         return input.fileHandleForWriting
     }
-
-    private let finishing = Mutex<DispatchSemaphore?>(nil)
 
     func finish() {
         finishing.withLock { $0 }?.wait()
