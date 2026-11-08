@@ -56,6 +56,7 @@ public static class HoboDisplayFollower {
     [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr hdc);
     [DllImport("gdi32.dll")] static extern int D3DKMTOpenAdapterFromHdc(ref OPENADAPTERFROMHDC open);
     [DllImport("gdi32.dll")] static extern int D3DKMTEscape(ref ESCAPE escape);
+    [DllImport("gdi32.dll")] static extern int D3DKMTCloseAdapter(ref uint adapter); // D3DKMT_CLOSEADAPTER
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr OpenEvent(int access, bool inherit, string name);
 
     const string VirtioGPU = @"PCI\VEN_1AF4&DEV_1050";
@@ -97,9 +98,10 @@ public static class HoboDisplayFollower {
             if (status != 0) continue;
             // Asking for the ID is also what makes the driver create the event.
             ushort id, unused;
-            if (!Escape(open.adapter, GetDeviceID, out id, out unused)) continue;
-            IntPtr eventHandle = OpenEvent(Synchronize, false, @"Global\VioGpuResolutionEvent" + id);
-            if (eventHandle == IntPtr.Zero) continue;
+            IntPtr eventHandle = Escape(open.adapter, GetDeviceID, out id, out unused)
+                ? OpenEvent(Synchronize, false, @"Global\VioGpuResolutionEvent" + id) : IntPtr.Zero;
+            // Closed, or the 2-second retries at logon would open another each time.
+            if (eventHandle == IntPtr.Zero) { D3DKMTCloseAdapter(ref open.adapter); continue; }
             var resized = new EventWaitHandle(false, EventResetMode.ManualReset);
             resized.SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(eventHandle, true);
             adapters.Add(new Adapter { device = info.deviceName, kmtAdapter = open.adapter, resized = resized });
