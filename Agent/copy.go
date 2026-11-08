@@ -43,12 +43,7 @@ func putTar(input io.Reader, destination string, single bool) error {
 		if err != nil {
 			return err
 		}
-		target := filepath.Join(destination, name)
-		if !intoDirectory {
-			_, rest, _ := strings.Cut(name, "/")
-			target = filepath.Join(destination, rest)
-		}
-		if err := extract(header, reader, target, destination, intoDirectory); err != nil {
+		if err := extract(header, reader, placement(destination, name, intoDirectory), destination, intoDirectory); err != nil {
 			return err
 		}
 	}
@@ -61,6 +56,15 @@ func entryName(name string) (string, error) {
 		return "", fmt.Errorf("refusing tar entry %q", name)
 	}
 	return clean, nil
+}
+
+// placement is where the entry name lands: under destination, or, for a single source that
+// becomes destination itself, with its top-level name replaced by destination.
+func placement(destination, name string, intoDirectory bool) string {
+	if !intoDirectory {
+		_, name, _ = strings.Cut(name, "/")
+	}
+	return filepath.Join(destination, name)
 }
 
 func extract(header *tar.Header, reader io.Reader, target, destination string, intoDirectory bool) error {
@@ -89,13 +93,8 @@ func extract(header *tar.Header, reader io.Reader, target, destination string, i
 		if err != nil {
 			return err
 		}
-		source := filepath.Join(destination, name)
-		if !intoDirectory {
-			_, rest, _ := strings.Cut(name, "/")
-			source = filepath.Join(destination, rest)
-		}
 		_ = os.Remove(target)
-		return os.Link(source, target)
+		return os.Link(placement(destination, name, intoDirectory), target)
 	default:
 		return nil // Devices, FIFOs and the like: scp doesn't copy them either.
 	}
@@ -121,6 +120,7 @@ func getTar(output, messages io.Writer, sources []string, recursive bool) error 
 	return nil
 }
 
+// errCopyFailed fails a copy whose problems have already been reported, one per source.
 var errCopyFailed = errors.New("")
 
 func addSource(writer *tar.Writer, source string, recursive bool) error {
