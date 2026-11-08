@@ -63,7 +63,7 @@ public static class HoboDisplayFollower {
     const int PelsWidth = 0x80000, PelsHeight = 0x100000, UpdateRegistry = 0x1;
     const ushort GetDeviceID = 0, GetCustomResolution = 1; // viogpum.h
 
-    class Adapter { public string device; public uint handle; public EventWaitHandle resized; }
+    class Adapter { public string device; public uint kmtAdapter; public EventWaitHandle resized; }
 
     // The driver's private escape: VIOGPU_ESCAPE, a type, a length and 4 bytes of data, packed.
     static bool Escape(uint adapter, ushort type, out ushort first, out ushort second) {
@@ -98,11 +98,11 @@ public static class HoboDisplayFollower {
             // Asking for the ID is also what makes the driver create the event.
             ushort id, unused;
             if (!Escape(open.adapter, GetDeviceID, out id, out unused)) continue;
-            IntPtr handle = OpenEvent(Synchronize, false, @"Global\VioGpuResolutionEvent" + id);
-            if (handle == IntPtr.Zero) continue;
+            IntPtr eventHandle = OpenEvent(Synchronize, false, @"Global\VioGpuResolutionEvent" + id);
+            if (eventHandle == IntPtr.Zero) continue;
             var resized = new EventWaitHandle(false, EventResetMode.ManualReset);
-            resized.SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(handle, true);
-            adapters.Add(new Adapter { device = info.deviceName, handle = open.adapter, resized = resized });
+            resized.SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(eventHandle, true);
+            adapters.Add(new Adapter { device = info.deviceName, kmtAdapter = open.adapter, resized = resized });
         }
         return adapters;
     }
@@ -110,7 +110,7 @@ public static class HoboDisplayFollower {
     // Switches the desktop to the driver's custom mode, the display's size. Returns why it couldn't.
     static string Follow(Adapter adapter) {
         ushort width, height;
-        if (!Escape(adapter.handle, GetCustomResolution, out width, out height)) return "the driver didn't give its size";
+        if (!Escape(adapter.kmtAdapter, GetCustomResolution, out width, out height)) return "the driver didn't give its size";
         if (width == 0 || height == 0) return "the driver has no size yet";
         var mode = new DEVMODE();
         mode.size = (short)Marshal.SizeOf(mode);
