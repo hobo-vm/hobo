@@ -5,7 +5,7 @@ import HoboCore
 
 /// SSH into a guest with the system `ssh`/`scp`. Password auth goes through `SSH_ASKPASS`, since
 /// macOS ships no `sshpass`; it is only used until the insecure key is installed.
-public struct GuestSSH: Sendable {
+public struct GuestSSH: GuestShell {
     public enum Auth: Sendable {
         case password(String)
         case key(URL)
@@ -71,40 +71,26 @@ public struct GuestSSH: Sendable {
         return status
     }
 
+    public func exec(
+        _ command: [String], gui: Bool, platform: any VMBundle.Type, onOutput: @escaping @Sendable (GuestStream, Data) -> Void
+    ) async throws -> Int32 {
+        try await exec(
+            line: { gui ? platform.guiExecLine(command, marker: $0) : platform.execLine(command, marker: $0) },
+            cancel: { platform.cancelCommand(pid: $0) },
+            onOutput: onOutput
+        )
+    }
+
     /// Runs `copy` with scp, passing scp's messages to `onOutput`, and returns its exit status.
     /// Cancelling the task ends scp.
     public func copy(_ copy: GuestCopy, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
         try await launch("/usr/bin/scp", options() + copy.scpArguments(remote: remote), output: .capture(onOutput))
     }
 
-    /// Runs `command` and throws if it fails.
-    public func check(_ command: String, what: String) async throws {
-        let status = try await run(command)
-        if status != 0 { throw VMError.commandFailed(what, status) }
-    }
-
-    /// Runs `command` and returns its stdout, trimmed; throws if it fails.
-    public func output(_ command: String, what: String) async throws -> String {
-        let collected = Mutex(Data())
-        let status = try await stream(command) { stream, data in
-            if stream == .stdout { collected.withLock { $0.append(data) } }
-        }
-        if status != 0 { throw VMError.commandFailed(what, status) }
-        return String(decoding: collected.withLock { $0 }, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     /// Copies a host file or directory into the guest.
     public func upload(_ local: URL, to remote: String) async throws {
         let status = try await launch("/usr/bin/scp", ["-r", "-q"] + options() + [local.path, "\(self.remote):\(remote)"], output: .inherit)
         if status != 0 { throw VMError.commandFailed("scp \(local.path) → \(remote)", status) }
-    }
-
-    /// Writes `contents` to a guest file via a host temp file.
-    public func upload(contents: String, to remote: String) async throws {
-        let local = FileManager.default.temporaryDirectory.appending(path: "hobo-\(UUID().uuidString)")
-        try contents.write(to: local, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: local) }
-        try await upload(local, to: remote)
     }
 
     /// Retries a no-op command until sshd accepts us. `exit 0` is one in any guest's shell.

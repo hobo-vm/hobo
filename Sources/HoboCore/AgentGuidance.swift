@@ -57,7 +57,7 @@ public enum AgentGuidance {
 
         ## Test inside the guest, never through the host
 
-        - Everything runs in the guest over SSH, as the `hobo` user with passwordless sudo: \
+        - Everything runs in the guest as the `hobo` user with passwordless sudo: \
         `exec` runs a command, `cp` copies files in and out.
         - Never drive the VM's window from the host: don't click, type or take host screenshots of \
         it, or script it with AppleScript or computer use. `view` and `start --gui` are for a person \

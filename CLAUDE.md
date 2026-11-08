@@ -8,8 +8,9 @@ working tree; `bd dolt push` backs it up to origin's `refs/dolt/data`, and `bd b
 
 ## Build and test
 
-- `swift build` / `swift test` for day-to-day work. Building needs `brew install lld`: the Windows
-  boot driver (`Firmware/WindowsBoot`) is compiled during the build.
+- `swift build` / `swift test` for day-to-day work. Building needs `brew install lld go`: the Windows
+  boot driver (`Firmware/WindowsBoot`) and the guest agent (`Agent`, Go; `cd Agent && go test`) are
+  compiled during the build.
 - `make sign` / `make install`: the binary needs the `com.apple.security.virtualization`
   entitlement (`entitlements.plist`) to create VMs, so anything that boots a VM must use a signed build.
 - VM-booting tests live in `Tests/HoboVMTests` and run only with `HOBO_INTEGRATION=1` (`make integration-test`).

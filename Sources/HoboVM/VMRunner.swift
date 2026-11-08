@@ -126,7 +126,7 @@ public final class VMRunner {
         Task {
             await waitUntilReachable(guest, resumed: saved != nil)
             startIdleCountdown()
-            // Only once the guest answers SSH: its login prompt or login window shows well before
+            // Only once the guest answers: its login prompt or login window shows well before
             // it is usable. After a timeout it shows anyway, so a stuck boot can be looked at.
             if gui, status.state != .stopping { showWindow(guest) }
         }
@@ -148,25 +148,35 @@ public final class VMRunner {
     }
 
     private func waitUntilReachable(_ guest: GuestVM, resumed: Bool) async {
+        let platform = type(of: guest.bundle)
         do {
-            status.detail = "waiting for a DHCP lease"
-            let ip = try await guest.waitForIPAddress(timeout: Self.bootTimeout)
-            status.ipAddress = ip
-            status.detail = "waiting for SSH on \(ip)"
-            let guestSSH = try ssh(ip)
-            try await guestSSH.waitUntilReachable(timeout: Self.bootTimeout)
-            let platform = type(of: guest.bundle)
+            let shell: any GuestShell
+            if platform.usesAgent {
+                // The lease is only for `hobo ip` and `hobo ssh`: the agent needs no network.
+                Task { status.ipAddress = try? await guest.waitForIPAddress(timeout: Self.bootTimeout) }
+                status.detail = "waiting for hobo-agent"
+                shell = guest.agent
+            } else {
+                status.detail = "waiting for a DHCP lease"
+                let ip = try await guest.waitForIPAddress(timeout: Self.bootTimeout)
+                status.ipAddress = ip
+                status.detail = "waiting for SSH on \(ip)"
+                shell = try ssh(ip)
+            }
+            try await shell.waitUntilReachable(timeout: Self.bootTimeout)
+            // A moment for the lease, which is usually there by now, so `start` can report it.
+            for _ in 0..<10 where status.ipAddress == nil { try await Task.sleep(for: .seconds(1)) }
             if resumed {
-                await setClock(guestSSH, platform: platform)
+                await setClock(shell, platform: platform)
                 if !shares.isEmpty, let command = platform.remountSharesCommand {
-                    await remountShares(guestSSH, command: command)
+                    await remountShares(shell, command: command)
                 }
             }
-            await growDiskIfPending(guestSSH, platform: platform)
+            await growDiskIfPending(shell, platform: platform)
             guard status.state == .starting else { return }
             status.state = .running
             status.detail = nil
-            log("Running at \(ip)")
+            log(status.ipAddress.map { "Running at \($0)" } ?? "Running")
         } catch {
             // The VM stays up, so it can still be stopped; `start` reports the timeout.
             log("warning: \(error)")
@@ -174,11 +184,18 @@ public final class VMRunner {
         }
     }
 
+    /// How this run reaches its guest (decision 15): its agent, or SSH once it has a lease.
+    private func shell(_ guest: GuestVM) throws -> (any GuestShell)? {
+        if type(of: guest.bundle).usesAgent { return guest.agent }
+        guard let ip = status.ipAddress ?? DHCPLeases.ipAddress(forMAC: guest.macAddress.string) else { return nil }
+        return try ssh(ip)
+    }
+
     /// A resumed guest's clock is behind by however long it was suspended. NTP first where the
     /// guest has it, then the host's clock; either failing only warns. NTP succeeding isn't taken
     /// on trust: a macOS guest has been seen ahead afterwards by the time it was frozen, so a clock
     /// still off the host's gets the host's time too.
-    private func setClock(_ ssh: GuestSSH, platform: any VMBundle.Type) async {
+    private func setClock(_ ssh: any GuestShell, platform: any VMBundle.Type) async {
         status.detail = "setting the guest's clock"
         if let ntp = platform.ntpClockCommand, (try? await ssh.run(ntp, quiet: true)) == 0,
            (try? await ssh.run(clockAgreesCommand(.now), quiet: true)) == 0 {
@@ -191,7 +208,7 @@ public final class VMRunner {
         }
     }
 
-    private func remountShares(_ ssh: GuestSSH, command: String) async {
+    private func remountShares(_ ssh: any GuestShell, command: String) async {
         status.detail = "remounting the shared folders"
         do {
             try await ssh.check(command, what: "remounting the shared folders")
@@ -203,7 +220,7 @@ public final class VMRunner {
     /// Decision 9's second step: `hobo set --disk` grew the image while the VM was stopped, and
     /// the guest's root filesystem grows into the new space live. A failure leaves the flag set,
     /// so the next boot tries again; the VM runs either way.
-    private func growDiskIfPending(_ ssh: GuestSSH, platform: any VMBundle.Type) async {
+    private func growDiskIfPending(_ ssh: any GuestShell, platform: any VMBundle.Type) async {
         let file = store.bundle(for: name).appending(path: VMStore.configFile)
         guard var config = try? VMConfig.load(from: file), config.diskGrowPending else { return }
         status.detail = "growing the guest's filesystem"
@@ -294,34 +311,33 @@ public final class VMRunner {
         case .exec(let command, let gui):
             guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
             let platform = type(of: guest.bundle)
-            return await withGuest(reply: reply) { ssh, onOutput in
-                try await ssh.exec(
-                    line: { marker in
-                        gui ? platform.guiExecLine(command, marker: marker) : platform.execLine(command, marker: marker)
-                    },
-                    cancel: { platform.cancelCommand(pid: $0) },
-                    onOutput: onOutput
-                )
+            return await withGuest(reply: reply) { shell, onOutput in
+                try await shell.exec(command, gui: gui, platform: platform, onOutput: onOutput)
             }
         case .copy(let copy):
-            return await withGuest(reply: reply) { ssh, onOutput in
-                try await ssh.copy(copy, onOutput: onOutput)
+            return await withGuest(reply: reply) { shell, onOutput in
+                try await shell.copy(copy, onOutput: onOutput)
+            }
+        case .provision(let recipeFile):
+            return await withGuest(reply: reply) { shell, onOutput in
+                try await Provisioning.provision(URL(filePath: recipeFile), shell: shell, onOutput: onOutput)
             }
         }
     }
 
-    /// Runs a streaming request against the guest once it answers SSH, sending its output to the
+    /// Runs a streaming request against the guest once it is running, sending its output to the
     /// client and ending with its exit status. A client that hangs up cancels it.
     private func withGuest(
         reply: ControlReply,
-        _ body: (GuestSSH, @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32
+        _ body: (any GuestShell, @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32
     ) async -> ControlResponse {
         guard snapshotSave == nil else { return .error("\(name) is saving a snapshot; try again once that's done") }
-        guard status.state == .running, let ip = status.ipAddress else {
+        guard status.state == .running, let guest else {
             return .error("\(name) is \(status.state.rawValue)\(status.detail.map { " (\($0))" } ?? "")")
         }
         do {
-            let code = try await body(try ssh(ip)) { stream, data in
+            guard let shell = try shell(guest) else { return .error("\(name) has no IP address") }
+            let code = try await body(shell) { stream, data in
                 // Split so no message nears the control protocol's size limit once base64-encoded.
                 for start in stride(from: data.startIndex, to: data.endIndex, by: Self.outputChunkBytes) {
                     let chunk = data[start..<min(start + Self.outputChunkBytes, data.endIndex)]
@@ -424,8 +440,8 @@ public final class VMRunner {
         }
         if let failure { return failure }
         // The guest's clock stood still during the pause.
-        if status.state == .running, let ip = status.ipAddress, let ssh = try? ssh(ip) {
-            await setClock(ssh, platform: type(of: guest.bundle))
+        if status.state == .running, let shell = try? shell(guest) {
+            await setClock(shell, platform: type(of: guest.bundle))
         }
         log("Saved snapshot \(tag)")
         return .accepted
@@ -489,7 +505,7 @@ public final class VMRunner {
         Task { await stop(force: force) }
     }
 
-    /// Decision 11: the guest's own shutdown over SSH if the guest answers, otherwise ask it (a virtual
+    /// Decision 11: the guest's own shutdown if the guest answers, otherwise ask it (a virtual
     /// power-button press, which a macOS guest may only answer with a dialog), then power off.
     private func stop(force: Bool) async {
         guard let guest else { finish(0) }
@@ -498,15 +514,14 @@ public final class VMRunner {
             // A paused guest can't shut down. A forced stop powers off first, so a save that hangs
             // can't keep the VM up, and only then waits for the save, for a bounded time.
             _ = await snapshotSave?.value
-            if let ip = status.ipAddress ?? DHCPLeases.ipAddress(forMAC: guest.macAddress.string),
-               let ssh = try? ssh(ip), (try? await ssh.run("exit 0", quiet: true)) == 0 {
-                status.detail = "shutting down over SSH"
-                // ssh usually drops mid-command here; the VM state is what matters.
-                _ = try? await ssh.run(type(of: guest.bundle).shutdownCommand, quiet: true)
+            if let shell = try? shell(guest), await isReachable(shell) {
+                status.detail = "shutting down the guest"
+                // The connection usually drops mid-command here; the VM state is what matters.
+                _ = try? await shell.run(type(of: guest.bundle).shutdownCommand, quiet: true)
                 if await stopped(guest, within: Self.sshShutdownTimeout) { finish(0) }
             } else {
                 status.detail = "asking the guest to shut down"
-                log("The guest doesn't answer SSH; asking it to shut down")
+                log("The guest doesn't answer; asking it to shut down")
                 if guest.requestStop(), await stopped(guest, within: Self.gracefulTimeout) { finish(0) }
             }
         }
@@ -543,6 +558,11 @@ public final class VMRunner {
     /// Whether the guest is off within `timeout`; a VM that stopped with an error counts as off.
     private func stopped(_ guest: GuestVM, within timeout: Duration) async -> Bool {
         (try? await guest.waitForPowerOff(timeout: timeout)) ?? true
+    }
+
+    private func isReachable(_ shell: any GuestShell) async -> Bool {
+        if let agent = shell as? GuestAgent { return await agent.isReachable() }
+        return (try? await shell.run("exit 0", quiet: true)) == 0
     }
 
     private func ssh(_ ip: String) throws -> GuestSSH {

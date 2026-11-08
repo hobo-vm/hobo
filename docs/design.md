@@ -236,7 +236,11 @@ global VMs on 2026-11-01.
     uutils `date` rejects the BSD form) and chrony refines it. A macOS guest's shares are also
     remounted over SSH: VZ's virtio-fs device restarts on the host, and its old handles fail lookups
     with ENOENT until the mount is replaced (files a guest process had open in a share are lost). A
-    Linux guest's mount keeps working across the restore, so it is left alone. Resume took about
+    Linux guest's mount keeps working across the restore, but its lookups stay cached for a few
+    seconds of guest time, which stood still: a file the host added during the suspension isn't
+    found until then. Over SSH that time had passed before anything ran; the agent answers within
+    a second, so the guest drops its dentry cache instead (`drop_caches`, checked 2026-11-08).
+    Resume took about
     6 s and a suspend about 8 s for an 8 GB guest using 1.5 GB. A resume that fails (a share
     folder gone, state the host's VZ can't read) keeps the state and points to `start --cold`.
     Discarding memory is always explicit: `stop` refuses a suspended VM, and `hobo discard` (or
@@ -355,14 +359,59 @@ global VMs on 2026-11-01.
     - `_vm-run` is an `NSApplication` (`.accessory`) from the start. It runs AppKit's event loop
       from a synchronous `main`: started inside Swift's async main, the loop never services the
       main actor.
-15. **Guest channel.** SSH (`hobo` user, hobo's insecure key; host keys aren't checked, since
-    IPs are reused across VMs and rebuilds). `ssh`/`scp` are spawned with responsibility disclaimed
+15. **Guest channel.** hobo-agent over virtio-vsock for everything Hobo itself does in a guest, and
+    SSH for people (`hobo ssh`, raw `ssh`) and for the steps of a create before the agent is in
+    place. Linux guests have the agent; macOS and Windows guests are still on SSH until theirs land
+    (hobo-yis), and `VMBundle.usesAgent` picks per guest until then. SSH is the `hobo` user with
+    hobo's insecure key; host keys aren't checked, since IPs are reused across VMs and rebuilds. `ssh`/`scp` are spawned with responsibility disclaimed
     (`responsibility_spawnattrs_setdisclaim`, as terminals do), so macOS's Local Network privacy
     sees Apple's `ssh` rather than hobo (decided 2026-11-02): the VM process runs under launchd as
     its own app, an ad-hoc build is a new app on every rebuild, and each one put up an Allow dialog
     that silently failed every SSH probe until someone clicked it. `hobo exec`/`cp`/`screenshot` go through the
     control socket, which renews leases (decision 18); agents should use them rather than raw `ssh`.
-    A vsock `hobo-agent` may come later. Decided 2026-11-01:
+    **hobo-agent** (decided 2026-11-08, hobo-yis), replacing SSH for Hobo's own traffic:
+    - Why: no network in the way (no DHCP lease to find, no Local Network prompt, a guest with its
+      NIC down or wedged still answers, as Windows' does after a restore), readiness that is the
+      agent answering rather than SSH polling, and one way into the desktop session per guest.
+    - One Go program (`Agent/`), with no dependencies: it builds for each guest from the Mac with
+      `GOOS`/`GOARCH` alone, in SwiftPM's sandbox (`HoboAgentPlugin`, like the Windows boot driver),
+      and the binaries are compiled into `hobo`. Building needs `brew install go`.
+    - **The stub.** Create installs the agent's binary in the guest, run at boot by the guest's
+      service manager as `hobo-agent stub`. The stub fetches the agent from the host on every boot
+      (guest port → host port 1100: `{"fetch":"linux-arm64"}`, answered `{"size":n}` and the bytes)
+      and execs it, so the agent in a guest is always the hobo running it, clones and old snapshots
+      included, with no update step. That exchange is frozen: every stub installed must keep
+      working. A stub could have been a script, but no guest has a tool that opens a vsock socket.
+    - **Requests.** The agent runs as root and listens on guest port 1101, accepting only the
+      host's CID (2), so a guest process can't reach a root agent over vsock loopback. There is
+      no other authentication: only the VM process can reach the device, and `vagrant` has
+      passwordless sudo anyway. Each request is a connection, opened by the host: one line of
+      JSON (`ping`, `exec`, `put`, `get`), then frames both ways (a type byte, a 4-byte length, the
+      bytes: stdout, stderr, tar data, the exit status, or why it couldn't run). Frames rather than
+      the control socket's JSON lines, so output and copies go unencoded. Closing the connection
+      cancels a request, and the agent kills the command's process group (`SIGTERM`, then
+      `SIGKILL` after 5 s).
+    - `exec` runs a command line in `vagrant`'s login shell, as sshd does, with a login's
+      environment (`HOME`, `USER`, `SHELL`, a system `PATH`, and on Linux the user's runtime
+      directory), so the commands written for SSH (`sudo -n …`, the GUI scripts) run unchanged.
+    - `cp` is a tar stream: the host's `tar` (no AppleDouble files or extended attributes) makes
+      or extracts it, and the agent runs itself as `vagrant` to extract or make the guest's side,
+      so files belong to `vagrant` and relative paths are from its home. Both sides give scp's
+      meaning: into a directory that exists, or a single source becomes the destination; a
+      directory without `-r`, or a missing source, is reported and fails the copy.
+    - `hobo provision` runs in the VM process (a `provision` request, streaming progress and the
+      steps' output), so its steps go through the agent too and hold an ephemeral VM's idle
+      timeout like any request.
+    - Readiness is a `ping` that answers, polled once a second; the guest refuses the connection
+      until the agent listens. The DHCP lease is still read, for `hobo ip` and `hobo ssh`, but
+      nothing waits for it beyond a few seconds so `start` can print it.
+    - Alternatives rejected: an agent per guest OS (three codebases); updating an installed agent
+      by version handshake (atomic replace and restart under three service managers, and a broken
+      agent can lock itself out); a second, per-user agent for the desktop session (each OS has a
+      supported way for root to start a process in it); a fallback to SSH when the agent doesn't
+      answer, which would hide its failures.
+
+    Before hobo-agent (decided 2026-11-01), and still for guests on SSH:
     - `hobo ip` asks the VM process, which knows the guest's lease; a stopped VM, or one without a
       lease yet, is an error.
     - `hobo ssh` gets the IP the same way and `execv`s the system `ssh`, so sessions, TTYs and exit
@@ -673,22 +722,25 @@ global VMs on 2026-11-01.
       since it comes from `/etc/machine-id`). The netplan matches the NIC by driver
       (`virtio_net`), not MAC, so a clone with a new MAC still gets a network, with nothing in the
       guest rewritten (cloud-init is off by then); `config.json` records `nicMatchedByDriver`. Linux
-      VMs created before 2026-11-03 matched by MAC, and `clone` refuses them: create them again. Create waits for `cloud-init status
-      --wait` over key SSH, runs the recipe's steps, and cleanup touches
+      VMs created before 2026-11-03 matched by MAC, and `clone` refuses them: create them again. The
+      seed also writes hobo-agent's stub (`/usr/local/libexec/hobo-agent`, base64 in `write_files`)
+      and its systemd unit, started from `runcmd`, so the whole create goes through the agent
+      (decision 15). Create waits for `cloud-init status
+      --wait` through it, runs the recipe's steps, and cleanup touches
       `/etc/cloud/cloud-init.disabled` and runs `fstrim`, so later boots and clones never re-run
       cloud-init. Recipe-supplied cloud-init user-data was rejected: `[[provision]]` is the one
-      provisioning language. Boot to SSH takes about 10 s; a create, about a minute.
+      provisioning language. Boot to the agent answering takes about 8 s; a create, about 30 s.
     - `[security]` and `[gui_testing]` are macOS-only and fail validation on a Linux recipe: GUI
       testing needs no grant there, only the desktop `init --os linux` writes a step for (decision
       8), so `--server` is the only opt-out. Decided 2026-11-07 and verified on Ubuntu 26.04
       (GNOME 50, Wayland only):
-      - `exec --gui` runs as `hobo` straight from the SSH shell, with no `sudo`, so streaming,
+      - `exec --gui` runs as `hobo` straight from its login shell, with no `sudo`, so streaming,
         exit status and cancelling (a kill of the process group, which reaches the app) are
         `exec`'s. It waits up to 60 s, like macOS, for `loginctl` to give `hobo` a graphical
         session and for the systemd user manager to hold its display, then imports that manager's
         environment, which GNOME fills and apps launched from the desktop get (`WAYLAND_DISPLAY`,
         `DISPLAY`, `XAUTHORITY`, `XDG_SESSION_TYPE=wayland` over SSH's `tty`, the accessibility
-        variables), keeping SSH's `PATH`. With no display manager enabled (`--server`) it exits 125
+        variables), keeping the login's `PATH`. With no display manager enabled (`--server`) it exits 125
         at once rather than waiting.
       - `screenshot` goes through the desktop portal's Screenshot API (`interactive=false`), from a
         `python3` script using GLib, since GNOME's own Shell screenshot API refuses callers it
@@ -719,7 +771,9 @@ global VMs on 2026-11-01.
       `config.json` (`VMConfig`), image index, provisioners
     - `HoboVM`: VM bundles (`VMBundle`: `MacVMBundle`, `LinuxVMBundle`, `WindowsVMBundle`, each
       building its VZ configuration), VM creation, the VM
-      process (`VMRunner`), display
+      process (`VMRunner`), display, and the host's side of the guest channel (`GuestShell`:
+      `GuestAgent`, `GuestSSH`)
+    - `Agent`: hobo-agent, in Go, built into `HoboVM` by `HoboAgentPlugin` (decision 15)
     - `HoboControl`: client ↔ VM-process socket protocol, and the client side of `start`/`stop` (`VMLifecycle`)
     - `HoboMCP`: MCP tools
     - `hobo`: CLI plus hidden `_vm-run` and `mcp` subcommands
@@ -793,7 +847,7 @@ Both are Swift CLIs on the Virtualization framework with named VMs, so the core 
 | Storage | `~/.tart/` (hidden) | `~/.lume/`, configurable | `~/Hobo/<name>.hobovm`, visible |
 | Process model | `tart run` in the foreground | `lume serve` HTTP daemon | one `_vm-run` per VM under launchd, no daemon |
 | Display | window or VNC | VNC | headless `.accessory`, `view` on demand, no VNC |
-| Guest channel | SSH; `tart exec` via a vsock guest agent | SSH; Cua computer server | SSH; vsock agent deferred |
+| Guest channel | SSH; `tart exec` via a vsock guest agent | SSH; Cua computer server | vsock agent, fetched from the host each boot; SSH for people |
 | Snapshots | none (clone instead) | none known | live and stopped |
 | Ephemeral VMs | left to Orchard/CI | Cua sandboxes | `--ephemeral` + idle-timeout leases |
 | Networking | NAT, bridged, Softnet isolation | NAT, bridged | shared NAT only |
@@ -811,7 +865,7 @@ host-side screenshots and clicks; Windows guests; visible storage.
 **What Hobo gives up.** Time to the first VM: a Tart user runs macOS + Xcode from a prebuilt image
 in minutes, while every Hobo user downloads, installs and provisions (accepted in decision 2; an
 optional bundle push/pull could be added later without reviving boxes). Older hosts. Network
-isolation (Softnet) and bridged mode. A guest agent. The maturity of tools proven at scale.
+isolation (Softnet) and bridged mode. The maturity of tools proven at scale.
 
 **To borrow.** Tart runs clones of one macOS VM side by side. Its `clone` regenerates the MAC,
 and the machine identifier only for Linux guests; `tart set --random-serial` gives a macOS VM a new

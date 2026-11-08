@@ -25,9 +25,10 @@ let package = Package(
             resources: [.embedInCode("Resources/Signs"), .embedInCode("Resources/Windows")],
             // For `ucal_getWindowsTimeZoneID`, which Foundation doesn't surface.
             linkerSettings: [.linkedLibrary("icucore")],
-            plugins: ["WindowsBootPlugin"]
+            plugins: ["WindowsBootPlugin", "HoboAgentPlugin"]
         ),
         .plugin(name: "WindowsBootPlugin", capability: .buildTool()),
+        .plugin(name: "HoboAgentPlugin", capability: .buildTool()),
         .target(name: "HoboMCP", dependencies: ["HoboCore", "HoboControl"]),
         .executableTarget(
             name: "hobo",

@@ -9,6 +9,8 @@ public final class GuestVM {
     public let macAddress: VZMACAddress
     let machine: VZVirtualMachine
     private let observer = StopObserver()
+    /// The listener's delegate, which it holds weakly.
+    let agentFetchServer = AgentFetchServer()
 
     public init(bundle: any VMBundle, cpus: Int, memoryBytes: UInt64, macAddress: VZMACAddress, shares: [VMShare] = []) throws {
         self.bundle = bundle
@@ -17,6 +19,7 @@ public final class GuestVM {
             cpus: cpus, memoryBytes: memoryBytes, macAddress: macAddress, shares: shares
         ))
         machine.delegate = observer
+        serveAgentFetches()
     }
 
     /// Called when the guest powers itself off (nil) or the VM stops with an error. Not called

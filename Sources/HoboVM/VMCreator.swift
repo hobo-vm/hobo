@@ -8,7 +8,7 @@ import Virtualization
 /// - macOS: IPSW → unattended install → guest conventions → `[security]` (SIP off by hand in
 ///   recoveryOS) → `[gui_testing]` grants → recipe steps → cleanup → clean shutdown.
 /// - Linux: cloud image → ASIF disk → a boot with a cloud-init seed that applies the guest
-///   conventions → recipe steps → cleanup → clean shutdown.
+///   conventions and installs hobo-agent → recipe steps, through the agent → cleanup → clean shutdown.
 /// - Windows: ISO → install media → a boot that installs from it → a boot that runs Windows' own
 ///   setup and the guest conventions → recipe steps → cleanup → clean shutdown.
 @MainActor
@@ -148,7 +148,7 @@ public struct VMCreator {
         let version = try await withVM(bundle, machine: machine) { vm, ssh in
             if resizable { try await followWindowsDisplay(ssh) }
             let version = try await ssh.output(WindowsGuest.versionCommand, what: "reading the Windows version")
-            try await Provisioning.run(recipe, ssh: ssh, log: log)
+            try await Provisioning.run(recipe, shell: ssh, log: log)
             log("Cleaning up")
             try await ssh.check(WindowsGuest.cleanupCommand, what: "cleanup")
             try await shutDown(vm, ssh: ssh)
@@ -164,12 +164,10 @@ public struct VMCreator {
 
     /// Windows starts at 1024×768 whatever the display offers, and remembers the size it's set to. From
     /// the next logon, `display-follower.ps1` keeps it at the display's size, which follows the window.
-    private func followWindowsDisplay(_ ssh: GuestSSH) async throws {
-        let status = try await ssh.exec(
-            line: { WindowsGuest.guiExecLine(WindowsGuest.setDisplayCommand, marker: $0) },
-            cancel: { WindowsGuest.cancelCommand(pid: $0) },
-            onOutput: { [log] _, data in log(String(decoding: data, as: UTF8.self)) }
-        )
+    private func followWindowsDisplay(_ ssh: any GuestShell) async throws {
+        let status = try await ssh.exec(WindowsGuest.setDisplayCommand, gui: true, platform: WindowsVMBundle.self) { [log] _, data in
+            log(String(decoding: data, as: UTF8.self))
+        }
         if status != 0 { throw VMError.commandFailed("setting the display size", status) }
         try await ssh.check(WindowsGuest.followDisplayCommand, what: "registering the display follower")
     }
@@ -240,8 +238,8 @@ public struct VMCreator {
     }
 
     /// The end of every create: the recipe's steps, cleanup, and a clean shutdown.
-    private func provisionAndShutDown(_ vm: GuestVM, ssh: GuestSSH, recipe: Recipe, cleanupScript: String) async throws {
-        try await Provisioning.run(recipe, ssh: ssh, log: log)
+    private func provisionAndShutDown(_ vm: GuestVM, ssh: any GuestShell, recipe: Recipe, cleanupScript: String) async throws {
+        try await Provisioning.run(recipe, shell: ssh, log: log)
         log("Cleaning up")
         try await ssh.upload(contents: cleanupScript, to: "/tmp/hobo-cleanup.sh")
         try await ssh.check("sudo -n /bin/bash /tmp/hobo-cleanup.sh", what: "cleanup")
@@ -346,7 +344,7 @@ public struct VMCreator {
     static let sipDisabledCommand = "csrutil status | grep -q 'status: disabled'"
 
     /// What the guest actually runs with, for `config.json`; fails if it isn't what the recipe asked.
-    private func checkSecurity(_ ssh: GuestSSH, wanted: Recipe.Security) async throws -> Recipe.Security {
+    private func checkSecurity(_ ssh: any GuestShell, wanted: Recipe.Security) async throws -> Recipe.Security {
         let actual = Recipe.Security(
             sip: try await ssh.run(Self.sipDisabledCommand, quiet: true) != 0,
             amfi: try await ssh.run("sysctl -n kern.bootargs | grep -qw \(Self.amfiBootArg)", quiet: true) != 0
@@ -355,17 +353,22 @@ public struct VMCreator {
         return actual
     }
 
-    /// Boots the bundle, logs in with its key, runs `body`, and expects it to shut the VM down.
-    private func withVM<T>(_ bundle: any VMBundle, machine: Machine, _ body: (GuestVM, GuestSSH) async throws -> T) async throws -> T {
+    /// Boots the bundle, reaches it through its agent (or logs in with its key), runs `body`, and
+    /// expects it to shut the VM down.
+    private func withVM<T>(_ bundle: any VMBundle, machine: Machine, _ body: (GuestVM, any GuestShell) async throws -> T) async throws -> T {
         let auth = try GuestSSH.Auth.forVM(bundle: bundle.directory, home: home)
         let vm = try GuestVM(bundle: bundle, machine: machine)
         log("Booting")
         try await vm.start()
         do {
-            let ip = try await vm.waitForIPAddress(timeout: .seconds(10 * 60))
-            let ssh = GuestSSH(host: ip, auth: auth)
-            try await ssh.waitUntilReachable(timeout: .seconds(10 * 60))
-            return try await body(vm, ssh)
+            let shell: any GuestShell
+            if type(of: bundle).usesAgent {
+                shell = vm.agent
+            } else {
+                shell = GuestSSH(host: try await vm.waitForIPAddress(timeout: .seconds(10 * 60)), auth: auth)
+            }
+            try await shell.waitUntilReachable(timeout: .seconds(10 * 60))
+            return try await body(vm, shell)
         } catch {
             try await holdForDebugging(vm, auth: auth, error: error)
             throw error
@@ -373,9 +376,9 @@ public struct VMCreator {
     }
 
     /// `command` is for when the guest's usual one (`VMBundle.shutdownCommand`) won't do yet.
-    private func shutDown(_ vm: GuestVM, ssh: GuestSSH, command: String? = nil) async throws {
+    private func shutDown(_ vm: GuestVM, ssh: any GuestShell, command: String? = nil) async throws {
         log("Shutting down")
-        // ssh usually drops mid-command here; the VM state is what matters.
+        // The connection usually drops mid-command here; the VM state is what matters.
         try await ssh.run(command ?? type(of: vm.bundle).shutdownCommand, quiet: true)
         if try await !vm.waitForPowerOffOrForce(timeout: .seconds(5 * 60)) {
             log("warning: guest did not power off within 5 minutes; forced it off")

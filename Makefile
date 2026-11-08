@@ -24,6 +24,7 @@ install: sign ## Install the signed binary to $(PREFIX)/bin
 test: readme-check ## README check, docs-script tests, then unit tests
 	node --test 'site/scripts/*.test.mjs'
 	swift test
+	cd Agent && go test ./...
 
 # README.md's feature tour is generated from docs/features/*.md (site/scripts/readme.mjs).
 readme: ## Regenerate README.md's features from docs/features

@@ -15,15 +15,21 @@ public struct LinuxVMBundle: VMBundle {
     public static func setClockCommand(_ date: Date) -> String {
         "sudo -n date -u -s @\(String(format: "%.3f", date.timeIntervalSince1970)) >/dev/null"
     }
-    /// The guest's virtio-fs mount keeps working across a restore: after a resume it sees files
-    /// the host added and writes through (checked 2026-11-02 on Ubuntu 26.04).
-    public static let remountSharesCommand: String? = nil
+    /// The guest's virtio-fs mount keeps working across a restore, but its lookups stay cached for
+    /// a few seconds of guest time, which stood still while it was suspended: a file the host added
+    /// meanwhile isn't found until they expire. The agent answers within a second of the resume,
+    /// so the guest drops its dentry cache instead (checked 2026-11-08 on Ubuntu 26.04).
+    public static let remountSharesCommand: String? = "sudo -n sh -c 'echo 2 > /proc/sys/vm/drop_caches'"
     /// Grows the root partition to the end of the disk, then its ext4 filesystem, both live:
     /// cloud-init's growpart did this at create but is off afterwards. growpart exits 1 when the
     /// partition already fills the disk, as on a retry after `resize2fs` failed.
     public static let growDiskCommand = #"root=$(findmnt -no SOURCE /) && part=$(cat "/sys/class/block/${root#/dev/}/partition") && { sudo -n growpart "/dev/$(lsblk -no PKNAME "$root")" "$part" || [ $? -eq 1 ]; } && sudo -n resize2fs "$root""#
     public static func guiExecLine(_ command: [String], marker: String) -> String {
         "echo \(marker)$$; " + guiExecScript(command)
+    }
+    public static let usesAgent = true
+    public static func agentCommand(_ command: [String], gui: Bool) -> String {
+        gui ? guiExecScript(command) : shellQuote(command)
     }
 
     /// Waits for `hobo`'s graphical session, then runs the command with that session's
@@ -145,6 +151,7 @@ public struct LinuxVMBundle: VMBundle {
         config.graphicsDevices = [graphics]
         config.storageDevices = storage
         config.networkDevices = [natNetwork(macAddress: macAddress)]
+        config.socketDevices = [agentSocketDevice()]
         config.serialPorts = [console]
         config.keyboards = [VZUSBKeyboardConfiguration()]
         config.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
@@ -161,7 +168,7 @@ public struct LinuxVMBundle: VMBundle {
         let iso = directory.appending(path: "cidata.iso")
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: staging) }
-        for (name, contents) in CloudInit.seed(vmName: vmName, uid: getuid()) {
+        for (name, contents) in CloudInit.seed(vmName: vmName, uid: getuid(), agent: HoboAgentBinaries.linux) {
             try contents.write(to: staging.appending(path: name), atomically: true, encoding: .utf8)
         }
         try? FileManager.default.removeItem(at: iso)

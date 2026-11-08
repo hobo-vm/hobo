@@ -2,7 +2,7 @@ import Foundation
 
 /// The NoCloud seed that applies the guest conventions to a Linux guest on its first boot:
 /// `hobo`/`hobo` with passwordless sudo and the insecure key, password SSH, and no
-/// automatic updates, plus the fstab line that mounts the VM's shares. It is attached (as a
+/// automatic updates, plus the fstab line that mounts the VM's shares and hobo-agent's stub. It is attached (as a
 /// `cidata` ISO) only while `create` runs; cleanup then disables cloud-init, so later boots and
 /// clones never re-run it.
 public enum CloudInit {
@@ -13,12 +13,17 @@ public enum CloudInit {
     public static let shareTag = "hobo"
     public static let shareMountPoint = "/mnt/hobo"
 
+    /// Where the stub lives, and the systemd unit that runs it at boot.
+    public static let agentPath = "/usr/local/libexec/hobo-agent"
+    public static let agentUnit = "hobo-agent.service"
+
     /// The seed's files, by name, for the VM `vmName`. `uid` is the host user's, given to
     /// `hobo` so that shared files, which the guest sees with their host owner, are its own.
-    public static func seed(vmName: String, uid: UInt32) -> [String: String] {
+    /// `agent` is hobo-agent built for Linux, installed as the stub (decision 15).
+    public static func seed(vmName: String, uid: UInt32, agent: Data) -> [String: String] {
         [
             "meta-data": metaData(hostname: hostname(for: vmName)),
-            "user-data": userData(uid: uid),
+            "user-data": userData(uid: uid, agent: agent),
             "network-config": networkConfig,
         ]
     }
@@ -39,7 +44,7 @@ public enum CloudInit {
     }
 
     /// `users` without `default` leaves out the image's own `ubuntu` user.
-    static func userData(uid: UInt32) -> String {
+    static func userData(uid: UInt32, agent: Data) -> String {
         let username = Conventions.username
         return """
         #cloud-config
@@ -74,7 +79,25 @@ public enum CloudInit {
             append: true
             content: |
               \(shareTag) \(shareMountPoint) virtiofs defaults,nofail 0 0
+          # hobo-agent's stub, which fetches the agent from the host on every boot and runs it.
+          - path: \(agentPath)
+            permissions: '0755'
+            encoding: b64
+            content: \(agent.base64EncodedString())
+          - path: /etc/systemd/system/\(agentUnit)
+            content: |
+              [Unit]
+              Description=Hobo guest agent
+
+              [Service]
+              ExecStart=\(agentPath) stub
+              Restart=always
+              RestartSec=1
+
+              [Install]
+              WantedBy=multi-user.target
         runcmd:
+          - [systemctl, enable, --now, \(agentUnit)]
           - [mkdir, -p, \(shareMountPoint)]
           - [update-grub]
           # setupcon would otherwise load the 8x16 font back partway through boot. 10x20 is its

@@ -54,7 +54,7 @@ public struct VMSummary: Encodable, Equatable, Sendable {
     /// What a `running` VM's process says it is doing, when that isn't plainly running: `starting`
     /// or `stopping` (a suspend is `stopping`, detail `saving state`). Only from `VMLifecycle.listing()`.
     public var phase: String?
-    /// The VM process's detail for `phase`, e.g. `booting` or `shutting down over SSH`.
+    /// The VM process's detail for `phase`, e.g. `booting` or `shutting down the guest`.
     public var phaseDetail: String?
     /// The idle timeout a `running` ephemeral VM's process says this run has; absent with `off`.
     /// Only from `VMLifecycle.listing()`.

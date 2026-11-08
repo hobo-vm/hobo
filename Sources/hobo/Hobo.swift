@@ -429,7 +429,7 @@ struct List: OutputCommand {
 struct Start: OutputCommand {
     static let configuration = CommandConfiguration(
         abstract: "Boot a VM in the background under launchd, headless unless --gui, or resume it if suspended.",
-        discussion: "Waits until the guest answers SSH. Interrupting the wait leaves the VM booting."
+        discussion: "Waits until the guest answers. Interrupting the wait leaves the VM booting."
     )
 
     @Argument(help: "Name of the VM.")
@@ -509,7 +509,7 @@ struct Start: OutputCommand {
 struct Stop: OutputCommand {
     static let configuration = CommandConfiguration(
         abstract: "Shut a VM down.",
-        discussion: "Runs shutdown over SSH if the guest answers, otherwise asks the guest to shut down, then powers it off if it is still on."
+        discussion: "Runs shutdown in the guest if it answers, otherwise asks the guest to shut down, then powers it off if it is still on."
     )
 
     @Argument(help: "Name of the VM.")

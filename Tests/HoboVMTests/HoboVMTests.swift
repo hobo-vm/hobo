@@ -311,6 +311,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["cp", payload.path, "litest:/var/tmp/payload.txt"], in: work, environment: env) == 0)
         #expect(try run(hobo, ["cp", "litest:/var/tmp/payload.txt", "back.txt"], in: work, environment: env) == 0)
         #expect(try String(contentsOf: work.appending(path: "back.txt"), encoding: .utf8) == "over and back\n")
+        try checkAgent("litest", hobo: hobo, work: work, env: env)
         #expect(try run(hobo, ["view", "litest"], in: work, environment: env) == 0)
         #expect(try String(contentsOf: bundle.appending(path: "console.log"), encoding: .utf8).contains("litest login:"))
 
@@ -412,6 +413,55 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
 
         #expect(try run(hobo, ["delete", "litest", "--yes"], in: work, environment: env) == 0)
         #expect(try FileManager.default.contentsOfDirectory(atPath: vms.path).isEmpty)
+    }
+
+    /// What hobo-agent (decision 15) does beyond plain exec and cp: directories copy both ways as
+    /// `scp -r` would, a cancelled exec ends in the guest, `provision` runs in the VM process, and
+    /// none of it needs the guest's network.
+    func checkAgent(_ vm: String, hobo: String, work: URL, env: [String: String]) throws {
+        let tree = work.appending(path: "tree")
+        try FileManager.default.createDirectory(at: tree.appending(path: "sub"), withIntermediateDirectories: true)
+        try "deep\n".write(to: tree.appending(path: "sub/deep.txt"), atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(atPath: tree.appending(path: "link").path, withDestinationPath: "sub/deep.txt")
+        #expect(try run(hobo, ["cp", tree.path, "\(vm):tree"], in: work, environment: env) != 0, "a directory needs -r")
+        #expect(try run(hobo, ["cp", "-r", tree.path, "\(vm):tree"], in: work, environment: env) == 0)
+        #expect(try output(hobo, ["exec", vm, "--", "cat", "tree/link"], environment: env) == "deep\n")
+        #expect(try run(hobo, ["cp", "-r", "\(vm):tree", "tree-back"], in: work, environment: env) == 0)
+        #expect(try String(contentsOf: work.appending(path: "tree-back/sub/deep.txt"), encoding: .utf8) == "deep\n")
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: work.appending(path: "tree-back/link").path) == "sub/deep.txt")
+        #expect(try run(hobo, ["cp", "\(vm):/nonexistent", "\(vm):tree/sub/deep.txt", "missing-dir/"], in: work, environment: env) != 0)
+
+        // ^C on the client ends the command in the guest.
+        let sleeper = Process()
+        sleeper.executableURL = URL(filePath: hobo)
+        sleeper.arguments = ["exec", vm, "--", "sleep", "1234"]
+        sleeper.environment = ProcessInfo.processInfo.environment.merging(env) { $1 }
+        try sleeper.run()
+        Thread.sleep(forTimeInterval: 3)
+        #expect(try run(hobo, ["exec", vm, "--", "pgrep", "-f", "sleep 1234"], in: work, environment: env) == 0)
+        sleeper.interrupt()
+        sleeper.waitUntilExit()
+        Thread.sleep(forTimeInterval: 2)
+        #expect(try run(hobo, ["exec", vm, "--", "pgrep", "-f", "sleep 1234"], in: work, environment: env) != 0)
+
+        // A recipe of its own: provision reads only its steps, but it must still be a whole recipe.
+        let recipe = work.appending(path: "provision.toml")
+        try (String(contentsOf: work.appending(path: "Hobo.toml"), encoding: .utf8) + """
+
+        [[provision]]
+        type = "shell"
+        privileged = false
+        inline = "echo provisioned as $(whoami) > ~/provisioned"
+        """).write(to: recipe, atomically: true, encoding: .utf8)
+        #expect(try run(hobo, ["provision", vm, recipe.path], in: work, environment: env) == 0)
+        #expect(try output(hobo, ["exec", vm, "--", "cat", "provisioned"], environment: env) == "provisioned as vagrant\n")
+
+        // With its network down the guest still answers.
+        let nic = try output(hobo, ["exec", vm, "--", "sh", "-c", "ls /sys/class/net | grep -v lo"], environment: env)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(try run(hobo, ["exec", vm, "--", "sudo", "-n", "ip", "link", "set", nic, "down"], in: work, environment: env) == 0)
+        #expect(try output(hobo, ["exec", vm, "--", "cat", "/sys/class/net/\(nic)/operstate"], environment: env) == "down\n")
+        #expect(try run(hobo, ["exec", vm, "--", "sudo", "-n", "ip", "link", "set", nic, "up"], in: work, environment: env) == 0)
     }
 
     /// Creates an Ubuntu VM with the desktop `init --os linux` adds by default and tests GUI work in it

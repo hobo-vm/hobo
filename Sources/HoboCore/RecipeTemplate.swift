@@ -48,7 +48,7 @@ extension Recipe {
         # and run `hobo init --os linux <version> --force` (before adding steps here).
         \(image.sourceLines)
 
-        \(desktopStep)# Steps run once each, in order, over SSH. Paths are relative to this file.
+        \(desktopStep)# Steps run once each, in order, in the guest. Paths are relative to this file.
         #
         \(desktopHint)# [[provision]]
         # type       = "shell"

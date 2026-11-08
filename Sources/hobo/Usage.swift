@@ -62,7 +62,7 @@ struct Usage: ParsableCommand {
                           `hobo init` writes a starter (macOS, Ubuntu with --os linux, or Windows with
                           --os windows <iso>) and `hobo validate` checks one. [source] ipsw makes a macOS
                           guest, image a Linux one, iso a Windows one.
-              Guest user  `exec`, `cp` and `ssh` act as the \(Conventions.username) user over SSH
+              Guest user  `exec`, `cp` and `ssh` act as the \(Conventions.username) user
                           (password \(Conventions.password), passwordless sudo; on Windows an elevated
                           administrator, with PowerShell as the shell).
               JSON        Every command takes --json except \(codeList(json.withoutJSON)).

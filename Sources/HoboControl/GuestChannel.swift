@@ -1,8 +1,9 @@
 import Foundation
 import HoboCore
 
-/// Reaches a running VM's guest on behalf of a client (the CLI, later MCP): its IP, and `exec` and
-/// `cp`, which the VM process runs over its SSH and streams back (decision 15).
+/// Reaches a running VM's guest on behalf of a client (the CLI, MCP): its IP, and `exec`, `cp` and
+/// `provision`, which the VM process runs through the guest's agent (or SSH) and streams back
+/// (decision 15).
 public struct GuestChannel: Sendable {
     public var store: VMStore
 
@@ -22,20 +23,6 @@ public struct GuestChannel: Sendable {
         let status = try ControlClient.renew(at: job.socket)
         guard let ip = status.ipAddress else { throw GuestChannelError.noIPAddress(vm.name, status.detail) }
         return GuestAddress(name: vm.name, ipAddress: ip)
-    }
-
-    /// Runs `body`, which works over its own SSH, renewing the idle timeout of the VM with this stored
-    /// name until it ends. A renewal that fails isn't `body`'s failure: if the VM has gone, its SSH says so.
-    public func renewing(_ name: String, every interval: Duration = .seconds(1), while body: () async throws -> Void) async throws {
-        let socket = store.job(for: name).socket
-        let renewals = Task {
-            while true {
-                try await Task.sleep(for: interval) // Throws once cancelled, which ends the renewals.
-                _ = try? await ControlClient.renew(at: socket)
-            }
-        }
-        defer { renewals.cancel() }
-        try await body()
     }
 
     /// Runs `command` in the guest, in its desktop session if `gui`, and returns its exit status.
@@ -67,9 +54,15 @@ public struct GuestChannel: Sendable {
         return GuestScreenshot(name: vm.name, png: png)
     }
 
-    /// Copies with scp and returns its exit status; scp's messages arrive as output.
+    /// Copies and returns its exit status; the copy's messages arrive as output.
     public func copy(_ name: String, _ copy: GuestCopy, onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
         try stream(.copy(copy), name: name, onOutput: onOutput)
+    }
+
+    /// Runs the `[[provision]]` steps of the recipe at `recipeFile` in the guest; progress and the
+    /// steps' output arrive as output.
+    public func provision(_ name: String, recipeFile: URL, onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
+        try stream(.provision(recipeFile: recipeFile.path), name: name, onOutput: onOutput)
     }
 
     private func stream(_ request: ControlRequest, name: String, onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
@@ -100,7 +93,7 @@ public struct GuestAddress: Codable, Equatable, Sendable {
     }
 }
 
-/// `hobo exec --json` and `hobo cp --json`: the guest command's (or scp's) exit status. Its output
+/// `hobo exec --json` and `hobo cp --json`: the guest command's (or the copy's) exit status. Its output
 /// went to stderr, keeping stdout for this.
 public struct GuestCommandResult: Codable, Equatable, Sendable {
     public var exitStatus: Int32

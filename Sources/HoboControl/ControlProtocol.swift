@@ -20,12 +20,15 @@ public enum ControlRequest: Codable, Equatable, Sendable {
     case renew
     /// Starts the stop sequence and replies at once; the VM process exits when the VM is off.
     case stop(force: Bool)
-    /// Runs a command in the guest over SSH, without stdin or a TTY: `output` lines, then `exited`.
+    /// Runs a command in the guest, without stdin or a TTY: `output` lines, then `exited`.
     /// The arguments are quoted for the guest user's login shell (`VMBundle.execLine`); with `gui`,
     /// the command runs in that user's desktop session (`VMBundle.guiExecLine`).
     case exec(command: [String], gui: Bool = false)
-    /// Runs scp between host paths and the guest: scp's output as `output` lines, then `exited`.
+    /// Copies between host paths and the guest: the copy's messages as `output` lines, then `exited`.
     case copy(GuestCopy)
+    /// `hobo provision`: runs the `[[provision]]` steps of the recipe at this absolute host path,
+    /// streaming progress and the steps' output as `output` lines, then `exited`.
+    case provision(recipeFile: String)
     /// Pauses the VM and saves its state, answering once the state is saved (or with what stopped
     /// it, leaving the VM running); the VM process then powers the VM off and exits.
     case suspend
@@ -58,7 +61,7 @@ public enum GuestStream: String, Codable, Equatable, Sendable {
 /// What a VM process reports about itself.
 public struct VMRunStatus: Codable, Equatable, Sendable {
     public enum State: String, Codable, Sendable {
-        /// Booting, until the guest answers SSH.
+        /// Booting, until the guest answers (its agent, or SSH).
         case starting
         case running
         case stopping

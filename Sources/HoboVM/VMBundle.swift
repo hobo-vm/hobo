@@ -29,7 +29,8 @@ public protocol VMBundle: Sendable {
     static var ntpClockCommand: String? { get }
     /// Sets the guest's clock to `date`, the host's time.
     static func setClockCommand(_ date: Date) -> String
-    /// Replaces the guest's share mount after a resume, or nil if its mount survives a restore.
+    /// Brings the guest's share mount up to date after a resume (replacing it, or dropping what it
+    /// has cached), or nil if it needs nothing.
     static var remountSharesCommand: String? { get }
     /// Grows the guest's root filesystem, live, into a disk `hobo set --disk` enlarged. It runs
     /// again at the next start if it fails, so it must be safe to repeat.
@@ -44,6 +45,12 @@ public protocol VMBundle: Sendable {
     static func guiExecLine(_ command: [String], marker: String) -> String
     /// Ends what `execLine` or `guiExecLine` started, given the process ID it printed.
     static func cancelCommand(pid: Int32) -> String
+    /// Whether the host reaches this guest through hobo-agent rather than SSH (decision 15). Until
+    /// every guest has the agent, the others stay on SSH.
+    static var usesAgent: Bool { get }
+    /// The line hobo-agent runs in the login shell for `hobo exec` of `command`, in the desktop
+    /// session if `gui`. The agent kills its process group on a cancel, so there is no PID to report.
+    static func agentCommand(_ command: [String], gui: Bool) -> String
     /// Runs `resize`, which rewrites the disk's partition table, leaving whatever the guest's boot
     /// depends on as it was.
     func keepingDiskIdentity(_ resize: () throws -> Void) throws
@@ -64,6 +71,14 @@ extension VMBundle {
     }
 
     public static func cancelCommand(pid: Int32) -> String { "kill -TERM -- -\(pid)" }
+}
+
+/// Guests still on SSH, which never ask the agent for anything.
+extension VMBundle {
+    public static var usesAgent: Bool { false }
+    public static func agentCommand(_ command: [String], gui: Bool) -> String {
+        preconditionFailure("\(Self.self) doesn't run hobo-agent yet")
+    }
 }
 
 extension VMBundle {

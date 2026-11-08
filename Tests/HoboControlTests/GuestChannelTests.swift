@@ -79,55 +79,25 @@ import Testing
         #expect(requests.withLock { $0 } == [.renew])
     }
 
-    /// `hobo provision` works over its own SSH, for longer than an idle timeout may last.
-    @Test func renewingKeepsRenewingUntilTheWorkEnds() async throws {
+    /// The VM process runs the steps, so the request itself holds an ephemeral VM's idle timeout.
+    @Test func provisionSendsTheRecipesPathAndPassesItsOutput() async throws {
         defer { cleanUp() }
+        let channel = channel
         let requests = Mutex<[ControlRequest]>([])
-        let server = try serve { request, _ in
+        let server = try serve { request, reply in
             requests.withLock { $0.append(request) }
-            return .status(VMRunStatus(state: .running, pid: 4242))
+            try? reply.send(.output(.stderr, Data("Provision step 1/1 (shell)\n".utf8)))
+            return .exited(0)
         }
         defer { server.close() }
-        try await channel.renewing("dev", every: .milliseconds(5)) {
-            while requests.withLock({ $0.count }) < 2 { try await Task.sleep(for: .milliseconds(5)) }
+        let output = Mutex(Data())
+        let status = try await offPool {
+            try channel.provision("dev", recipeFile: URL(filePath: "/work/Hobo.toml")) { _, data in output.withLock { $0 += data } }
         }
-        #expect(requests.withLock { $0.allSatisfy { $0 == .renew } })
-        try await Task.sleep(for: .milliseconds(50)) // Lets a renewal already sent arrive.
-        let settled = requests.withLock { $0.count }
-        try await Task.sleep(for: .milliseconds(50))
-        #expect(requests.withLock { $0.count } == settled)
-    }
-
-    /// A failed provision step has to reach `hobo provision`, and ends the renewals as a finished one does.
-    @Test func renewingPassesOnTheWorksFailureAndStops() async throws {
-        defer { cleanUp() }
-        struct StepFailed: Error {}
-        let requests = Mutex<[ControlRequest]>([])
-        let server = try serve { request, _ in
-            requests.withLock { $0.append(request) }
-            return .status(VMRunStatus(state: .running, pid: 4242))
-        }
-        defer { server.close() }
-        await #expect(throws: StepFailed.self) {
-            try await channel.renewing("dev", every: .milliseconds(5)) {
-                while requests.withLock({ $0.isEmpty }) { try await Task.sleep(for: .milliseconds(5)) }
-                throw StepFailed()
-            }
-        }
-        try await Task.sleep(for: .milliseconds(50)) // Lets a renewal already sent arrive.
-        let settled = requests.withLock { $0.count }
-        try await Task.sleep(for: .milliseconds(50))
-        #expect(requests.withLock { $0.count } == settled)
-    }
-
-    @Test func renewingOutlivesAVMThatDoesntAnswer() async throws {
-        defer { cleanUp() }
-        let ran = Mutex(false)
-        try await channel.renewing("dev", every: .milliseconds(1)) {
-            try await Task.sleep(for: .milliseconds(20))
-            ran.withLock { $0 = true }
-        }
-        #expect(ran.withLock { $0 })
+        #expect(status == 0)
+        #expect(output.withLock { $0 } == Data("Provision step 1/1 (shell)\n".utf8))
+        #expect(requests.withLock { $0 } == [.provision(recipeFile: "/work/Hobo.toml")])
+        #expect(ControlRequest.provision(recipeFile: "/work/Hobo.toml").holdsIdleTimeout)
     }
 
     @Test func execPassesOutputAndReturnsTheExitStatus() throws {

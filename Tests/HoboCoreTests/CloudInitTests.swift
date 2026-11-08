@@ -3,7 +3,7 @@ import Testing
 @testable import HoboCore
 
 @Suite struct CloudInitTests {
-    let seed = CloudInit.seed(vmName: "dev", uid: 502)
+    let seed = CloudInit.seed(vmName: "dev", uid: 502, agent: Data("agent".utf8))
 
     @Test func seedHasTheNoCloudFiles() {
         #expect(Set(seed.keys) == ["meta-data", "user-data", "network-config"])
@@ -15,7 +15,7 @@ import Testing
         #expect(CloudInit.hostname(for: "dev") == "dev")
         #expect(CloudInit.hostname(for: "my_vm.2") == "my-vm-2")
         #expect(CloudInit.hostname(for: "build-") == "build")
-        #expect(CloudInit.seed(vmName: "a_b", uid: 502)["meta-data"]?.contains("local-hostname: a-b\n") == true)
+        #expect(CloudInit.seed(vmName: "a_b", uid: 502, agent: Data())["meta-data"]?.contains("local-hostname: a-b\n") == true)
     }
 
     @Test func userDataAppliesTheGuestConventions() throws {
@@ -48,6 +48,14 @@ import Testing
         #expect(config.contains("match:\n      driver: virtio_net\n"))
         #expect(!config.contains("macaddress"))
         #expect(config.contains("dhcp-identifier: mac"))
+    }
+
+    /// The stub goes in at create and starts at once, so the rest of create already runs through it.
+    @Test func userDataInstallsTheAgentStub() throws {
+        let userData = try #require(seed["user-data"])
+        #expect(userData.contains("  - path: /usr/local/libexec/hobo-agent\n    permissions: '0755'\n    encoding: b64\n    content: YWdlbnQ=\n"))
+        #expect(userData.contains("      ExecStart=/usr/local/libexec/hobo-agent stub\n      Restart=always\n"))
+        #expect(userData.contains("  - [systemctl, enable, --now, hobo-agent.service]\n"))
     }
 
     @Test func cleanupDisablesCloudInitAndTrims() {
