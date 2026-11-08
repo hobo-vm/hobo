@@ -1,3 +1,4 @@
+import { posix } from 'node:path';
 import { docsSchema } from '@astrojs/starlight/schema';
 import { glob } from 'astro/loaders';
 import { defineCollection } from 'astro:content';
@@ -9,12 +10,8 @@ export const collections = {
     loader: glob({
       base: '../docs',
       pattern: ['features/*.md', 'site/*.{md,mdx}'],
-      generateId: ({ entry }) => posixBasename(entry).replace(/\.mdx?$/, ''),
+      generateId: ({ entry }) => posix.basename(entry).replace(/\.mdx?$/, ''),
     }),
     schema: docsSchema(),
   }),
 };
-
-function posixBasename(path: string) {
-  return path.slice(path.lastIndexOf('/') + 1);
-}
