@@ -12,6 +12,8 @@ public final class VMRunner {
     static let gracefulTimeout: Duration = .seconds(30)
     static let sshShutdownTimeout: Duration = .seconds(2 * 60)
     static let bootTimeout: Duration = .seconds(10 * 60)
+    /// How long a forced stop waits for a snapshot save it cut short; see `stop(force:)`.
+    static let saveAfterForcedStopTimeout: Duration = .seconds(60)
     nonisolated static let outputChunkBytes = 64 << 10
 
     /// Stops while the host sleeps, along with whatever was using the VM.
@@ -486,8 +488,8 @@ public final class VMRunner {
         guard let guest else { finish(0) }
         if !force {
             log("Stop requested")
-            // A paused guest can't shut down. A forced stop doesn't wait: a save that hangs mustn't
-            // keep the VM up, and the next boot clears what it leaves.
+            // A paused guest can't shut down. A forced stop powers off first, so a save that hangs
+            // can't keep the VM up, and only then waits for the save, for a bounded time.
             _ = await snapshotSave?.value
             if let ip = status.ipAddress ?? DHCPLeases.ipAddress(forMAC: guest.macAddress.string),
                let ssh = try? ssh(ip), (try? await ssh.run("exit 0", quiet: true)) == 0 {
@@ -505,10 +507,29 @@ public final class VMRunner {
         log(force ? "Forced stop requested" : "The guest didn't shut down; forcing it off")
         do {
             try await guest.forceStop()
+            await waitForSaveAfterForcedStop()
             finish(0)
         } catch {
             log("error: forcing the VM off failed: \(error)")
             finish(1)
+        }
+    }
+
+    /// A save the forced stop cut short carries on in VZ's VM service, which holds the bundle's
+    /// files (a macOS guest's aux.img among them) until it's done: exiting first would make an
+    /// immediate `hobo start` fail to lock them. The VM is off, so the wait keeps no guest up, and
+    /// a save that completes is a good snapshot, since the disk hasn't changed since the pause.
+    private func waitForSaveAfterForcedStop() async {
+        guard snapshotSave != nil else { return }
+        status.detail = "waiting for the snapshot save to end"
+        log("Waiting for the snapshot save to end")
+        let deadline = ContinuousClock.now + Self.saveAfterForcedStopTimeout
+        while snapshotSave != nil {
+            guard ContinuousClock.now < deadline else {
+                log("warning: the snapshot save didn't end within \(Self.saveAfterForcedStopTimeout) of the forced stop; exiting anyway")
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(250))
         }
     }
 

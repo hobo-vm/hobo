@@ -151,20 +151,9 @@ tag_listed() { "$HOBO" snapshot list "$VM" 2>> "$LOG" | grep -Eq "^$1 "; }
 no_partial_left() { ! ls -d "$BUNDLE"/snapshots/.saving-* > /dev/null 2>&1; }
 config_value() { sed -n "s/.*\"$1\"[^0-9]*\([0-9]*\).*/\1/p" "$BUNDLE/config.json" | head -1; }
 
-# A start straight after a forced stop may need a retry (hobo-rok). Leaves the attempt it got to in
-# START_ATTEMPT.
-start_with_retries() {
-    for START_ATTEMPT in 1 2 3 4; do
-        hobo start "$VM" && return 0
-        note "start attempt $START_ATTEMPT failed: $OUT"
-        sleep 5
-    done
-    return 1
-}
-
 ensure_running() {
     is_running && return 0
-    start_with_retries && return 0
+    hobo start "$VM" && return 0
     bad "couldn't start $VM: $OUT"
     return 1
 }
@@ -305,18 +294,25 @@ test_5() {
     local rc=$?
     SAVE_PID=
     note "the save said: $(tr '\n' ' ' < "$WORK/save.txt")"
-    if [ $rc -ne 0 ]; then ok "the interrupted save reported failure"; else bad "the interrupted save exited 0"; fi
-    if grep -q "stopped before the snapshot finished" "$WORK/save.txt"; then ok "it said the VM stopped"; else bad "it didn't say the VM stopped"; fi
+    # The VM goes off at once, but its process waits for VZ to finish the save before it exits.
+    if grep -q "Waiting for the snapshot save to end" "${HOBO_HOME:-$HOME/.hobo}"/*."$VM".log; then
+        ok "the VM process waited for the save"
+    else
+        bad "the VM process didn't wait for the save"
+    fi
+    if [ $rc -eq 0 ]; then ok "the save finished and exited 0"; else bad "the save exited $rc"; fi
     check "the VM is stopped" is_stopped
-    if tag_listed forced; then bad "the interrupted snapshot is listed"; else ok "the interrupted snapshot isn't listed"; fi
+    check "the snapshot is listed" tag_listed forced
 
-    if ! start_with_retries; then
-        bad "the VM wouldn't start again"
+    # A start straight after must work: the forced stop returned only once VZ let go of aux.img.
+    if ! hobo start "$VM"; then
+        bad "the VM wouldn't start straight after the forced stop: $OUT"
         return
     fi
-    ok "the VM starts again (attempt $START_ATTEMPT; more than one is hobo-rok)"
-    check "the boot cleared what the save left" no_partial_left
+    ok "the VM starts straight after the forced stop"
+    check "no partial save is left" no_partial_left
     check "the guest answers" guest_answers
+    drop_snapshot forced
 }
 
 test_6() {

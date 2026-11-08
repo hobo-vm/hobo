@@ -314,7 +314,10 @@ global VMs on 2026-11-01.
     - A tag follows a VM name's rules, is required, and can't be reused until deleted, since a
       snapshot may be the only copy of a good state. `snapshot delete` works in any VM state.
     - While a save runs, `exec`, `cp`, `suspend` and another save are refused, and a graceful stop
-      waits for it; a forced stop doesn't, so a hung save can't keep a VM up.
+      waits for it. A forced stop powers the VM off at once, so a hung save can't keep it up, then
+      gives the save up to 60 s before the process exits (hobo-rok): VZ's VM service finishes a save
+      it was writing and holds the bundle's files until then, so an immediate `start` would fail to
+      lock `aux.img`. A save that completes is kept; the disk hasn't changed since the pause.
     - Disk usage is reported by `hobo list` (decided 2026-11-04, hobo-vqi), not a `df` command, a
       name that on macOS means free space. `USED` is the VM's own files, in full even where a clone
       shares them; `SNAPSHOTS` is the count and the bytes they hold that the VM's own files don't;
