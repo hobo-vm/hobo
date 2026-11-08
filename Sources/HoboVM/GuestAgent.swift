@@ -187,8 +187,13 @@ public struct GuestAgent: GuestShell {
                     continuation.resume(with: Result {
                         try socket.write(try JSONEncoder().encode(request) + Data("\n".utf8))
                         let sender = send.map { BackgroundSend(socket, $0) }
-                        let status = try Self.readAnswer(socket, onFrame: onFrame)
-                        try sender?.wait()
+                        let answer = Result { try Self.readAnswer(socket, onFrame: onFrame) }
+                        // The sender must be done with the socket before it is closed, or its writes
+                        // could land on whatever reuses the descriptor; a failed answer wakes it.
+                        if case .failure = answer { socket.shutdown() }
+                        let sent = Result { try sender?.wait() }
+                        let status = try answer.get()
+                        try sent.get()
                         return status
                     })
                 }
