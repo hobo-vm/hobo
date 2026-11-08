@@ -182,6 +182,14 @@ import Testing
         #expect(output.text(.stderr).contains("\(tree): is a directory"))
     }
 
+    @Test func putRefusesTheFilesystemRoot() async throws {
+        let agent = GuestAgent(connect: { Issue.record("connected"); throw AgentError.unreachable("") })
+        let output = Output()
+        let copy = GuestCopy(direction: .toGuest, sources: ["/"], destination: "d", recursive: true)
+        #expect(try await agent.copy(copy, onOutput: output.append) == 1)
+        #expect(output.text(.stderr).contains("/: is the filesystem root"))
+    }
+
     @Test func putWithNothingToSendNeverConnects() async throws {
         let agent = GuestAgent(connect: { Issue.record("connected"); throw AgentError.unreachable("") })
         let copy = GuestCopy(direction: .toGuest, sources: ["/nonexistent-\(UUID().uuidString)"], destination: "d", recursive: true)

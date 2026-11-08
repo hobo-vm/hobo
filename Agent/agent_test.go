@@ -160,6 +160,13 @@ func TestCopyFailures(t *testing.T) {
 	if _, err := copyTree(t, []string{filepath.Join(dir, "file")}, filepath.Join(dir, "nodir")+"/", false); err == nil {
 		t.Fatal("a trailing slash on a missing directory should fail")
 	}
+	if err := os.Mkdir(filepath.Join(dir, "out"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	messages, err = copyTree(t, []string{"/", filepath.Join(dir, "file")}, filepath.Join(dir, "out"), true)
+	if err != errCopyFailed || !strings.Contains(messages, "/: is the filesystem root") || read(t, filepath.Join(dir, "out/file")) != "f" {
+		t.Fatalf("root source: %q %v", messages, err)
+	}
 }
 
 func TestEntryNamesStayInside(t *testing.T) {

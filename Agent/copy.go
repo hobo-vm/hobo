@@ -141,6 +141,10 @@ func addSource(writer *tar.Writer, source string, recursive bool) error {
 	if !recursive {
 		return fmt.Errorf("%s: is a directory (cp -r copies directories)", source)
 	}
+	// A filesystem root has no name to copy it under, and holds /dev and /proc, whose files never end.
+	if filepath.Dir(absolute) == absolute {
+		return fmt.Errorf("%s: is the filesystem root (copy a directory in it)", source)
+	}
 	return filepath.Walk(source, func(file string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err

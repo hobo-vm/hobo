@@ -94,6 +94,10 @@ public struct GuestAgent: GuestShell {
             } else if isDirectory.boolValue, !copy.recursive {
                 onOutput(.stderr, Data("\(source): is a directory (cp -r copies directories)\n".utf8))
                 failed = true
+            } else if URL(filePath: source).standardizedFileURL.path == "/" {
+                // It has no name to copy it under, and holds /dev, whose files never end.
+                onOutput(.stderr, Data("\(source): is the filesystem root (copy a directory in it)\n".utf8))
+                failed = true
             } else {
                 let url = URL(filePath: source).standardizedFileURL
                 // `./` keeps a name starting with `-` from reading as an option.
