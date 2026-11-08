@@ -129,7 +129,12 @@ func addSource(writer *tar.Writer, source string, recursive bool) error {
 	if err != nil {
 		return fmt.Errorf("%s: no such file or directory", source)
 	}
-	base := filepath.Base(filepath.Clean(source))
+	// The name of what source resolves to, so `.` and `..` still give one top-level entry.
+	absolute, err := filepath.Abs(source)
+	if err != nil {
+		return err
+	}
+	base := filepath.Base(absolute)
 	if !info.IsDir() {
 		return addEntry(writer, source, base, info)
 	}

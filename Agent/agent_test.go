@@ -128,6 +128,19 @@ func TestCopySingleSourceBecomesDestination(t *testing.T) {
 	}
 }
 
+func TestCopyDotIsOneDirectory(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "home/a.txt"), "a")
+	write(t, filepath.Join(dir, "home/b.txt"), "b")
+	t.Chdir(filepath.Join(dir, "home"))
+	if _, err := copyTree(t, []string{"."}, filepath.Join(dir, "copy"), true); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, filepath.Join(dir, "copy/a.txt")) != "a" || read(t, filepath.Join(dir, "copy/b.txt")) != "b" {
+		t.Fatal("not every entry of . was copied")
+	}
+}
+
 func TestCopyFailures(t *testing.T) {
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, "tree/a.txt"), "a")
