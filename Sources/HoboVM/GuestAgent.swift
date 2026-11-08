@@ -110,8 +110,12 @@ public struct GuestAgent: GuestShell {
             guard kind == .stderr else { throw AgentError.unexpectedFrame(kind) }
             onOutput(.stderr, payload)
         }
-        if let problem = tar.problem { onOutput(.stderr, Data("tar: \(problem)\n".utf8)) }
-        return status == 0 && (failed || tar.problem != nil) ? 1 : status
+        if let problem = tar.problem {
+            onOutput(.stderr, Data("tar: \(problem)\n".utf8))
+            failed = true
+        }
+        // A copy the agent finished still fails for a source skipped here or tar's own failure.
+        return status == 0 && failed ? 1 : status
     }
 
     /// Receives the sources as a tar stream and extracts it with the host's `tar`, as `scp` would:
@@ -392,9 +396,8 @@ final class HostTar: Sendable {
 
     /// What went wrong, from tar's messages or exit status, once it has finished.
     var problem: String? {
-        let (status, running) = process.withLock { ($0.isRunning ? 0 : $0.terminationStatus, $0.isRunning) }
+        guard let status = process.withLock({ $0.isRunning ? nil : $0.terminationStatus }), status != 0 else { return nil }
         let message = String(decoding: errors.withLock { $0 }, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        if running || status == 0 { return nil }
         return message.isEmpty ? "exited with status \(status)" : message
     }
 
