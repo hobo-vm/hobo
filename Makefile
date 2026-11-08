@@ -21,7 +21,8 @@ install: sign ## Install the signed binary to $(PREFIX)/bin
 	install -m 755 $(BIN) $(PREFIX)/bin/hobo
 	@if grep -qs '^hobo-version:' $(SKILL); then $(PREFIX)/bin/hobo claude install; fi
 
-test: readme-check ## README check, then unit tests
+test: readme-check ## README check, docs-script tests, then unit tests
+	node --test 'site/scripts/*.test.mjs'
 	swift test
 
 # README.md's feature tour is generated from docs/features/*.md (site/scripts/readme.mjs).
