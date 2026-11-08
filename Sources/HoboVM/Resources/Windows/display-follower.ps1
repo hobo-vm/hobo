@@ -4,7 +4,7 @@
 # When the host resizes the display, the patched viogpudo takes the new size as its custom mode and
 # pulses a named event, but Windows only switches modes when something in the session asks.
 # virtio-win's own helper, viogpuap.exe, never finds the adapter here: it stops at the first display
-# device that isn't the virtio GPU, and Microsoft Basic Display comes first. This does what it does.
+# device that isn't the virtio GPU, and Microsoft Basic Display comes first. This script does its job instead.
 param([switch]$Once)
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
@@ -56,7 +56,7 @@ public static class HoboDisplayFollower {
     [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr hdc);
     [DllImport("gdi32.dll")] static extern int D3DKMTOpenAdapterFromHdc(ref OPENADAPTERFROMHDC open);
     [DllImport("gdi32.dll")] static extern int D3DKMTEscape(ref ESCAPE escape);
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern IntPtr OpenEvent(int access, bool inherit, string name);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr OpenEvent(int access, bool inherit, string name);
 
     const string VirtioGPU = @"PCI\VEN_1AF4&DEV_1050";
     const int AttachedToDesktop = 0x1, Synchronize = 0x100000, CurrentSettings = -1;
