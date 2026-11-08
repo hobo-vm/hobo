@@ -13,15 +13,16 @@ if (Test-Path HKLM:\SOFTWARE\Hobo\SetupBoot) { Start-Sleep -Seconds 300 }
 # After the restart, OOBE logs defaultuser0 on again to finish, which takes seconds, so wait for that
 # session to come and go. A session of vagrant's means OOBE has already finished. The limit is for a
 # build of Windows that does this differently, and keeps create well inside its wait for SSH.
-$deadline = (Get-Date).AddMinutes(5)
-$seen = $false
+$limitMinutes = 5
+$deadline = (Get-Date).AddMinutes($limitMinutes)
+$oobeSessionSeen = $false
 while ($true) {
     # cmd, since quser writes to stderr when nobody is logged on, which PowerShell would stop at.
     $sessions = cmd.exe /c 'quser 2>nul'
-    if ($sessions -match '\bdefaultuser0\b') { $seen = $true }
-    elseif ($seen -or $sessions -match '\bvagrant\b') { break }
+    if ($sessions -match '\bdefaultuser0\b') { $oobeSessionSeen = $true }
+    elseif ($oobeSessionSeen -or $sessions -match '\bvagrant\b') { break }
     if ((Get-Date) -gt $deadline) {
-        Add-Content $log "$(Get-Date -Format s) finish-setup: OOBE's session didn't end within 5 minutes; continuing"
+        Add-Content $log "$(Get-Date -Format s) finish-setup: OOBE's session didn't end within $limitMinutes minutes; continuing"
         break
     }
     Start-Sleep -Seconds 2
