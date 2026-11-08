@@ -21,8 +21,8 @@ public protocol VMBundle: Sendable {
     /// which the window scales.
     var displayFollowsWindow: Bool { get }
     /// The smallest window, in points, whose size the guest display still follows, or nil if it has
-    /// no floor. Below it the guest stays at its smallest mode and the window scales that down, so the
-    /// window doesn't shrink past it.
+    /// no floor. A smaller window would only scale down the guest's smallest mode, so the window is
+    /// kept from shrinking past it.
     static var smallestFollowedWindow: CGSize? { get }
     /// Sets a resumed guest's clock over NTP, if the guest has a one-shot command for it; the VM
     /// process falls back to `setClockCommand` when this is nil or fails.
