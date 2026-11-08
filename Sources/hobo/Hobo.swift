@@ -606,7 +606,7 @@ struct SSH: ParsableCommand {
         commandName: "ssh",
         abstract: "SSH into a running VM, or run a command there with -- <command>.",
         discussion: """
-            Runs the system ssh as the vagrant user, so the session, exit status and any command behave as plain ssh's do. \
+            Runs the system ssh as the hobo user, so the session, exit status and any command behave as plain ssh's do. \
             There is no --json: hobo exec runs a command and reports its exit status as JSON.
             """
     )
@@ -639,7 +639,7 @@ struct Exec: OutputCommand {
     static let configuration = CommandConfiguration(
         abstract: "Run a command in a running VM.",
         discussion: """
-            The command runs as the vagrant user, without stdin or a TTY, and hobo exits with its status. \
+            The command runs as the hobo user, without stdin or a TTY, and hobo exits with its status. \
             Its arguments are quoted for the guest's shell, so use sh -c '<script>' (on Windows, powershell.exe -Command '<script>') \
             for pipes and the like. \
             With --gui it waits up to a minute for the desktop session, and exits 125 if it never comes up \
@@ -650,7 +650,7 @@ struct Exec: OutputCommand {
     @Argument(help: "Name of the VM.")
     var name: String
 
-    @Flag(help: "Run in the vagrant user's desktop session rather than a background one.")
+    @Flag(help: "Run in the hobo user's desktop session rather than a background one.")
     var gui = false
 
     @Flag(help: "Print the command's exit status as JSON; its output goes to stderr.")

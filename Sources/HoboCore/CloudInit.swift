@@ -1,7 +1,7 @@
 import Foundation
 
-/// The NoCloud seed that applies the Vagrant conventions to a Linux guest on its first boot:
-/// `vagrant`/`vagrant` with passwordless sudo and the insecure keys, password SSH, and no
+/// The NoCloud seed that applies the guest conventions to a Linux guest on its first boot:
+/// `hobo`/`hobo` with passwordless sudo and the insecure key, password SSH, and no
 /// automatic updates, plus the fstab line that mounts the VM's shares. It is attached (as a
 /// `cidata` ISO) only while `create` runs; cleanup then disables cloud-init, so later boots and
 /// clones never re-run it.
@@ -14,7 +14,7 @@ public enum CloudInit {
     public static let shareMountPoint = "/mnt/hobo"
 
     /// The seed's files, by name, for the VM `vmName`. `uid` is the host user's, given to
-    /// `vagrant` so that shared files, which the guest sees with their host owner, are its own.
+    /// `hobo` so that shared files, which the guest sees with their host owner, are its own.
     public static func seed(vmName: String, uid: UInt32) -> [String: String] {
         [
             "meta-data": metaData(hostname: hostname(for: vmName)),
@@ -53,7 +53,7 @@ public enum CloudInit {
             lock_passwd: false
             plain_text_passwd: \(Conventions.password)
             ssh_authorized_keys:
-        \(Conventions.insecurePublicKeys.map { "      - \($0)" }.joined(separator: "\n"))
+              - \(Conventions.insecurePublicKey)
         ssh_pwauth: true
         write_files:
           - path: /etc/apt/apt.conf.d/99hobo-no-automatic-updates

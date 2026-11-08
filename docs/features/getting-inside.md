@@ -7,7 +7,7 @@ sidebar:
 
 `hobo ssh` logs in, `hobo exec` runs a command and exits with its status, and `hobo cp` copies
 files either way. There are no keys or IP addresses to look up: hobo knows each VM's address and
-uses Vagrant's well-known key. Host folders can be shared into the guest, read-only if you like.
+logs in with hobo's own well-known key. Host folders can be shared into the guest, read-only if you like.
 
 ```console
 $ hobo exec dev -- uname -a
@@ -27,7 +27,7 @@ hobo ssh dev -- uptime          # a command instead
 hobo ssh dev --print            # the ssh command line, to use elsewhere
 ```
 
-`hobo ssh` runs the system's `ssh` as the `vagrant` user, so the session, the exit status and any
+`hobo ssh` runs the system's `ssh` as the `hobo` user, so the session, the exit status and any
 command behave just as plain `ssh` does. `--print` gives a command line you can paste into scripts,
 IDEs or `rsync -e`.
 
@@ -39,7 +39,7 @@ hobo exec dev -- sh -c 'cd /src && make test | tee test.log'
 hobo exec win -- powershell.exe -Command 'Get-Process | Select-Object -First 5'
 ```
 
-- The command runs as `vagrant`, without stdin or a terminal, and `hobo exec` exits with its
+- The command runs as `hobo`, without stdin or a terminal, and `hobo exec` exits with its
   status, so it fits in scripts and CI.
 - Its arguments are quoted for the guest's shell. For pipes and redirection, run a shell
   yourself: `sh -c '…'`, or `powershell.exe -Command '…'` on Windows.
@@ -52,7 +52,7 @@ hobo exec win -- powershell.exe -Command 'Get-Process | Select-Object -First 5'
 ```sh
 hobo cp ./app.zip dev:/tmp/            # host to guest
 hobo cp dev:/var/log/system.log .      # guest to host
-hobo cp -r ./build dev:/Users/vagrant/ # directories
+hobo cp -r ./build dev:/Users/hobo/ # directories
 ```
 
 One side names the guest as `<vm>:<path>`. It runs `scp`.

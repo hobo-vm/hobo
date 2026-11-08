@@ -250,7 +250,7 @@ public struct GuestSSH: Sendable {
 extension GuestSSH.Auth {
     /// How the host logs in to the VM in `bundle` once unattended setup has installed its key.
     /// Every such connection (create's later boots, the VM process, `hobo ssh`) gets its credential
-    /// here, so all of them match the guest's `authorized_keys`. Today that is Vagrant's insecure
+    /// here, so all of them match the guest's `authorized_keys`. Today that is hobo's insecure
     /// key for every VM; a per-VM key (see `TODO.md`) would live in the bundle.
     public static func forVM(bundle: URL, home: HoboHome) throws -> Self {
         .key(try home.ensureInsecurePrivateKey())

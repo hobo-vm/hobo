@@ -57,7 +57,7 @@ public enum AgentGuidance {
 
         ## Test inside the guest, never through the host
 
-        - Everything runs in the guest over SSH, as the `vagrant` user with passwordless sudo: \
+        - Everything runs in the guest over SSH, as the `hobo` user with passwordless sudo: \
         `exec` runs a command, `cp` copies files in and out.
         - Never drive the VM's window from the host: don't click, type or take host screenshots of \
         it, or script it with AppleScript or computer use. `view` and `start --gui` are for a person \
@@ -65,7 +65,7 @@ public enum AgentGuidance {
         System Events, XCUITest; AT-SPI on Linux; UI Automation on Windows) and look with `screenshot`, \
         which fails rather than leave windows out if a macOS VM lacks the Screen Recording grant.
         - On a macOS guest, plain `exec` runs in a background session, though `open`, System Events \
-        scripting and `screencapture` work from it. `exec --gui` runs the command in the `vagrant` \
+        scripting and `screencapture` work from it. `exec --gui` runs the command in the `hobo` \
         user's desktop session instead, waiting for it after a boot: use it for anything that needs \
         that session. That scripting and `screencapture` need the VM to be built from a recipe with \
         `[gui_testing]`, which grants Accessibility and Screen Recording.
@@ -77,9 +77,9 @@ public enum AgentGuidance {
         `Atspi.EditableText.set_text_contents(node, text)`, `Atspi.Text.get_text(node, 0, -1)`. AT-SPI's \
         synthetic key and mouse events don't reach Wayland apps. A guest built with \
         `init --os linux --server` has no desktop, so `exec --gui` and `screenshot` fail at once.
-        - On a Windows guest, `exec` runs a program or a PowerShell command as `vagrant`, an elevated \
+        - On a Windows guest, `exec` runs a program or a PowerShell command as `hobo`, an elevated \
         administrator, in session 0, which has no desktop; `cp` takes guest paths like \
-        `dev:C:/Users/vagrant/file`. For a pipeline or anything else needing a shell, run \
+        `dev:C:/Users/hobo/file`. For a pipeline or anything else needing a shell, run \
         `powershell.exe -Command '...'`. `exec --gui` runs it on the desktop, where it can drive apps \
         with no grant: from PowerShell, Windows' UI Automation (`Add-Type -AssemblyName \
         UIAutomationClient, UIAutomationTypes`, then `[Windows.Automation.AutomationElement]::RootElement` \

@@ -26,14 +26,14 @@ public struct LinuxVMBundle: VMBundle {
         "echo \(marker)$$; " + guiExecScript(command)
     }
 
-    /// Waits for `vagrant`'s graphical session, then runs the command with that session's
+    /// Waits for `hobo`'s graphical session, then runs the command with that session's
     /// environment: the one GNOME hands the systemd user manager, which is what apps started from the
     /// desktop get (`WAYLAND_DISPLAY`, `DISPLAY`, `XAUTHORITY`, `XDG_SESSION_TYPE`, the accessibility
     /// variables). SSH's `PATH` stays, so it finds what plain `exec` finds. SSH runs as the same user,
     /// so there is no `sudo`, and the command stays in the process group a cancel kills. A guest
     /// with no display manager, built with `init --os linux --server`, fails at once rather than
     /// waiting. `systemctl` quotes values with bash's `$'…'`, so this needs bash, the login shell
-    /// cloud-init gives `vagrant`.
+    /// cloud-init gives `hobo`.
     static func guiExecScript(_ command: [String]) -> String {
         """
         if ! systemctl is-enabled --quiet display-manager.service 2>/dev/null; then

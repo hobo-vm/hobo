@@ -18,27 +18,25 @@ import Testing
         #expect(CloudInit.seed(vmName: "a_b", uid: 502)["meta-data"]?.contains("local-hostname: a-b\n") == true)
     }
 
-    @Test func userDataAppliesTheVagrantConventions() throws {
+    @Test func userDataAppliesTheGuestConventions() throws {
         let userData = try #require(seed["user-data"])
         #expect(userData.hasPrefix("#cloud-config\n"))
-        #expect(userData.contains("  - name: vagrant\n"))
+        #expect(userData.contains("  - name: hobo\n"))
         #expect(userData.contains("    sudo: \"ALL=(ALL) NOPASSWD:ALL\"\n"))
-        #expect(userData.contains("    plain_text_passwd: vagrant\n"))
-        // Each key is an item of ssh_authorized_keys, indented under it.
-        for key in Conventions.insecurePublicKeys {
-            #expect(userData.contains("    ssh_authorized_keys:\n") && userData.contains("\n      - \(key)\n"))
-        }
+        #expect(userData.contains("    plain_text_passwd: hobo\n"))
+        // The key is an item of ssh_authorized_keys, indented under it.
+        #expect(userData.contains("    ssh_authorized_keys:\n      - \(Conventions.insecurePublicKey)\n"))
         #expect(userData.contains("APT::Periodic::Unattended-Upgrade \"0\";"))
         // A readable text console: the kernel's built-in Terminus font, which setupcon then keeps.
         #expect(userData.contains("console=hvc0 fbcon=font:TER10x18\""))
         #expect(userData.contains(#"'s/^FONTSIZE=.*/FONTSIZE="10x20"/'"#))
     }
 
-    /// Shared files show with their host owner, so vagrant takes the host user's uid; the fstab
+    /// Shared files show with their host owner, so hobo takes the host user's uid; the fstab
     /// line mounts every share on every boot, after cloud-init is disabled.
     @Test func userDataMountsShares() throws {
         let userData = try #require(seed["user-data"])
-        #expect(userData.contains("  - name: vagrant\n    uid: 502\n"))
+        #expect(userData.contains("  - name: hobo\n    uid: 502\n"))
         #expect(userData.contains("  - path: /etc/fstab\n    append: true\n    content: |\n      hobo /mnt/hobo virtiofs defaults,nofail 0 0\n"))
         #expect(userData.contains("  - [mkdir, -p, /mnt/hobo]\n"))
     }

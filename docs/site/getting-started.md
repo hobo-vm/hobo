@@ -26,7 +26,7 @@ Make sure `~/.local/bin` is on your `PATH`.
 hobo init --os linux     # write a Hobo.toml for the newest Ubuntu LTS
 hobo create dev          # build a VM named dev from it
 hobo start dev           # boot it in the background
-hobo ssh dev             # log in as vagrant
+hobo ssh dev             # log in as hobo
 hobo stop dev
 ```
 

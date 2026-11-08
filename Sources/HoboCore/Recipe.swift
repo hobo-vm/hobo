@@ -109,9 +109,9 @@ public struct Recipe: Equatable, Sendable {
         if recipe.disk.bytes == 0 { throw RecipeError.invalidHardware("disk must be more than 0") }
         for (index, step) in recipe.provisioners.enumerated() {
             if let problem = step.problem { throw RecipeError.invalidProvisioner(index, problem) }
-            // Over SSH, vagrant is an elevated administrator with no way to run as anything less.
+            // Over SSH, hobo is an elevated administrator with no way to run as anything less.
             if os == .windows, step.privileged == false {
-                throw RecipeError.invalidProvisioner(index, "privileged = false isn't available on Windows, where steps run as vagrant, an administrator")
+                throw RecipeError.invalidProvisioner(index, "privileged = false isn't available on Windows, where steps run as hobo, an administrator")
             }
         }
         if !recipe.security.amfi && recipe.security.sip { throw RecipeError.amfiNeedsSIPOff }

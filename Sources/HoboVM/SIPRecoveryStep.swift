@@ -6,7 +6,7 @@ import HoboCore
 /// shutting the guest down is the signal that they're done. Paste doesn't reach recoveryOS, so the
 /// commands are to be typed. Checked on macOS 27.2 (2026-11-02): Options → Continue sometimes shows
 /// a language picker first (a fresh build did, a clone didn't), with no user picker seen so far, and
-/// `csrutil disable` asks y/n and then vagrant's password.
+/// `csrutil disable` asks y/n and then hobo's password.
 @MainActor
 enum SIPRecoveryStep {
     enum Outcome { case shutDown, cancelled }

@@ -25,7 +25,7 @@ import Testing
         [[provision]]
         type = "file"
         source = "files/profile"
-        destination = "/Users/vagrant/.profile"
+        destination = "/Users/hobo/.profile"
         """, directory: directory)
         #expect(recipe.cpus == 6)
         #expect(recipe.memory == ByteSize(bytes: 16 << 30))
@@ -247,7 +247,7 @@ import Testing
         [[provision]]
         type = "file"
         source = "files/profile"
-        destination = "/Users/vagrant/.profile"
+        destination = "/Users/hobo/.profile"
         """, directory: dir)
         #expect(recipe.missingFiles() == ["setup.sh", "files/profile", dir.appending(path: "mac.ipsw").standardizedFileURL.path])
         #expect(throws: RecipeError.missingFiles(recipe.missingFiles())) { try recipe.checkFilesExist() }
@@ -311,7 +311,7 @@ import Testing
             .joined(separator: "\n")
         let steps = try Recipe.parse(uncommented, directory: directory).provisioners
         #expect(steps.map(\.type) == [.shell, .file])
-        #expect(steps[1].destination == "/home/vagrant/.bashrc")
+        #expect(steps[1].destination == "/home/hobo/.bashrc")
     }
 
     @Test func linuxDesktopTemplateStartsWithTheDesktopStep() throws {
@@ -321,7 +321,7 @@ import Testing
         #expect(recipe.provisioners.count == 1)
         #expect(step.type == .shell && step.privileged != false)
         #expect(step.inline == Recipe.desktopScript)
-        #expect(step.inline?.contains("AutomaticLogin=vagrant") == true)
+        #expect(step.inline?.contains("AutomaticLogin=hobo") == true)
         #expect(!Recipe.template(pinnedTo: image, desktop: false).contains("ubuntu-desktop-minimal"))
     }
 

@@ -19,7 +19,7 @@ extension Recipe {
     public static func template(pinnedTo image: UbuntuCatalog.Image, desktop: Bool) -> String {
         let desktopStep = desktop ? """
             # The desktop, for `hobo view` and GUI testing (`hobo exec --gui`, `hobo screenshot`): Ubuntu's
-            # minimal desktop, vagrant logged in at boot, no screen blanking or lock, and accessibility on
+            # minimal desktop, hobo logged in at boot, no screen blanking or lock, and accessibility on
             # for AT-SPI. It starts from the next boot.
             [[provision]]
             type   = "shell"
@@ -36,7 +36,7 @@ extension Recipe {
             """
         return """
         # Hobo recipe: build a VM from it with `hobo create <name>`.
-        # The guest gets the Vagrant conventions (vagrant/vagrant, passwordless sudo, SSH, no automatic
+        # The guest gets the standard conventions (hobo/hobo, passwordless sudo, SSH, no automatic
         # updates) from cloud-init on its first boot; add your own setup as [[provision]] steps.
 
         cpus   = 4
@@ -53,13 +53,13 @@ extension Recipe {
         \(desktopHint)# [[provision]]
         # type       = "shell"
         # path       = "setup.sh"
-        # privileged = false        # run as vagrant instead of root
+        # privileged = false        # run as hobo instead of root
         # env        = { GREETING = "hello" }
         #
         # [[provision]]
         # type        = "file"
         # source      = "files/bashrc"
-        # destination = "/home/vagrant/.bashrc"
+        # destination = "/home/hobo/.bashrc"
 
         """
     }
@@ -69,7 +69,7 @@ extension Recipe {
         let quotedPath = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         return """
         # Hobo recipe: build a VM from it with `hobo create <name>`.
-        # The install adds the Vagrant conventions (vagrant/vagrant, an administrator, SSH with PowerShell
+        # The install adds the guest conventions (hobo/hobo, an administrator, SSH with PowerShell
         # as its shell, logged in to the desktop at boot); add your own setup as [[provision]] steps.
 
         cpus   = 4
@@ -98,12 +98,12 @@ extension Recipe {
         # [[provision]]
         # type        = "file"
         # source      = "files/settings.json"
-        # destination = "C:/Users/vagrant/settings.json"
+        # destination = "C:/Users/hobo/settings.json"
 
         """
     }
 
-    /// Installs `ubuntu-desktop-minimal` and sets it up for unattended use: GDM logs vagrant in at
+    /// Installs `ubuntu-desktop-minimal` and sets it up for unattended use: GDM logs hobo in at
     /// boot, GNOME's first-login and post-upgrade welcome wizards never run (the second ignores
     /// `gnome-initial-setup-done`), and the session never blanks or locks, so screenshots and UI
     /// tests see the desktop. For GUI testing, toolkits that only expose their accessibility tree
@@ -132,7 +132,7 @@ extension Recipe {
         [org/gnome/desktop/interface]
         toolkit-accessibility=true
         EOF
-        # Locked: vagrant's own settings end up holding false (seen on 26.04), which would otherwise win.
+        # Locked: hobo's own settings end up holding false (seen on 26.04), which would otherwise win.
         mkdir -p /etc/dconf/db/local.d/locks
         echo /org/gnome/desktop/interface/toolkit-accessibility > /etc/dconf/db/local.d/locks/00-hobo
         dconf update
@@ -143,7 +143,7 @@ extension Recipe {
     private static func template(source: String) -> String {
         """
         # Hobo recipe: build a VM from it with `hobo create <name>`.
-        # The guest gets the Vagrant conventions (vagrant/vagrant, passwordless sudo, SSH, no sleep or
+        # The guest gets the standard conventions (hobo/hobo, passwordless sudo, SSH, no sleep or
         # automatic updates); add your own setup as [[provision]] steps.
 
         cpus   = 4
@@ -181,13 +181,13 @@ extension Recipe {
         # [[provision]]
         # type       = "shell"
         # path       = "setup.sh"
-        # privileged = false        # run as vagrant instead of root
+        # privileged = false        # run as hobo instead of root
         # env        = { GREETING = "hello" }
         #
         # [[provision]]
         # type        = "file"
         # source      = "files/zshrc"
-        # destination = "/Users/vagrant/.zshrc"
+        # destination = "/Users/hobo/.zshrc"
 
         """
     }

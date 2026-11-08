@@ -44,13 +44,13 @@ public enum WindowsGuest {
     /// `display-follower.ps1 -Once`, run in the desktop session by create: sets the desktop to the
     /// display's size, which Windows remembers.
     public static let setDisplayCommand = ["powershell.exe", "-NoProfile", "-File", "\(scriptsDirectory)\\display-follower.ps1", "-Once"]
-    /// Registers the logon task that runs `display-follower.ps1` in `vagrant`'s desktop session from
+    /// Registers the logon task that runs `display-follower.ps1` in `hobo`'s desktop session from
     /// then on. `conhost --headless` keeps a console window off the desktop.
     public static let followDisplayCommand = """
         $ErrorActionPreference = 'Stop'; \
         $action = New-ScheduledTaskAction -Execute conhost.exe -Argument '--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File \(scriptsDirectory)\\display-follower.ps1'; \
-        $trigger = New-ScheduledTaskTrigger -AtLogOn -User vagrant; \
-        $principal = New-ScheduledTaskPrincipal -UserId vagrant -LogonType Interactive -RunLevel Highest; \
+        $trigger = New-ScheduledTaskTrigger -AtLogOn -User hobo; \
+        $principal = New-ScheduledTaskPrincipal -UserId hobo -LogonType Interactive -RunLevel Highest; \
         $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries; \
         Register-ScheduledTask -TaskName hobo-display-follower -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
         """

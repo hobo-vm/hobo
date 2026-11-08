@@ -1,5 +1,5 @@
 # Keeps the desktop at the size of the VM's display, which follows the window, for a resizable display
-# ([windows] resizable_display). Run in vagrant's desktop session by the hobo-display-follower logon
+# ([windows] resizable_display). Run in hobo's desktop session by the hobo-display-follower logon
 # task, and once by create with -Once: Windows starts at 1024x768 whatever the display offers.
 # When the host resizes the display, the patched viogpudo takes the new size as its custom mode and
 # pulses a named event, but Windows only switches modes when something in the session asks.

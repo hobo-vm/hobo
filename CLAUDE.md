@@ -1,8 +1,7 @@
 # Hobo
 
 First-class CLI for named VMs (macOS, Linux, Windows) on Apple Silicon hosts, built on Apple's
-Virtualization framework: a command-line replacement for VirtualBuddy/Parallels/Fusion. Vagrant-inspired,
-not a Vagrant clone; VMs are built from `Hobo.toml` recipes, and there are no boxes. The design record is
+Virtualization framework: a command-line replacement for VirtualBuddy/Parallels/Fusion. VMs are built from `Hobo.toml` recipes, and there are no boxes. The design record is
 `docs/design.md`; read it before architectural changes, and update it when a decision changes.
 Deferred work is tracked in Beads (`bd ready`, or `todo` / `/todo`). Its database is outside the
 working tree; `bd dolt push` backs it up to origin's `refs/dolt/data`, and `bd bootstrap` restores it.

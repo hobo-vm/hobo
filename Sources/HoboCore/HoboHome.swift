@@ -15,13 +15,14 @@ public struct HoboHome: Sendable {
 
     /// The image index, `images.json` (see `ImageIndex`).
     public var images: URL { root.appending(path: "images.json") }
-    /// Vagrant's insecure private key, written out for `ssh -i`.
+    /// Hobo's insecure private key, written out for `ssh -i`.
     public var insecurePrivateKey: URL { root.appending(path: "insecure_private_key") }
 
-    /// Writes the insecure private key (mode 0600) if it is missing and returns its path.
+    /// Writes the insecure private key (mode 0600) unless the file already holds it, and returns its
+    /// path. A file holding anything else, such as a key from an older build, is replaced.
     public func ensureInsecurePrivateKey() throws -> URL {
         let url = insecurePrivateKey
-        if !FileManager.default.fileExists(atPath: url.path) {
+        if (try? String(contentsOf: url, encoding: .utf8)) != Conventions.insecurePrivateKey {
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             try Conventions.insecurePrivateKey.write(to: url, atomically: true, encoding: .utf8)
         }

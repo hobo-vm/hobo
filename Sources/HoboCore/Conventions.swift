@@ -1,29 +1,28 @@
 import Foundation
 
-/// Vagrant conventions applied to every macOS VM: `vagrant`/`vagrant`, passwordless sudo, the
+/// The guest conventions applied to every macOS VM: `hobo`/`hobo`, passwordless sudo, the
 /// insecure key, and no sleep or screensaver.
 public enum Conventions {
-    public static let username = "vagrant"
-    public static let password = "vagrant"
-    public static let fullName = "Vagrant"
+    public static let username = "hobo"
+    public static let password = "hobo"
+    public static let fullName = "Hobo"
     /// Unattended-setup options for the first boot (`VZMacGuestProvisioningOptions`).
     public static let logsInAutomatically = true
     public static let enablesRemoteLogin = true
 
-    /// https://github.com/hashicorp/vagrant/tree/main/keys
-    public static let insecurePublicKeys = [
-        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN1YdxBpNlzxDqfJyw/QKow1F+wvG9hXGoqiysfJOn5Y vagrant insecure public key",
-        "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA6NF8iallvQVp22WDkTkyrtvp9eWW6A8YVr+kz4TjGYe7gHzIw+niNltGEFHzD8+v1I2YJ6oXevct1YeS0o9HZyN1Q9qgCgzUFtdOKLv6IedplqoPkcmF0aYet2PkEDo3MlTBckFXPITAMzF8dJSIFo9D8HfdOV0IAdx4O7PtixWKn5y2hMNG0zQPyUecp4pzC6kivAIhyfHilFR61RGL+GPXQ2MWZWFYbAGjyiYJnAmCP3NOTd0jMZEnDkbUvxhMmBYSdETk1rRgm+R4LOzFUGaHqHDLKLX+FIPKcF96hrucXzcWyLbIbEgE98OHlnVYCzRdK8jlqm8tehUc9c9WhQ== vagrant insecure public key",
-    ]
+    /// Hobo's own key pair, published in its source on purpose: VMs are local and disposable, and one
+    /// shared key lets any host reach any VM with no per-VM state.
+    public static let insecurePublicKey =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHNxejdMRRDAvDfZhcYhz/dax+uK0cYeU/eUn/EmozqI hobo insecure public key"
 
-    /// The private half of the ed25519 insecure key, used for every connection after setup.
+    /// The private half of `insecurePublicKey`, used for every connection after setup.
     public static let insecurePrivateKey = """
     -----BEGIN OPENSSH PRIVATE KEY-----
     b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-    QyNTUxOQAAACDdWHcQaTZc8Q6nycsP0CqMNRfsLxvYVxqKosrHyTp+WAAAAJj2TBMT9kwT
-    EwAAAAtzc2gtZWQyNTUxOQAAACDdWHcQaTZc8Q6nycsP0CqMNRfsLxvYVxqKosrHyTp+WA
-    AAAEAveRHRHSCjIxbNKHDRzezD0U3R3UEEmS7R33fzvPQAD91YdxBpNlzxDqfJyw/QKow1
-    F+wvG9hXGoqiysfJOn5YAAAAEHNwb3hAdmFncmFudC1kZXYBAgMEBQ==
+    QyNTUxOQAAACBzcXo3TEUQwLw32YXGIc/3WsfritHGHlP3lJ/xJqM6iAAAAKBQHdzfUB3c
+    3wAAAAtzc2gtZWQyNTUxOQAAACBzcXo3TEUQwLw32YXGIc/3WsfritHGHlP3lJ/xJqM6iA
+    AAAEAz+7IomIikIOx82yDyLfsiy0UqoNVCcl7vXsdYVwJRE3NxejdMRRDAvDfZhcYhz/da
+    x+uK0cYeU/eUn/EmozqIAAAAGGhvYm8gaW5zZWN1cmUgcHVibGljIGtleQECAwQF
     -----END OPENSSH PRIVATE KEY-----
 
     """
@@ -36,7 +35,7 @@ public enum Conventions {
         chmod 0440 /etc/sudoers.d/\(username)
         install -d -m 700 -o \(username) -g staff /Users/\(username)/.ssh
         cat > /Users/\(username)/.ssh/authorized_keys <<'EOF'
-        \(insecurePublicKeys.joined(separator: "\n"))
+        \(insecurePublicKey)
         EOF
         chown \(username):staff /Users/\(username)/.ssh/authorized_keys
         chmod 600 /Users/\(username)/.ssh/authorized_keys

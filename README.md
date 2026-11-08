@@ -6,7 +6,7 @@
 </h1>
 
 A command-line tool for named macOS, Linux and Windows VMs on Apple Silicon Macs,
-built on Apple's Virtualization framework. Vagrant-inspired, not a Vagrant clone.
+built on Apple's Virtualization framework.
 The full guide is at [hobo.gsquared.app](https://hobo.gsquared.app/).
 
 ```sh
@@ -42,8 +42,8 @@ make install                 # release build, ad-hoc signed, installs to ~/.loca
 
 A recipe is a TOML file, conventionally `Hobo.toml`, that says what a VM is built from and how
 it's set up. `hobo init` writes a starter that's already pinned to an exact macOS build or Ubuntu
-release, and `hobo validate` checks a recipe without building anything. Every VM gets the Vagrant
-conventions (user `vagrant`, password `vagrant`, passwordless sudo, SSH); `[[provision]]` steps add
+release, and `hobo validate` checks a recipe without building anything. Every VM gets the same
+conventions (user `hobo`, password `hobo`, passwordless sudo, SSH); `[[provision]]` steps add
 the rest.
 
 ```sh
@@ -94,7 +94,7 @@ Full guide → [hobo.gsquared.app/running-vms](https://hobo.gsquared.app/running
 
 `hobo ssh` logs in, `hobo exec` runs a command and exits with its status, and `hobo cp` copies
 files either way. There are no keys or IP addresses to look up: hobo knows each VM's address and
-uses Vagrant's well-known key. Host folders can be shared into the guest, read-only if you like.
+logs in with hobo's own well-known key. Host folders can be shared into the guest, read-only if you like.
 
 ```console
 $ hobo exec dev -- uname -a

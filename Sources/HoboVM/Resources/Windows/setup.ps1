@@ -1,5 +1,5 @@
-# The Vagrant conventions for a Windows guest, run once as SYSTEM before the first logon: OpenSSH
-# Server with PowerShell as its shell, the insecure keys, no sleep or lock screen, shares and the
+# The guest conventions for a Windows guest, run once as SYSTEM before the first logon: OpenSSH
+# Server with PowerShell as its shell, the insecure key, no sleep or lock screen, shares and the
 # network watchdog. finish-setup.ps1 does the rest, after Windows' own first-run setup has finished.
 $ErrorActionPreference = 'Stop'
 $hobo = 'C:\ProgramData\Hobo'
@@ -23,7 +23,7 @@ New-NetFirewallRule -Name hobo-sshd -DisplayName 'OpenSSH Server (Hobo)' -Direct
 New-Item -Force HKLM:\SOFTWARE\OpenSSH | Out-Null
 Set-ItemProperty HKLM:\SOFTWARE\OpenSSH DefaultShell 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
 
-# vagrant is an administrator, so sshd reads this file, which only Administrators and SYSTEM may write.
+# hobo is an administrator, so sshd reads this file, which only Administrators and SYSTEM may write.
 $keys = 'C:\ProgramData\ssh\administrators_authorized_keys'
 Copy-Item "$hobo\authorized_keys" $keys -Force
 icacls.exe $keys /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F' | Out-Null

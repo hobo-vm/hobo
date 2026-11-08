@@ -8,7 +8,7 @@ import Testing
 
     @Test func quotesArgumentsTheShellWouldChange() {
         let line = ssh.commandLine(["echo", "a;b", "$HOME", "", "it's"])
-        #expect(line.hasSuffix(#" vagrant@192.168.64.2 -- echo 'a;b' '$HOME' '' 'it'\''s'"#))
+        #expect(line.hasSuffix(#" hobo@192.168.64.2 -- echo 'a;b' '$HOME' '' 'it'\''s'"#))
         #expect(line.contains(" -i '/Users/me/My Keys/id' "))
         #expect(line.contains(" -o StrictHostKeyChecking=no "))
     }

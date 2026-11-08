@@ -29,7 +29,7 @@ struct WindowsIntegrationTests {
             type   = "shell"
             inline = '''
             if ('é'.Length -ne 1) { exit 1 }
-            $env:GREETING | Set-Content C:\\Users\\vagrant\\provisioned.txt
+            $env:GREETING | Set-Content C:\\Users\\hobo\\provisioned.txt
             '''
             env = { GREETING = "it's here" }
 
@@ -60,7 +60,7 @@ struct WindowsIntegrationTests {
         }
 
         // Plain exec: output, exit statuses, quoting, PowerShell commands, binary output.
-        #expect(try powerShell(#"Get-Content C:\Users\vagrant\provisioned.txt"#).text.contains("it's here"))
+        #expect(try powerShell(#"Get-Content C:\Users\hobo\provisioned.txt"#).text.contains("it's here"))
         #expect(try session.run(["exec", "vm", "--", "cmd.exe", "/c", "exit 7"]).status == 7)
         #expect(try session.run(["exec", "vm", "--", "nosuchprogram"]).status == 127)
         // Found, but not something Windows can start.
@@ -105,9 +105,9 @@ struct WindowsIntegrationTests {
         // Copies, both ways, to a Windows path.
         let copy = work.appending(path: "copy.txt")
         try "copied".write(to: copy, atomically: true, encoding: .utf8)
-        #expect(try session.run(["cp", copy.path, "vm:C:/Users/vagrant/copy.txt"]).status == 0)
+        #expect(try session.run(["cp", copy.path, "vm:C:/Users/hobo/copy.txt"]).status == 0)
         let back = work.appending(path: "back.txt")
-        #expect(try session.run(["cp", "vm:C:/Users/vagrant/copy.txt", back.path]).status == 0)
+        #expect(try session.run(["cp", "vm:C:/Users/hobo/copy.txt", back.path]).status == 0)
         #expect(try String(contentsOf: back, encoding: .utf8) == "copied")
 
         // Cancelling ends the command in the guest, and leaves nothing of a --gui command behind.

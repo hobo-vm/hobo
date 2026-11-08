@@ -71,17 +71,17 @@
       <UserAccounts>
         <LocalAccounts>
           <LocalAccount wcm:action="add">
-            <Name>vagrant</Name>
-            <DisplayName>Vagrant</DisplayName>
+            <Name>hobo</Name>
+            <DisplayName>Hobo</DisplayName>
             <Group>Administrators</Group>
-            <Password><Value>vagrant</Value><PlainText>true</PlainText></Password>
+            <Password><Value>hobo</Value><PlainText>true</PlainText></Password>
           </LocalAccount>
         </LocalAccounts>
       </UserAccounts>
       <AutoLogon>
         <Enabled>true</Enabled>
-        <Username>vagrant</Username>
-        <Password><Value>vagrant</Value><PlainText>true</PlainText></Password>
+        <Username>hobo</Username>
+        <Password><Value>hobo</Value><PlainText>true</PlainText></Password>
         <LogonCount>5</LogonCount>
       </AutoLogon>
     </component>

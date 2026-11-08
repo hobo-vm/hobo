@@ -5,12 +5,12 @@ import Virtualization
 
 /// Creates a named VM from a recipe, built in place in its bundle. Every create is a full install.
 /// A failed or interrupted (^C) create deletes the bundle.
-/// - macOS: IPSW → unattended install → Vagrant conventions → `[security]` (SIP off by hand in
+/// - macOS: IPSW → unattended install → guest conventions → `[security]` (SIP off by hand in
 ///   recoveryOS) → `[gui_testing]` grants → recipe steps → cleanup → clean shutdown.
-/// - Linux: cloud image → ASIF disk → a boot with a cloud-init seed that applies the Vagrant
+/// - Linux: cloud image → ASIF disk → a boot with a cloud-init seed that applies the guest
 ///   conventions → recipe steps → cleanup → clean shutdown.
 /// - Windows: ISO → install media → a boot that installs from it → a boot that runs Windows' own
-///   setup and the Vagrant conventions → recipe steps → cleanup → clean shutdown.
+///   setup and the guest conventions → recipe steps → cleanup → clean shutdown.
 @MainActor
 public struct VMCreator {
     public struct Options: Sendable {
@@ -98,7 +98,7 @@ public struct VMCreator {
         let version: String
         do {
             version = try await withVM(bundle, machine: machine) { vm, ssh in
-                log("Waiting for cloud-init to apply the Vagrant conventions")
+                log("Waiting for cloud-init to apply the guest conventions")
                 try await ssh.check(CloudInit.waitCommand, what: "cloud-init")
                 let version = try await ssh.output(#". /etc/os-release && echo "$NAME $VERSION_ID""#, what: "reading /etc/os-release")
                 try await provisionAndShutDown(vm, ssh: ssh, recipe: recipe, cleanupScript: CloudInit.cleanupScript)
@@ -144,7 +144,7 @@ public struct VMCreator {
         bundle.installMedia = nil
         try? FileManager.default.removeItem(at: media)
 
-        log("Waiting for Windows to finish setting up, and for the Vagrant conventions")
+        log("Waiting for Windows to finish setting up, and for the guest conventions")
         let version = try await withVM(bundle, machine: machine) { vm, ssh in
             if resizable { try await followWindowsDisplay(ssh) }
             let version = try await ssh.output(WindowsGuest.versionCommand, what: "reading the Windows version")
@@ -300,7 +300,7 @@ public struct VMCreator {
             try await ssh.waitUntilReachable(timeout: .seconds(20 * 60))
             // Passwordless sudo doesn't exist until the conventions script has run.
             let passwordSudo = "echo \(shellQuote(Conventions.password)) | sudo -S -p ''"
-            log("Applying Vagrant conventions")
+            log("Applying guest conventions")
             try await ssh.upload(contents: Conventions.script, to: "/tmp/hobo-conventions.sh")
             try await ssh.check("\(passwordSudo) /bin/bash /tmp/hobo-conventions.sh && rm /tmp/hobo-conventions.sh", what: "conventions")
             log("Waiting for the first login")

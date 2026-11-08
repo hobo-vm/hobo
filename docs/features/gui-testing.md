@@ -32,7 +32,7 @@ The capture runs inside the guest's desktop session, which each guest needs:
 | --- | --- |
 | macOS | A VM built from a recipe with `[gui_testing]` |
 | Linux | A desktop: `hobo init --os linux` adds one; `--server` leaves it out |
-| Windows | Nothing more: `vagrant` is logged in at boot |
+| Windows | Nothing more: `hobo` is logged in at boot |
 
 ## Run in the desktop session
 
@@ -42,7 +42,7 @@ hobo exec dev --gui -- osascript -e 'tell application "System Events" to keystro
 ```
 
 A plain `hobo exec` runs in a background session that can't see the desktop. `--gui` runs the
-command in `vagrant`'s desktop session instead, waiting up to a minute for it to come up, and exits
+command in `hobo`'s desktop session instead, waiting up to a minute for it to come up, and exits
 with status 125 if it never does.
 
 ## Driving the UI

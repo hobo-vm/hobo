@@ -267,7 +267,7 @@ import Testing
 }
 
 @Suite struct ConventionsTests {
-    @Test func embeddedPrivateKeyMatchesFirstPublicKey() throws {
+    @Test func embeddedPrivateKeyMatchesPublicKey() throws {
         let home = HoboHome(root: FileManager.default.temporaryDirectory.appending(path: "hobo-home-\(UUID().uuidString)"))
         defer { try? FileManager.default.removeItem(at: home.root) }
         let key = try home.ensureInsecurePrivateKey()
@@ -280,7 +280,7 @@ import Testing
         process.waitUntilExit()
         let derived = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         let keyBody = { (line: String) in line.split(separator: " ").prefix(2).joined(separator: " ") }
-        #expect(keyBody(derived) == keyBody(Conventions.insecurePublicKeys[0]))
+        #expect(keyBody(derived) == keyBody(Conventions.insecurePublicKey))
     }
 
     @Test func shellQuoteEscapesSingleQuotes() {

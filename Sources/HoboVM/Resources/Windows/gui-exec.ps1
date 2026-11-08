@@ -1,5 +1,5 @@
 # hobo exec --gui: SSH sessions live in session 0, which has no desktop, so the command goes through a
-# one-shot scheduled task in vagrant's interactive session (gui-run.ps1). The task can't share this
+# one-shot scheduled task in hobo's interactive session (gui-run.ps1). The task can't share this
 # process's streams, so its output comes back through files, passed on here as it arrives.
 param([string]$Marker, [string]$Encoded)
 $ProgressPreference = 'SilentlyContinue'
@@ -11,7 +11,7 @@ Write-Marker $Marker
 $deadline = (Get-Date).AddSeconds(60)
 while (-not (Get-Process explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -gt 0 })) {
     if ((Get-Date) -gt $deadline) {
-        [Console]::Error.WriteLine("vagrant's desktop session isn't up after 60 seconds")
+        [Console]::Error.WriteLine("hobo's desktop session isn't up after 60 seconds")
         exit 125
     }
     Start-Sleep -Milliseconds 500
@@ -31,7 +31,7 @@ function Copy-New($from, $to, $buffer) {
 
 # conhost --headless keeps a console window from flashing onto the desktop, and into screenshots.
 $action = New-ScheduledTaskAction -Execute conhost.exe -Argument "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$PSScriptRoot\gui-run.ps1`" `"$directory`""
-$principal = New-ScheduledTaskPrincipal -UserId vagrant -LogonType Interactive -RunLevel Highest
+$principal = New-ScheduledTaskPrincipal -UserId hobo -LogonType Interactive -RunLevel Highest
 Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Force | Out-Null
 try {
     Start-ScheduledTask -TaskName $name

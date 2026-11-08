@@ -17,8 +17,8 @@ hobo exec ubuntu -- uname -a
 
 <!-- more -->
 
-Every guest gets the same conventions, so commands work alike across them: a `vagrant` user with
-password `vagrant`, passwordless sudo (an administrator on Windows), SSH with Vagrant's insecure
+Every guest gets the same conventions, so commands work alike across them: a `hobo` user with
+password `hobo`, passwordless sudo (an administrator on Windows), SSH with hobo's insecure
 key, and no sleep or automatic updates.
 
 ## macOS
@@ -29,7 +29,7 @@ hobo init 26B123
 hobo create mac
 ```
 
-- The IPSW is downloaded to `~/Downloads`, verified, and installed with no clicks. The `vagrant`
+- The IPSW is downloaded to `~/Downloads`, verified, and installed with no clicks. The `hobo`
   user is logged in at boot.
 - A guest can't be newer than the host. Running a beta guest needs Apple's Device Support package
   (or the matching Xcode beta) on the host, and `create` names it if it's missing.
@@ -47,7 +47,7 @@ hobo create ubuntu
 ```
 
 - Built from Ubuntu's cloud images, set up by cloud-init on first boot.
-- `hobo init --os linux` adds a first step that installs Ubuntu's minimal desktop, with `vagrant`
+- `hobo init --os linux` adds a first step that installs Ubuntu's minimal desktop, with `hobo`
   logged in and the screen never locking, for [`hobo view`](./running-vms.md) and
   [GUI testing](./gui-testing.md). `--server` leaves it out.
 - Shared folders appear at `/mnt/hobo/<folder>`.
@@ -64,7 +64,7 @@ hobo exec win -- powershell.exe -Command 'Get-ComputerInfo | Select-Object OsNam
   [Microsoft](https://www.microsoft.com/en-us/software-download/windows11arm64); there's no
   catalog. `create` installs it without Setup's screens in about 8 minutes, and a clone boots to
   SSH in about 11 seconds.
-- `vagrant` is an administrator, logged in at boot. SSH's shell is PowerShell, so `hobo exec` and
+- `hobo` is an administrator, logged in at boot. SSH's shell is PowerShell, so `hobo exec` and
   `[[provision]]` scripts are PowerShell.
 - The display is a fixed 1024×768, which the window scales. `[windows] resizable_display = true`
   gives 1920×1200 that follows the window, but installs a test-signed display driver, so Windows

@@ -25,7 +25,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
 
     /// Creates a VM from the latest IPSW, runs it through start and stop under launchd, changes
     /// its hardware and shares with set, shares a folder for one run, re-runs steps with provision,
-    /// then renames and deletes it. The recipe's step asserts the Vagrant conventions and a GUI
+    /// then renames and deletes it. The recipe's step asserts the guest conventions and a GUI
     /// session from inside the guest, so a VM that builds has them. It enables `[gui_testing]`, whose grants
     /// create checks and the test checks again on a later boot. VMs go to a temp `HOBO_VMS`, whose
     /// store hash keeps their launchd jobs apart from real ones; the IPSW goes through the real image
@@ -52,7 +52,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         inline = '''
         set -eu
         sudo -n true
-        grep -q 'vagrant insecure public key' ~/.ssh/authorized_keys
+        grep -q 'hobo insecure public key' ~/.ssh/authorized_keys
         test "$(pmset -g | awk '$1 == "sleep" { print $2 }')" = 0
         launchctl print gui/$(id -u) >/dev/null
         '''
@@ -83,11 +83,11 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try output(hobo, ["exec", "itest", "--", "sw_vers", "-productVersion"], environment: env).hasPrefix("27."))
         #expect(try run(hobo, ["exec", "itest", "--", "sh", "-c", "exit 7"], in: work, environment: env) == 7)
         #expect(try run(hobo, ["exec", "itest", "--", "zsh", "-c", GUITestingGrants.checkCommand], in: work, environment: env) == 0)
-        #expect(try output(hobo, ["ssh", "itest", "--", "whoami"], environment: env) == "vagrant\n")
+        #expect(try output(hobo, ["ssh", "itest", "--", "whoami"], environment: env) == "hobo\n")
         // exec --gui is in the desktop session, as the same user; plain exec isn't.
         #expect(try output(hobo, ["exec", "itest", "--", "launchctl", "managername"], environment: env) == "Background\n")
         #expect(try output(hobo, ["exec", "itest", "--gui", "--", "launchctl", "managername"], environment: env) == "Aqua\n")
-        #expect(try output(hobo, ["exec", "itest", "--gui", "--", "whoami"], environment: env) == "vagrant\n")
+        #expect(try output(hobo, ["exec", "itest", "--gui", "--", "whoami"], environment: env) == "hobo\n")
         #expect(try run(hobo, ["exec", "itest", "--gui", "--", "sh", "-c", "exit 7"], in: work, environment: env) == 7)
         // A screenshot is a real PNG of the headless display, and leaves nothing behind in the guest.
         #expect(try run(hobo, ["exec", "itest", "--gui", "--", "open", "-a", "TextEdit"], in: work, environment: env) == 0)
@@ -266,7 +266,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         inline = '''
         set -eu
         sudo -n true
-        grep -q 'vagrant insecure public key' ~/.ssh/authorized_keys
+        grep -q 'hobo insecure public key' ~/.ssh/authorized_keys
         test "$(hostname)" = litest
         '''
         """).write(to: recipe, atomically: true, encoding: .utf8)
@@ -294,7 +294,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         let ip = try output(hobo, ["ip", "litest"], environment: env).trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(started.contains("(\(ip))"))
         #expect(try output(hobo, ["exec", "litest", "--", "uname", "-m"], environment: env) == "aarch64\n")
-        #expect(try output(hobo, ["ssh", "litest", "--", "whoami"], environment: env) == "vagrant\n")
+        #expect(try output(hobo, ["ssh", "litest", "--", "whoami"], environment: env) == "hobo\n")
         // --server left the desktop out, so --gui fails at once rather than waiting for one.
         let noDesktop = Date.now
         #expect(try run(hobo, ["exec", "litest", "--gui", "--", "true"], in: work, environment: env) == 125)
@@ -314,10 +314,10 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["view", "litest"], in: work, environment: env) == 0)
         #expect(try String(contentsOf: bundle.appending(path: "console.log"), encoding: .utf8).contains("litest login:"))
 
-        // vagrant has the host user's uid, so shared files are its own, and what it writes is the host user's.
+        // hobo has the host user's uid, so shared files are its own, and what it writes is the host user's.
         let shared = CloudInit.shareMountPoint
         #expect(try output(hobo, ["exec", "litest", "--", "cat", "\(shared)/kept/hello.txt"], environment: env) == "kept\n")
-        #expect(try output(hobo, ["exec", "litest", "--", "stat", "-c", "%U", "\(shared)/kept/hello.txt"], environment: env) == "vagrant\n")
+        #expect(try output(hobo, ["exec", "litest", "--", "stat", "-c", "%U", "\(shared)/kept/hello.txt"], environment: env) == "hobo\n")
         #expect(try run(hobo, ["exec", "litest", "--", "touch", "\(shared)/kept/new"], in: work, environment: env) != 0, "read-only")
         #expect(try run(hobo, ["exec", "litest", "--", "sh", "-c", "echo out > \(shared)/scratch/from-guest"], in: work, environment: env) == 0)
         let fromGuest = scratch.appending(path: "from-guest")
@@ -371,8 +371,8 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         let cloneIP = try output(hobo, ["ip", "lclone"], environment: env).trimmingCharacters(in: .whitespacesAndNewlines)
         let sourceIP = try output(hobo, ["ip", "litest"], environment: env).trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(!cloneIP.isEmpty && cloneIP != sourceIP)
-        #expect(try output(hobo, ["exec", "lclone", "--", "whoami"], environment: env) == "vagrant\n")
-        #expect(try output(hobo, ["exec", "litest", "--", "whoami"], environment: env) == "vagrant\n")
+        #expect(try output(hobo, ["exec", "lclone", "--", "whoami"], environment: env) == "hobo\n")
+        #expect(try output(hobo, ["exec", "litest", "--", "whoami"], environment: env) == "hobo\n")
         #expect(try run(hobo, ["delete", "lclone", "--yes"], in: work, environment: env) != 0, "running")
         #expect(try output(hobo, ["delete", "lclone", "--force"], environment: env).contains("Deleted lclone"))
         #expect(!FileManager.default.fileExists(atPath: vms.appending(path: "lclone.hobovm").path))
@@ -388,7 +388,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         let ephemeral = try startEphemeral()
         defer { _ = try? run(hobo, ["stop", "--force", ephemeral], in: work, environment: env) }
         #expect(try output(hobo, ["list"], environment: env).contains(try Regex("\(ephemeral)\\s+running, ephemeral")))
-        #expect(try output(hobo, ["exec", ephemeral, "--", "whoami"], environment: env) == "vagrant\n")
+        #expect(try output(hobo, ["exec", ephemeral, "--", "whoami"], environment: env) == "hobo\n")
         #expect(try output(hobo, ["stop", ephemeral], environment: env).contains("Stopped and deleted \(ephemeral)"))
         #expect(!FileManager.default.fileExists(atPath: vms.appending(path: "\(ephemeral).hobovm").path))
         #expect(!FileManager.default.fileExists(atPath: VMStore(directory: vms).job(for: ephemeral).log.path), "a clean run's log goes too")
@@ -434,7 +434,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         // Plain exec has no display; --gui waits for the session, then has the desktop's.
         #expect(try output(hobo, ["exec", "ldesk", "--", "sh", "-c", "echo ${WAYLAND_DISPLAY:-none}"], environment: env) == "none\n")
         let session = try output(hobo, ["exec", "ldesk", "--gui", "--", "sh", "-c", "echo $XDG_SESSION_TYPE $WAYLAND_DISPLAY; whoami"], environment: env)
-        #expect(session == "wayland wayland-0\nvagrant\n", "\(session)")
+        #expect(session == "wayland wayland-0\nhobo\n", "\(session)")
         #expect(try run(hobo, ["exec", "ldesk", "--gui", "--", "sh", "-c", "exit 7"], in: work, environment: env) == 7)
         #expect(try output(hobo, ["exec", "ldesk", "--gui", "--", "gsettings", "get", "org.gnome.desktop.interface", "toolkit-accessibility"], environment: env) == "true\n")
 

@@ -1,8 +1,8 @@
 # Hobo design record
 
 Hobo is a first-class CLI for virtual machines on Apple Silicon Macs: a command-line replacement for
-VirtualBuddy, Parallels and VMware Fusion, built on Apple's Virtualization framework. It is
-Vagrant-inspired (recipes, guest conventions, a `vagrant` user) but not a Vagrant clone. Decisions
+VirtualBuddy, Parallels and VMware Fusion, built on Apple's Virtualization framework. VMs are built from recipes and every guest
+gets the same conventions (a `hobo` user, SSH with a well-known key). Decisions
 were first reached in a design interview on 2026-10-28; the box/project model was replaced by named
 global VMs on 2026-11-01.
 
@@ -41,7 +41,7 @@ global VMs on 2026-11-01.
    decision 21), so the key is the guest OS; an `image` is always pinned, since there is no
    "latest" to resolve. Defaults follow the OS: 4 CPUs, 8 GB and 80 GB for macOS, 4 CPUs, 4 GB
    and 32 GB for Linux (enough for a desktop added by a step).
-4. **Commands.** VM-centric verbs, no Vagrant aliases:
+4. **Commands.** VM-centric verbs:
    `init [--os macos|linux] [--server] [<build-or-version>] [--force]`,
    `images [--os macos|linux] [<build-or-version>] [--all]`, `validate [recipe]`,
    `create <name> [recipe] [--hold-on-failure]`, `list [-v]`,
@@ -113,7 +113,7 @@ global VMs on 2026-11-01.
    release; `hobo init --os linux [<version>]` pins it, the newest supported LTS without one.
    Ubuntu publishes no desktop cloud images, so a Linux recipe gets a desktop from a step:
    `init --os linux` writes one first, by default (decided 2026-11-02), that installs
-   `ubuntu-desktop-minimal`, has GDM log `vagrant` in at boot, masks GNOME's welcome wizards
+   `ubuntu-desktop-minimal`, has GDM log `hobo` in at boot, masks GNOME's welcome wizards
    (`gnome-initial-setup`'s first-login and post-upgrade user services), turns off screen
    blanking and lock, and turns accessibility on for GUI testing (decision 21); `--server` leaves
    it out.
@@ -138,7 +138,7 @@ global VMs on 2026-11-01.
    `/mnt/hobo`, so shares added later appear at `/mnt/hobo/<name>` with nothing changed in the
    guest. A Linux VM always attaches the device, empty without shares, so `/mnt/hobo` is always a
    mount and nothing written there lands on the guest's disk. The guest sees a shared file's host
-   owner, so `vagrant` is created with the host user's uid and shared files are its own; the gid
+   owner, so `hobo` is created with the host user's uid and shared files are its own; the gid
    is left alone (host `staff`, 20, shows as `dialout` on Ubuntu). A macOS guest needs no such
    match: its virtio-fs mount ignores ownership, showing every shared file as the calling user's
    (gid 20; `root` sees 99:99) whatever the host owner, while still enforcing the host's mode bits,
@@ -186,8 +186,8 @@ global VMs on 2026-11-01.
        obscurely, so `create` names the missing package. Disks under ~50 GB can fail macOS updates;
        the default is 80 GB;
     2. base install: `VZMacOSInstaller`, then a first boot with `VZMacGuestProvisioningOptions`
-       (`vagrant`/`vagrant`, auto-login, Remote Login);
-    3. conventions, over password SSH: passwordless sudo, Vagrant's insecure keys (ed25519 + RSA) in
+       (`hobo`/`hobo`, auto-login, Remote Login);
+    3. conventions, over password SSH: passwordless sudo, hobo's own insecure ed25519 key (2026-11-08) in
        `authorized_keys`, no sleep/screensaver, no automatic updates. The insecure key stays: a
        per-VM key is deferred (decided 2026-11-01, Beads hobo-cip). The boot then waits (up to
        5 min) for the first auto-login to finish, signalled by the user's tccd opening its TCC.db:
@@ -355,7 +355,7 @@ global VMs on 2026-11-01.
     - `_vm-run` is an `NSApplication` (`.accessory`) from the start. It runs AppKit's event loop
       from a synchronous `main`: started inside Swift's async main, the loop never services the
       main actor.
-15. **Guest channel.** SSH (`vagrant` user, Vagrant's insecure key; host keys aren't checked, since
+15. **Guest channel.** SSH (`hobo` user, hobo's insecure key; host keys aren't checked, since
     IPs are reused across VMs and rebuilds). `ssh`/`scp` are spawned with responsibility disclaimed
     (`responsibility_spawnattrs_setdisclaim`, as terminals do), so macOS's Local Network privacy
     sees Apple's `ssh` rather than hobo (decided 2026-11-02): the VM process runs under launchd as
@@ -458,7 +458,7 @@ global VMs on 2026-11-01.
       for testing ad-hoc signed binaries that claim restricted entitlements (decided 2026-11-02;
       `[gui_testing]` doesn't need it). Checked on a macOS 27.2 guest (2026-11-02): `csrutil disable`
       works in a VZ guest's recoveryOS (Options → Continue, sometimes a language picker, no user
-      picker seen, then Utilities › Terminal; it asks y/n, then vagrant's password); paste from the host doesn't reach recoveryOS; once SIP is
+      picker seen, then Utilities › Terminal; it asks y/n, then hobo's password); paste from the host doesn't reach recoveryOS; once SIP is
       off, `sudo nvram boot-args="amfi_get_out_of_my_way=1"` works over SSH, and after a reboot an
       ad-hoc binary with `com.apple.developer.endpoint-security.client` runs instead of being killed.
       With SIP off the system TCC.db is writable inside the guest too.
@@ -473,8 +473,8 @@ global VMs on 2026-11-01.
       - The provisioning boot checks what the guest runs with (`csrutil status`, `kern.bootargs`),
         fails if it isn't what the recipe asked, and records it as `sip`/`amfi` in `config.json`
         (missing means on, for older bundles). Clones inherit it as guest state.
-    - `exec --gui` runs the command in the `vagrant` user's Aqua session: `sudo launchctl asuser
-      <uid> sudo -u vagrant env PATH=… <cmd>` (`asuser` needs root; the inner `sudo` makes it the user
+    - `exec --gui` runs the command in the `hobo` user's Aqua session: `sudo launchctl asuser
+      <uid> sudo -u hobo env PATH=… <cmd>` (`asuser` needs root; the inner `sudo` makes it the user
       again and resets the environment, hence `PATH`). It's a `gui` field on the `exec` request, so
       streaming, exit status, cancelling and leases are `exec`'s; killing the process group reaches
       through both `sudo`s (checked 2026-11-05 on 27.2). Auto-login can finish after SSH answers, so
@@ -530,7 +530,7 @@ global VMs on 2026-11-01.
     **Agent discovery.** Decided 2026-11-02:
     - `hobo usage` prints the whole reference: every visible command's `--help` (generated by
       ArgumentParser from the same configurations, so it can't drift), then a conventions section
-      (`--json` shapes, errors, exit status, the `vagrant` user, where VMs live, guest capacity).
+      (`--json` shapes, errors, exit status, the `hobo` user, where VMs live, guest capacity).
       It's plain text and not agent-specific. Reference lives here and nowhere else.
     - A Claude Code skill teaches the CLI path. Its description triggers on testing or UI-testing in
       a clean VM; its body is workflow and rules only (the ephemeral session pattern, test inside
@@ -575,7 +575,7 @@ global VMs on 2026-11-01.
       so a startup task (`finish-setup.ps1`) restores them after that restart, enables sshd and
       restarts once more. SSH answering means it's done. A whole `hobo create` takes about 8 minutes and about 11 GB of ASIF; a clone then boots to SSH in about 11 s.
       The bypass of Setup is what makes it fast and is also why no TPM or Secure Boot is needed.
-    - **Conventions.** `vagrant`/`vagrant` is an administrator, logged in at boot. The clock is
+    - **Conventions.** `hobo`/`hobo` is an administrator, logged in at boot. The clock is
       `RealTimeIsUniversal`, since VZ's runs on UTC. Growing the disk restores the GPT disk GUID
       afterwards: `diskutil image resize` replaces it, and Windows' BCD names its disk by it. Win32-OpenSSH
       (pinned MSI) has PowerShell 5.1 as its shell, so what Hobo sends is PowerShell
@@ -620,7 +620,7 @@ global VMs on 2026-11-01.
         does what `viogpuap` does (the driver escape for its ID, which also creates the event; a
         wait on the event; the escape for the custom mode; `ChangeDisplaySettingsEx`) for every
         attached virtio GPU, checking every 2 s as well since the event is only pulsed. A logon task
-        (`hobo-display-follower`, as `vagrant`, interactive) runs it, so it follows from the first
+        (`hobo-display-follower`, as `hobo`, interactive) runs it, so it follows from the first
         boot after create. Create also runs it once (`-Once`) through `exec --gui`: Windows starts
         at 1024×768 whatever the display offers, and the size it sets is saved, so later boots
         start at it.
@@ -629,7 +629,7 @@ global VMs on 2026-11-01.
         settings don't change the first commit; and restarting the display device makes VZ stop the
         VM, as uninstalling the driver does, so the driver goes in at create.
     - **Exec.** SSH runs in session 0, so `exec --gui` (and `screenshot`) go through a one-shot
-      scheduled task in `vagrant`'s desktop session, with output tailed from files. UI driving
+      scheduled task in `hobo`'s desktop session, with output tailed from files. UI driving
       uses Windows' built-in UI Automation from PowerShell, in the guest; no WinAppDriver, which
       Microsoft no longer develops. `[security]` and `[gui_testing]` are rejected, since no grant
       is needed; `privileged = false` too, since SSH gives an elevated token.
@@ -665,9 +665,9 @@ global VMs on 2026-11-01.
       The disk uses `.cached` caching with `.fsync`, as Lima does, against ext4 corruption seen with
       VZ's default. TRIM works either way: `fstrim` returned 1 GB to the host about 30 s later.
     - Conventions come from a NoCloud seed, a `cidata` ISO (`hdiutil makehybrid`) attached
-      read-only as a second disk for create's one boot only: `vagrant`/`vagrant` with passwordless
-      sudo, both insecure keys, password SSH, no unattended upgrades, the VM's name as hostname,
-      `vagrant`'s uid matching the host user's and the fstab line for shares (decision 9),
+      read-only as a second disk for create's one boot only: `hobo`/`hobo` with passwordless
+      sudo, the insecure key, password SSH, no unattended upgrades, the VM's name as hostname,
+      `hobo`'s uid matching the host user's and the fstab line for shares (decision 9),
       and DHCP with `dhcp-identifier: mac`. That last is required: Ubuntu's default DUID client ID
       leaves bootpd's lease without the MAC Hobo looks it up by (and would be shared by a clone,
       since it comes from `/etc/machine-id`). The netplan matches the NIC by driver
@@ -682,9 +682,9 @@ global VMs on 2026-11-01.
       testing needs no grant there, only the desktop `init --os linux` writes a step for (decision
       8), so `--server` is the only opt-out. Decided 2026-11-07 and verified on Ubuntu 26.04
       (GNOME 50, Wayland only):
-      - `exec --gui` runs as `vagrant` straight from the SSH shell, with no `sudo`, so streaming,
+      - `exec --gui` runs as `hobo` straight from the SSH shell, with no `sudo`, so streaming,
         exit status and cancelling (a kill of the process group, which reaches the app) are
-        `exec`'s. It waits up to 60 s, like macOS, for `loginctl` to give `vagrant` a graphical
+        `exec`'s. It waits up to 60 s, like macOS, for `loginctl` to give `hobo` a graphical
         session and for the systemd user manager to hold its display, then imports that manager's
         environment, which GNOME fills and apps launched from the desktop get (`WAYLAND_DISPLAY`,
         `DISPLAY`, `XAUTHORITY`, `XDG_SESSION_TYPE=wayland` over SSH's `tty`, the accessibility
@@ -700,7 +700,7 @@ global VMs on 2026-11-01.
       - UI driving is AT-SPI from Python (`gir1.2-atspi-2.0`), in the guest: walking trees, actions,
         and setting and reading text all work. Its synthetic key and mouse events don't reach
         Wayland apps, and raw input (`ydotool` via `/dev/uinput`) was left out. The desktop step
-        sets `toolkit-accessibility` in the system dconf database and locks it, since `vagrant`'s
+        sets `toolkit-accessibility` in the system dconf database and locks it, since `hobo`'s
         own settings end up holding `false`; Chromium and Electron expose their trees only with
         it on.
     - Rosetta for Linux (the `VZLinuxRosettaDirectoryShare` + binfmt) is
@@ -727,8 +727,8 @@ global VMs on 2026-11-01.
       virtualization entitlement, so they drive the signed `hobo` binary (`make integration-test`).
       There is no CI; GitHub is a backup.
 24. **Repo.** `ggal625/hobo`, private, Apache-2.0, `main`.
-25. **Naming.** "Hobo" plays on "Vagrant". The hobo-and-trains metaphor (Boxcar, roundhouse,
-    depot) was dropped on 2026-11-01: the recipe is plain `Hobo.toml`.
+25. **Naming.** The hobo-and-trains metaphor (Boxcar, roundhouse, depot) was dropped on
+    2026-11-01: the recipe is plain `Hobo.toml`.
 26. **Logo.** A bindle, a stick with a tied red bandana bag, on a cream macOS icon tile (decided
     2026-11-03). `assets/icon.svg` is the master and `assets/icon-small.svg` the simplified drawing
     for 16-32 px; `swift assets/render.swift` regenerates everything else from them. `assets/Hobo.icns`
@@ -824,7 +824,6 @@ identifier and keeps its aux storage, which is what Hobo's `clone` does (decisio
 - [VirtualBuddy](https://github.com/insidegui/VirtualBuddy), [Mist](https://github.com/ninxsoft/Mist):
   macOS guest GUI and IPSW/installer fetching.
 - [UTM](https://github.com/utmapp/UTM): QEMU + HVF for Windows on Arm.
-- [Mech](https://mechboxes.github.io/mech/docs/welcome/) and Vagrant: recipe and guest conventions.
 - Howard Oakley's [Virtualisation on Apple silicon](https://eclecticlight.co/virtualisation-on-apple-silicon/)
   articles: guest limits, machine identity, shares, ASIF, version gates (reviewed 2026-11-01).
 - WWDC26 session 224, "Expand the capabilities of your Virtualization app" (macOS 27 APIs).

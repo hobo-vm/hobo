@@ -10,8 +10,8 @@ if (Test-Path HKLM:\SOFTWARE\Hobo\SetupBoot) { Start-Sleep -Seconds 300 }
 
 $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
 Set-ItemProperty $winlogon AutoAdminLogon '1'
-Set-ItemProperty $winlogon DefaultUserName 'vagrant'
-Set-ItemProperty $winlogon DefaultPassword 'vagrant'
+Set-ItemProperty $winlogon DefaultUserName 'hobo'
+Set-ItemProperty $winlogon DefaultPassword 'hobo'
 Remove-ItemProperty $winlogon AutoLogonCount -ErrorAction SilentlyContinue
 
 Set-Service sshd -StartupType Automatic

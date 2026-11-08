@@ -7,8 +7,8 @@ sidebar:
 
 A recipe is a TOML file, conventionally `Hobo.toml`, that says what a VM is built from and how
 it's set up. `hobo init` writes a starter that's already pinned to an exact macOS build or Ubuntu
-release, and `hobo validate` checks a recipe without building anything. Every VM gets the Vagrant
-conventions (user `vagrant`, password `vagrant`, passwordless sudo, SSH); `[[provision]]` steps add
+release, and `hobo validate` checks a recipe without building anything. Every VM gets the same
+conventions (user `hobo`, password `hobo`, passwordless sudo, SSH); `[[provision]]` steps add
 the rest.
 
 ```sh
@@ -77,7 +77,7 @@ inline = "softwareupdate --install-rosetta --agree-to-license"
 [[provision]]
 type        = "file"
 source      = "files/zshrc"           # relative to the recipe
-destination = "/Users/vagrant/.zshrc"
+destination = "/Users/hobo/.zshrc"
 ```
 
 - **`[source]`** holds exactly one of `ipsw` (macOS), `image` (a Linux cloud image) or `iso`

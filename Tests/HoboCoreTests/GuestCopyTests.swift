@@ -9,7 +9,7 @@ import Testing
         let (vm, copy) = try GuestCopy.parse(["app", "/abs/x", "dev:/tmp/"], recursive: true, currentDirectory: cwd)
         #expect(vm == "dev")
         #expect(copy == GuestCopy(direction: .toGuest, sources: ["/work/dir/app", "/abs/x"], destination: "/tmp/", recursive: true))
-        #expect(copy.scpArguments(remote: "vagrant@1.2.3.4") == ["-q", "-r", "--", "/work/dir/app", "/abs/x", "vagrant@1.2.3.4:/tmp/"])
+        #expect(copy.scpArguments(remote: "hobo@1.2.3.4") == ["-q", "-r", "--", "/work/dir/app", "/abs/x", "hobo@1.2.3.4:/tmp/"])
     }
 
     @Test func copiesGuestPathsToTheHost() throws {

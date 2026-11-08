@@ -1,4 +1,4 @@
-# hobo screenshot: writes a PNG of vagrant's desktop to stdout. Run in the desktop session.
+# hobo screenshot: writes a PNG of hobo's desktop to stdout. Run in the desktop session.
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing, System.Windows.Forms
 Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();' -Name Dpi -Namespace Hobo

@@ -166,7 +166,7 @@ public enum WindowsInstallMedia {
         ] {
             try writeScript(script, to: guest.appending(path: name))
         }
-        try Data(Conventions.insecurePublicKeys.joined(separator: "\r\n").utf8).write(to: guest.appending(path: "authorized_keys"))
+        try Data(Conventions.insecurePublicKey.utf8).write(to: guest.appending(path: "authorized_keys"))
         try copy(packages.openSSH, to: guest.appending(path: packages.openSSH.lastPathComponent))
         try copy(packages.winFsp, to: guest.appending(path: packages.winFsp.lastPathComponent))
 
