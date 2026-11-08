@@ -56,6 +56,9 @@ final class VMWindow: NSObject, NSWindowDelegate {
         window.title = title
         window.contentView = view
         window.contentAspectRatio = display
+        if displayFollowsWindow, let smallest = type(of: guest.bundle).smallestFollowedWindow {
+            window.contentMinSize = smallest
+        }
         window.isReleasedWhenClosed = false
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.delegate = self

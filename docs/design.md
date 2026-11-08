@@ -404,7 +404,9 @@ global VMs on 2026-11-01.
       so the socket keeps being served.
     - The guest display follows the window's size while it shows, and is set back to the configured
       1920×1200 when it is hidden, so headless runs and screenshots always see that size unless
-      someone is watching. `[gui_testing]` may turn resizing off if that matters. Windows guests
+      someone is watching. A macOS guest has no mode under 1024×640 points, so its window can't be
+      made smaller than that (decided 2026-11-08: below it the guest stayed at 1024×640 and the
+      window scaled it down). `[gui_testing]` may turn resizing off if that matters. Windows guests
       follow it only with `[windows] resizable_display`; otherwise the display is a fixed 1024×768
       and the window scales it (decision 20).
     Agents drive the UI **inside the guest**:

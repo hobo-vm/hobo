@@ -20,6 +20,10 @@ public protocol VMBundle: Sendable {
     /// Whether the guest display resizes to the window showing it. False keeps the configured size,
     /// which the window scales.
     var displayFollowsWindow: Bool { get }
+    /// The smallest window, in points, whose size the guest display still follows, or nil if it has
+    /// no floor. Below it the guest stays at its smallest mode and the window scales that down, so the
+    /// window doesn't shrink past it.
+    static var smallestFollowedWindow: CGSize? { get }
     /// Sets a resumed guest's clock over NTP, if the guest has a one-shot command for it; the VM
     /// process falls back to `setClockCommand` when this is nil or fails.
     static var ntpClockCommand: String? { get }
@@ -65,6 +69,7 @@ extension VMBundle {
 extension VMBundle {
     public var displayPixels: CGSize { GuestDisplay.pixels }
     public var displayFollowsWindow: Bool { true }
+    public static var smallestFollowedWindow: CGSize? { nil }
 
     /// macOS and Linux guests don't care what `resize` does to the table's identity.
     public func keepingDiskIdentity(_ resize: () throws -> Void) throws { try resize() }
