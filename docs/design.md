@@ -396,24 +396,24 @@ global VMs on 2026-11-01.
       and the agent calls ws2_32 directly (2026-11-08, virtio-win 0.1.302).
     - **Requests.** The agent runs as root and listens on guest port 1101, accepting only the
       host's CID (2), so a guest process can't reach a root agent over vsock loopback. There is
-      no other authentication: only the VM process can reach the device, and `vagrant` has
+      no other authentication: only the VM process can reach the device, and `hobo` has
       passwordless sudo anyway. Each request is a connection, opened by the host: one line of
       JSON (`ping`, `exec`, `put`, `get`), then frames both ways (a type byte, a 4-byte length, the
       bytes: stdout, stderr, tar data, the exit status, or why it couldn't run). Frames rather than
       the control socket's JSON lines, so output and copies go unencoded. Closing the connection
       cancels a request, and the agent kills the command's process group (`SIGTERM`, then
       `SIGKILL` after 5 s).
-    - `exec` runs a command line in `vagrant`'s login shell, as sshd does, with a login's
+    - `exec` runs a command line in `hobo`'s login shell, as sshd does, with a login's
       environment (`HOME`, `USER`, `SHELL`, a system `PATH`, and on Linux the user's runtime
       directory), so the commands written for SSH (`sudo -n …`, the GUI scripts) run unchanged.
-      On macOS the command goes through `launchctl asuser` into `vagrant`'s launchd bootstrap (the
-      agent starts it as root, then becomes `vagrant`): a daemon's children are in the System
+      On macOS the command goes through `launchctl asuser` into `hobo`'s launchd bootstrap (the
+      agent starts it as root, then becomes `hobo`): a daemon's children are in the System
       bootstrap, where `nohup` fails ("can't detach from console") among other things. SSH logins
       got a Background session from pam_launchd, which has no public API, so plain `exec` is in
-      the desktop's bootstrap (Aqua) once `vagrant` is logged in, as `--gui` is; `--gui` still
+      the desktop's bootstrap (Aqua) once `hobo` is logged in, as `--gui` is; `--gui` still
       waits for that login (2026-11-08, macOS 27.2).
       On Windows the agent is a SYSTEM process in session 0, so it starts commands itself
-      (checked 2026-11-08 on 11 build 26300): plain `exec` as a logon of `vagrant`'s own, with the
+      (checked 2026-11-08 on 11 build 26300): plain `exec` as a logon of `hobo`'s own, with the
       convention's password, elevated (UAC's linked token), through `CreateProcessWithTokenW`, whose
       secondary logon service loads the profile and gives the logon session 0's `winsta0\default`
       (left to inherit the task's window station, commands die with `STATUS_DLL_INIT_FAILED`).
@@ -425,8 +425,8 @@ global VMs on 2026-11-01.
       no console window. This replaced a scheduled task per `--gui` command with its output tailed
       from files.
     - `cp` is a tar stream: the host's `tar` (no AppleDouble files or extended attributes) makes
-      or extracts it, and the agent runs itself as `vagrant` to extract or make the guest's side,
-      so files belong to `vagrant` and relative paths are from its home. Both sides give scp's
+      or extracts it, and the agent runs itself as `hobo` to extract or make the guest's side,
+      so files belong to `hobo` and relative paths are from its home. Both sides give scp's
       meaning: into a directory that exists, or a single source becomes the destination; a
       directory without `-r`, or a missing source, is reported and fails the copy.
     - `hobo provision` runs in the VM process (a `provision` request, streaming progress and the

@@ -5,7 +5,7 @@ import Synchronization
 
 /// How the host runs things in a guest: `GuestAgent` over virtio-vsock (decision 15), or
 /// `GuestSSH` for the part of a macOS create before the agent is installed. Commands are lines
-/// for the `vagrant` user's login shell either way, so the same command strings work over both.
+/// for the `hobo` user's login shell either way, so the same command strings work over both.
 public protocol GuestShell: Sendable {
     /// Runs `command`, streaming its output to the log unless `quiet`, and returns its exit status.
     @discardableResult

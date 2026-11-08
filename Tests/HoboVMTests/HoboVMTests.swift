@@ -458,7 +458,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         inline = "echo provisioned as $(whoami) > ~/provisioned"
         """).write(to: recipe, atomically: true, encoding: .utf8)
         #expect(try run(hobo, ["provision", vm, recipe.path], in: work, environment: env) == 0)
-        #expect(try output(hobo, ["exec", vm, "--", "cat", "provisioned"], environment: env) == "provisioned as vagrant\n")
+        #expect(try output(hobo, ["exec", vm, "--", "cat", "provisioned"], environment: env) == "provisioned as hobo\n")
 
         // With its network down the guest still answers.
         #expect(try run(hobo, ["exec", vm, "--"] + nicDown, in: work, environment: env) == 0)

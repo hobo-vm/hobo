@@ -103,7 +103,7 @@ struct WindowsIntegrationTests {
         #expect(png[16..<24] == Data([0, 0, 0x04, 0x00, 0, 0, 0x03, 0x00]), "1024×768")
 
         // SSH is still there for people.
-        #expect(try session.run(["ssh", "vm", "--", "whoami"]).text.lowercased().contains("vagrant"))
+        #expect(try session.run(["ssh", "vm", "--", "whoami"]).text.lowercased().contains("hobo"))
 
         // Copies, both ways, to a Windows path.
         let copy = work.appending(path: "copy.txt")

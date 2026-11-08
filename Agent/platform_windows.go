@@ -21,9 +21,9 @@ const agentExecutableName = "hobo-agent.exe"
 // The stub's log: a scheduled task has nowhere for its output to go.
 const stubLogPath = `C:\ProgramData\Hobo\hobo-agent.log`
 
-// The Vagrant convention's password, which setup.ps1 gave vagrant and auto-login uses too. Root
+// The guest conventions' password, which setup.ps1 gave hobo and auto-login uses too. Root
 // on the other platforms becomes the user without one; Windows wants it for a logon of its own.
-const windowsPassword = "vagrant"
+const windowsPassword = "hobo"
 
 // As GUISession has it: how long `exec --gui` waits for the desktop, and what it exits with then.
 const (
@@ -256,7 +256,7 @@ func desktopToken() (syscall.Token, error) {
 			}
 		}
 		if time.Now().After(deadline) {
-			return 0, exitEarly{desktopUnavailableStatus, fmt.Sprintf("vagrant's desktop session isn't up after %d seconds", desktopWaitSeconds)}
+			return 0, exitEarly{desktopUnavailableStatus, fmt.Sprintf("hobo's desktop session isn't up after %d seconds", desktopWaitSeconds)}
 		}
 		time.Sleep(500 * time.Millisecond)
 	}

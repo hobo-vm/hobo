@@ -88,7 +88,7 @@ extension Recipe {
         # [windows]
         # resizable_display = true
 
-        # Steps run once each, in order, as vagrant. Scripts are PowerShell. Paths are relative to this file.
+        # Steps run once each, in order, as hobo. Scripts are PowerShell. Paths are relative to this file.
         #
         # [[provision]]
         # type = "shell"
