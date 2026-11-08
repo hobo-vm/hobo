@@ -61,9 +61,16 @@ public enum AgentGuidance {
         `exec` runs a command, `cp` copies files in and out.
         - Never drive the VM's window from the host: don't click, type or take host screenshots of \
         it, or script it with AppleScript or computer use. `view` and `start --gui` are for a person \
-        to watch. To drive the guest's UI, run the automation inside the guest (AppleScript and \
-        System Events, XCUITest; AT-SPI on Linux; UI Automation on Windows) and look with `screenshot`, \
+        to watch. To drive the guest's UI, run the automation inside the guest (`hobo ui` on macOS; \
+        AT-SPI on Linux; UI Automation on Windows) and look with `screenshot`, \
         which fails rather than leave windows out if a macOS VM lacks the Screen Recording grant.
+        - On a macOS guest, drive apps with `hobo ui <vm>`: `snapshot --app <name>` prints the app's \
+        elements as a tree, each with a ref such as `e12`; `click`, `drag`, `scroll`, `type --into` and \
+        `menu "File > Save"` act on them with real input events, and `wait --text`, `--ref` or `--app` \
+        waits for a condition instead of a sleep. Refs keep their numbers across snapshots; a stale \
+        one fails rather than hit something else. Coordinates are screenshot pixels. Check results \
+        in the app's own state where you can (its files or database through `exec`), not only in \
+        screenshots.
         - On a macOS guest, plain `exec` runs in a background session, though `open`, System Events \
         scripting and `screencapture` work from it. `exec --gui` runs the command in the `hobo` \
         user's desktop session instead, waiting for it after a boot: use it for anything that needs \

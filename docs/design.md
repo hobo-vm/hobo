@@ -578,6 +578,44 @@ global VMs on 2026-11-01.
     - Linux guests have their own `exec --gui` and `screenshot` (decision 21), and Windows guests
       theirs (decision 20).
     - A host-side framebuffer screenshot for wedged guests is deferred.
+    - **`hobo ui <vm> <command>`** drives a macOS guest's apps through accessibility (decided
+      2026-11-08; the interview is `designs/hobo-ui.md`). It replaces what agents improvised:
+      System Events' `click at` returns without clicking in a guest, the guest has no compiler for
+      a CGEvent tool, coordinates read off screenshots go stale, and waits were sleeps.
+      - `hobo-ui`, a Swift executable in this package (pure logic in `HoboUICore`, unit-tested on
+        synthetic trees), embedded in `HoboVM` by `HoboUIPlugin`: host and guest are both arm64
+        macOS, so the tool SwiftPM builds for the host is the guest's binary. Not in the Go agent,
+        which would need cgo for AX and CGEvent. When there is a Hobo.app, it and the other
+        embedded payloads move into the bundle.
+      - Delivery: a `ui` control request runs `exec --gui` of `hobo-ui` with a `tool` field, and the
+        agent fetches the tool on first use each boot (`Agent/tool.go`), over the stub's fetch port
+        by a name no stub sends (`ui-darwin-arm64`), into its run directory, root's, which a boot
+        clears. So it always matches the hobo running the VM, clones and snapshots included, and
+        costs nothing on VMs that never use it. TCC counts it as the agent's stub, which
+        `[gui_testing]` grants; without them it fails saying so. macOS only: Linux (AT-SPI) and
+        Windows (UIA) backends would take the same commands.
+      - `hobo` parses the command with `HoboUI`'s definitions (for `--help` and usage errors), then
+        sends the arguments unchanged; `hobo-ui` parses them again. One definition, two parsers.
+      - Refs: `snapshot` gives each shown element a ref (`e12`) kept in a file per app (by bundle
+        ID) in the agent's run directory, mapping it to a locator: the path from the app of (role,
+        name, index among siblings with the same role and name), where the name is the identifier,
+        else the title, else the label, never the value. A ref keeps its number while its locator
+        matches, across snapshots and relaunches; a command walks the locator again and fails as
+        stale if nothing is there. One-shot processes, no daemon in the guest.
+      - Output is a compact text tree (Playwright's aria snapshots), which agents read for a
+        fraction of JSON's tokens; `--json` is for scripts. Unnamed layout groups fold away; without
+        `--all`, elements outside their scroll area, zero-size ones and children past 50 are counted.
+        Coordinates in and out are screenshot pixels, so a point read off a `screenshot` is the one
+        to click, with the VM's window open at Retina or not.
+      - `click`, `drag`, `scroll`, `type` and `key` are real CGEvents, so focus, hit-testing and
+        the responder chain behave as for a person: an agent testing Candela found that bare-key
+        shortcuts didn't fire while a collection view had focus, which AXPress would have hidden.
+        A click by ref first brings the app forward through AX and hit-tests the point, failing
+        with what covers the element. `click --press` and `menu` use AXPress; `menu` refuses a
+        disabled item and lists a menu's items with shortcuts in `key`'s syntax.
+      - Calls take about 0.3 s over the agent (2026-11-08, macOS 27.2), so there is no batch
+        command (`run`); hobo-cg1 revisits it. No launch/quit: `exec -- open -n --env … --args …`
+        does that, and `wait --app` waits for a window. MCP tools wait for `hobo mcp` (hobo-i2j).
 18. **Agent sessions and leases.** Agents work in sessions, not one-shot commands: `start --ephemeral`,
     many `exec`/`screenshot` calls, `stop`. There is no `hobo run`. An agent that dies or forgets
     leaves a clone running and holding one of the 2 macOS guest slots, and with no daemon only its
@@ -807,7 +845,7 @@ global VMs on 2026-11-01.
     resolved), so client and VM process are the same build; for an install that is this stable path.
     `start` refuses a binary without the virtualization entitlement, since a VM process failing
     that way would only say so in its log.
-23. **Layout.** One Swift package, one `hobo` executable:
+23. **Layout.** One Swift package, one `hobo` executable (with `hobo-ui` built into it):
     - `HoboCore`: recipes, the VM store (`VMStore`: bundle paths, names, list, rename, delete) and
       `config.json` (`VMConfig`), image index, provisioners
     - `HoboVM`: VM bundles (`VMBundle`: `MacVMBundle`, `LinuxVMBundle`, `WindowsVMBundle`, each
@@ -815,6 +853,8 @@ global VMs on 2026-11-01.
       process (`VMRunner`), display, and the host's side of the guest channel (`GuestShell`:
       `GuestAgent`, `GuestSSH`)
     - `Agent`: hobo-agent, in Go, built into `HoboVM` by `HoboAgentPlugin` (decision 15)
+    - `HoboUICore` and `hobo-ui`: `hobo ui`'s commands and the guest-side driver, embedded in
+      `HoboVM` by `HoboUIPlugin` (decision 17)
     - `HoboControl`: client ↔ VM-process socket protocol, and the client side of `start`/`stop` (`VMLifecycle`)
     - `HoboMCP`: MCP tools
     - `hobo`: CLI plus hidden `_vm-run` and `mcp` subcommands

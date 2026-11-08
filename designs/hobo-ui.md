@@ -62,6 +62,18 @@
     space, delete, arrows, home/end, pageup/pagedown, f1–f12); `hobo ui` fails on Linux/Windows
     guests, and without `[gui_testing]` with the same message `screenshot` gives.
 
+## As built
+
+- `scroll` takes `scroll <ref|x,y> <direction> [lines]` (default 3), not `--by`, which
+  ArgumentParser can't give an optional second value.
+- The fetched binary is `/var/run/hobo-agent/hobo-ui` and refs live in
+  `/var/run/hobo-agent/ui/<user>/`, under the agent's existing run directory rather than a new
+  `/var/run/hobo/`.
+- `hobo mcp` doesn't exist yet, so the MCP tools are a note on hobo-i2j.
+- From driving TextEdit and Finder: AppKit's made-up `_NS:31` identifiers are dropped, an unnamed
+  element shows its subrole (`closebutton`), zero-size elements count as offscreen, and an action's
+  message shows the element as it is afterwards.
+
 ## Deferred
 
 - `hobo ui see`: an annotated screenshot with ref-labelled boxes (Set-of-Mark)

@@ -1,6 +1,7 @@
 import Foundation
 import HoboControl
 import HoboCore
+import HoboUICore
 import Testing
 
 /// Integration tests drive the signed `hobo` binary and only run with HOBO_INTEGRATION=1
@@ -102,6 +103,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         // the capture; finding the check it ran means this isn't passing on a log that says nothing.
         let replayd = try output(hobo, ["exec", "itest", "--", "/usr/bin/log", "show", "--last", "10m", "--predicate", #"process == "replayd""#, "--style", "compact"], environment: env)
         #expect(replayd.contains("requireAlertWithCanonicalBundleID"), "replayd's log has changed wording")
+        try checkUI("itest", hobo: hobo, work: work, env: env)
         #expect(!replayd.contains("userAcknowledgementAlert"), "the approval dialog was raised")
         let payload = work.appending(path: "payload.txt")
         try "over and back\n".write(to: payload, atomically: true, encoding: .utf8)
@@ -676,6 +678,54 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
             #expect(try run(hobo, ["snapshot", "delete", vm, tag], in: work, environment: env) == 0)
         }
         #expect(try output(hobo, ["snapshot", "list", vm], environment: env).contains("no snapshots"))
+    }
+
+    /// `hobo ui` against TextEdit (left open by the screenshot check) and Finder, whose results are
+    /// checked through the apps' own state: the text area's value, a checkbox's, and a file a drag moved.
+    private func checkUI(_ vm: String, hobo: String, work: URL, env: [String: String]) throws {
+        func ui(_ arguments: [String]) throws -> Int32 { try run(hobo, ["ui", vm] + arguments, in: work, environment: env) }
+        func snapshot(_ app: String) throws -> [SnapshotNode] {
+            let json = try output(hobo, ["ui", vm, "snapshot", "--app", app, "--all", "--json"], environment: env)
+            struct Reply: Decodable { var snapshot: AppSnapshot }
+            return try JSONDecoder().decode(Reply.self, from: Data(json.utf8)).snapshot.elements
+        }
+        func find(_ nodes: [SnapshotNode], _ match: (SnapshotNode) -> Bool) -> SnapshotNode? {
+            for node in nodes {
+                if match(node) { return node }
+                if let found = find(node.children, match) { return found }
+            }
+            return nil
+        }
+
+        #expect(try ui(["wait", "--app", "TextEdit"]) == 0)
+        let text = try #require(find(try snapshot("TextEdit")) { $0.role == "textarea" })
+        #expect(try ui(["type", "Hello from hobo ui", "--into", text.ref, "--app", "TextEdit"]) == 0)
+        #expect(try ui(["wait", "--text", "Hello from hobo ui", "--app", "TextEdit", "--timeout", "5"]) == 0)
+        // Refs keep their numbers across snapshots.
+        let typed = try #require(find(try snapshot("TextEdit")) { $0.role == "textarea" })
+        #expect(typed.ref == text.ref)
+        #expect(typed.value == "Hello from hobo ui")
+
+        let bold = try #require(find(try snapshot("TextEdit")) { $0.name == "bold" })
+        #expect(bold.checked == false)
+        #expect(try ui(["key", "cmd+a"]) == 0)
+        #expect(try ui(["click", bold.ref, "--app", "TextEdit"]) == 0)
+        #expect(find(try snapshot("TextEdit")) { $0.ref == bold.ref }?.checked == true)
+        #expect(try ui(["scroll", text.ref, "down", "3", "--app", "TextEdit"]) == 0)
+        #expect(try ui(["menu", "Format > Font > Show Fonts", "--app", "TextEdit"]) == 0)
+        #expect(try output(hobo, ["ui", vm, "menu", "Format", "--app", "TextEdit"], environment: env).contains(#""Make Plain Text" cmd+shift+t"#))
+        #expect(try ui(["click", "e99999", "--app", "TextEdit"]) == 1, "an unknown ref fails")
+        #expect(try ui(["wait", "--text", "never there", "--app", "TextEdit", "--timeout", "0.5"]) == 1)
+
+        // Finder's icon view: drag a file onto a folder, and find it moved on disk.
+        #expect(try run(hobo, ["exec", vm, "--", "sh", "-c", "mkdir -p ~/DragTest/Folder && touch ~/DragTest/a.txt && open ~/DragTest"], in: work, environment: env) == 0)
+        #expect(try ui(["wait", "--text", "a.txt", "--app", "Finder"]) == 0)
+        let finder = try snapshot("Finder")
+        let file = try #require(find(finder) { $0.role == "image" && $0.name == "a.txt" })
+        let folder = try #require(find(finder) { $0.role == "image" && $0.name == "Folder" })
+        #expect(try ui(["drag", file.ref, folder.ref, "--app", "Finder"]) == 0)
+        #expect(try ui(["wait", "--ref", file.ref, "--gone", "--app", "Finder"]) == 0)
+        #expect(try run(hobo, ["exec", vm, "--", "test", "-f", "DragTest/Folder/a.txt"], in: work, environment: env) == 0)
     }
 
     private func run(_ executable: String, _ arguments: [String], in directory: URL, environment extra: [String: String] = [:]) throws -> Int32 {

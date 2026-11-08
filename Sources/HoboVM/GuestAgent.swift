@@ -33,10 +33,14 @@ public struct GuestAgent: GuestShell {
 
     /// `hobo exec`: runs `command` (an argv) for `platform`'s guest, in its desktop session if `gui`.
     /// Cancelling the task ends the command in the guest too.
+    /// With `tool`, the agent fetches that tool from the host first, if it hasn't this boot
+    /// (`Agent/tool.go`), for the command to run.
     public func exec(
-        _ command: [String], gui: Bool, platform: any VMBundle.Type, onOutput: @escaping @Sendable (GuestStream, Data) -> Void
+        _ command: [String], gui: Bool, platform: any VMBundle.Type, tool: String? = nil,
+        onOutput: @escaping @Sendable (GuestStream, Data) -> Void
     ) async throws -> Int32 {
         var request = AgentRequest(op: "exec", command: platform.agentCommand(command, gui: gui), user: user)
+        request.tool = tool
         if gui && platform.agentStartsInDesktop { request.desktop = true }
         return try await stream(request, onOutput: onOutput)
     }
@@ -251,6 +255,7 @@ struct AgentRequest: Encodable, Equatable {
     var op: String
     var command: String?
     var desktop: Bool?
+    var tool: String?
     var user: String?
     var destination: String?
     var single: Bool?
@@ -465,15 +470,17 @@ final class HostTar: Sendable {
 
 /// Serves the stub's fetch (`Agent/stub.go`): one JSON line naming the guest's platform, answered
 /// with the agent built for it. FROZEN, like the stub: every stub ever installed must get its
-/// agent this way.
+/// agent this way. The agent fetches its tools (`Agent/tool.go`) the same way, by names of the
+/// form `<tool>-<GOOS>-<GOARCH>`, which no stub sends.
 @MainActor
 final class AgentFetchServer: NSObject, @MainActor VZVirtioSocketListenerDelegate {
-    /// The agents a stub can fetch, by Go's `<GOOS>-<GOARCH>`.
+    /// The agents a stub can fetch, by Go's `<GOOS>-<GOARCH>`, and the tools an agent can.
     nonisolated static func binary(for platform: String) -> Data? {
         switch platform {
         case "linux-arm64": HoboAgentBinaries.linux
         case "darwin-arm64": HoboAgentBinaries.darwin
         case "windows-arm64": HoboAgentBinaries.windows
+        case "ui-darwin-arm64": HoboUIBinary.darwin
         default: nil
         }
     }

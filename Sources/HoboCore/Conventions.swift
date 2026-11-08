@@ -36,6 +36,17 @@ public enum Conventions {
     public static let agentPath = "/usr/local/libexec/hobo-agent"
     public static let agentDaemon = "com.hobo.agent"
 
+    /// `hobo ui`'s driver in a macOS guest, which the agent fetches from the host on first use each
+    /// boot (`Agent/tool.go`) into its run directory, which a boot clears.
+    public static let uiToolPath = "/var/run/hobo-agent/hobo-ui"
+    /// Where hobo-ui keeps the `username` user's refs between commands, made by the agent.
+    public static let uiStateDirectory = "/var/run/hobo-agent/ui/\(username)"
+
+    /// The guest command for `hobo ui <vm> <arguments>`.
+    public static func uiCommand(_ arguments: [String]) -> [String] {
+        ["/usr/bin/env", "HOBO_UI_STATE=\(uiStateDirectory)", uiToolPath] + arguments
+    }
+
     /// Root script run once, over password SSH, right after unattended setup.
     public static var script: String {
         """

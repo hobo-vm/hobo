@@ -27,6 +27,10 @@ extension OutputCommand {
     }
 }
 
+/// A command whose `--json` belongs to what it runs, which prints the JSON itself (`hobo ui`'s,
+/// hobo-ui in the guest).
+protocol JSONPassthrough {}
+
 /// A command's outcome, for people (`text`, nil when the command's own output said it all) and
 /// as JSON (`value`). A nonzero `exitStatus` (a guest command's or scp's, passed through by `exec`
 /// and `cp`) ends hobo with it once the outcome is printed.

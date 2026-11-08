@@ -30,6 +30,11 @@ public struct GuestChannel: Sendable {
         try stream(.exec(command: command, gui: gui), name: name, onOutput: onOutput)
     }
 
+    /// `hobo ui`: runs hobo-ui in a macOS guest with `arguments` and returns its exit status.
+    public func ui(_ name: String, arguments: [String], onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
+        try stream(.ui(arguments: arguments), name: name, onOutput: onOutput)
+    }
+
     /// Captures the guest's screen from inside its desktop session (decision 17).
     public func screenshot(_ name: String) throws -> GuestScreenshot {
         let vm = try store.find(name)

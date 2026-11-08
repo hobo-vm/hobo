@@ -298,6 +298,12 @@ public final class VMRunner {
             return await withGuest(reply: reply) { shell, onOutput in
                 try await shell.exec(command, gui: gui, platform: platform, onOutput: onOutput)
             }
+        case .ui(let arguments):
+            guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
+            guard guest.bundle is MacVMBundle else { return .error("hobo ui drives macOS guests only, for now") }
+            return await withGuest(reply: reply) { shell, onOutput in
+                try await shell.exec(Conventions.uiCommand(arguments), gui: true, platform: MacVMBundle.self, tool: "ui", onOutput: onOutput)
+            }
         case .copy(let copy):
             return await withGuest(reply: reply) { shell, onOutput in
                 try await shell.copy(copy, onOutput: onOutput)
