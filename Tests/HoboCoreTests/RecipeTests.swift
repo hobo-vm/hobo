@@ -107,6 +107,20 @@ import Testing
         #expect(throws: RecipeError.macOSOnly(name)) { try Recipe.parse(recipe, directory: directory) }
     }
 
+    @Test func windowsTableIsRejectedForOtherGuests() {
+        for source in ["ipsw = \"latest\"", "image = \"x.img\"\nsha256 = \"\(sha)\""] {
+            let recipe = minimal(source: source) + "\n[windows]\nresizable_display = true"
+            #expect(throws: RecipeError.windowsOnly("[windows]")) { try Recipe.parse(recipe, directory: directory) }
+        }
+    }
+
+    @Test func windowsDisplayIsFixedUnlessTheRecipeAsks() throws {
+        let source = "iso = \"x.iso\"\nsha256 = \"\(sha)\""
+        #expect(try Recipe.parse(minimal(source: source), directory: directory).windows.resizableDisplay == false)
+        let resizable = try Recipe.parse(minimal(source: source) + "\n[windows]\nresizable_display = true", directory: directory)
+        #expect(resizable.windows.resizableDisplay)
+    }
+
     @Test func anISOMakesAWindowsGuest() throws {
         let recipe = try Recipe.parse("[source]\niso = \"win.iso\"\nsha256 = \"\(sha)\"", directory: directory)
         #expect(recipe.os == .windows)
@@ -256,10 +270,12 @@ import Testing
     @Test func windowsTemplateExampleStepsParse() throws {
         let uncommented = Recipe.template(windowsISO: "/isos/win.iso", sha256: sha)
             .replacingOccurrences(of: "# [[provision]]", with: "[[provision]]")
+            .replacingOccurrences(of: "# [windows]", with: "[windows]")
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { $0.hasPrefix("# ") && $0.contains("=") ? $0.dropFirst(2) : $0 }
             .joined(separator: "\n")
         let recipe = try Recipe.parse(uncommented, directory: directory)
+        #expect(recipe.windows.resizableDisplay)
         #expect(recipe.provisioners.map(\.type) == [.shell, .file])
         #expect(recipe.provisioners[0].env == ["GREETING": "hello"])
     }

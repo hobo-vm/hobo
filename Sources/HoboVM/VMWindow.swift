@@ -39,8 +39,8 @@ final class VMWindow: NSObject, NSWindowDelegate {
         machine = guest.machine
         icon = VMIcon.image(for: vmName)
         hiDPI = type(of: guest.bundle).hiDPIDisplay
-        displayFollowsWindow = type(of: guest.bundle).displayFollowsWindow
-        let display = type(of: guest.bundle).displayPixels
+        displayFollowsWindow = guest.bundle.displayFollowsWindow
+        let display = guest.bundle.displayPixels
         displayPixels = display
         name = title
         self.log = log

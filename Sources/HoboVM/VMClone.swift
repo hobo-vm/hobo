@@ -12,8 +12,8 @@ extension VMStore {
         try clone(
             source, to: destination, ephemeral: ephemeral, macAddress: VZMACAddress.randomLocallyAdministered().string, log: log
         ) { from, to, config in
-            try vmBundle(at: from, os: config.os).copyPlatformFiles(to: to)
-            try vmBundle(at: to, os: config.os).writeNewMachineIdentifier()
+            try vmBundle(at: from, config: config).copyPlatformFiles(to: to)
+            try vmBundle(at: to, config: config).writeNewMachineIdentifier()
         }
     }
 }

@@ -35,12 +35,16 @@ public struct VMConfig: Codable, Equatable, Sendable {
     /// new MAC still gets a network. Linux VMs created before this was recorded match by MAC, and
     /// can't be cloned.
     @MissingAsFalse public var nicMatchedByDriver: Bool
+    /// A Windows guest built with `[windows] resizable_display`: its patched display driver can leave
+    /// 1024×768, so the display is 1920×1200.
+    @MissingAsFalse public var resizableDisplay: Bool
 
     public init(
         os: OS, cpus: Int, memory: UInt64, disk: UInt64, macAddress: String,
         guestOSVersion: String, created: Date, recipeSHA256: String, sourceSHA256: String,
         sip: Bool = true, amfi: Bool = true, diskGrowPending: Bool = false,
-        shares: [VMShare] = [], ephemeral: Bool = false, nicMatchedByDriver: Bool = false
+        shares: [VMShare] = [], ephemeral: Bool = false, nicMatchedByDriver: Bool = false,
+        resizableDisplay: Bool = false
     ) {
         self.os = os
         self.cpus = cpus
@@ -57,6 +61,7 @@ public struct VMConfig: Codable, Equatable, Sendable {
         self.shares = shares
         self.ephemeral = ephemeral
         self.nicMatchedByDriver = nicMatchedByDriver
+        self.resizableDisplay = resizableDisplay
     }
 
     /// The guest OS for people, e.g. `macOS 27.2.0 (26B123)` or `Ubuntu 26.04`.

@@ -104,7 +104,7 @@ public final class VMRunner {
         let guest: GuestVM
         do {
             guest = try GuestVM(
-                bundle: try vmBundle(at: vm.bundle, os: config.os), cpus: config.cpus, memoryBytes: config.memory,
+                bundle: try vmBundle(at: vm.bundle, config: config), cpus: config.cpus, memoryBytes: config.memory,
                 macAddress: mac, shares: shares
             )
         } catch where saved != nil {

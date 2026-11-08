@@ -41,6 +41,11 @@ public enum WindowsGuest {
         "Set-Date -Date ([DateTime]::new(\(ticks(date)), [DateTimeKind]::Utc).ToLocalTime()) | Out-Null"
     }
 
+    /// The command line for `set-display.ps1`, run in the desktop session.
+    public static func setDisplayCommand(width: Int, height: Int) -> [String] {
+        ["powershell.exe", "-NoProfile", "-File", "\(scriptsDirectory)\\set-display.ps1", String(width), String(height)]
+    }
+
     public static let screenshotCommand = ["powershell.exe", "-NoProfile", "-File", "\(scriptsDirectory)\\screenshot.ps1"]
 
     /// A guest computer name for the VM: Windows allows 15 characters, of letters, digits and

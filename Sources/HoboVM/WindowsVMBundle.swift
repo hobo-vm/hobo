@@ -7,11 +7,6 @@ import Virtualization
 public struct WindowsVMBundle: VMBundle {
     public static let platformFiles = ["disk.asif", "efi-vars.fd", "machine-identifier.bin"]
     public static let hiDPIDisplay = false
-    /// viogpudo's startup mode. After a mode change the driver's updates stop reaching the window
-    /// intact, though Windows accepts the mode (design.md decision 20; Beads hobo-y70).
-    public static let displayPixels = CGSize(width: 1024, height: 768)
-    /// viogpudo doesn't follow the display, so the window scales this one instead.
-    public static let displayFollowsWindow = false
     public static let ntpClockCommand: String? = nil
     public static func setClockCommand(_ date: Date) -> String { WindowsGuest.setClockCommand(date) }
     /// The share service's mount keeps working across a restore (checked 2026-11-05 on 11 build 26300).
@@ -25,19 +20,29 @@ public struct WindowsVMBundle: VMBundle {
     public var directory: URL
     /// The install media, attached as USB storage while `create` installs.
     public var installMedia: URL?
+    /// Whether the guest has the patched viogpudo (`[windows] resizable_display`). virtio-win's
+    /// can't leave its 1024×768 startup mode under VZ (design.md decision 20).
+    public var resizableDisplay: Bool
 
-    public init(directory: URL, installMedia: URL? = nil) {
+    public init(directory: URL, installMedia: URL? = nil, resizableDisplay: Bool = false) {
         self.directory = directory
         self.installMedia = installMedia
+        self.resizableDisplay = resizableDisplay
     }
+
+    /// viogpudo's startup mode, unless the patched driver can leave it.
+    public var displayPixels: CGSize { resizableDisplay ? GuestDisplay.pixels : CGSize(width: 1024, height: 768) }
+    /// Windows applies a new display size only through virtio-win's user-mode helper, which Hobo
+    /// doesn't install yet, so the window scales the display instead (design.md decision 20).
+    public var displayFollowsWindow: Bool { false }
 
     public var disk: URL { directory.appending(path: "disk.asif") }
     public var efiVariables: URL { directory.appending(path: "efi-vars.fd") }
     public var machineIdentifier: URL { directory.appending(path: "machine-identifier.bin") }
 
     /// Creates an empty bundle ready for the install media.
-    public static func create(at directory: URL, diskBytes: UInt64) throws -> WindowsVMBundle {
-        let bundle = WindowsVMBundle(directory: directory)
+    public static func create(at directory: URL, diskBytes: UInt64, resizableDisplay: Bool) throws -> WindowsVMBundle {
+        let bundle = WindowsVMBundle(directory: directory, resizableDisplay: resizableDisplay)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try runQuietly("/usr/sbin/diskutil", [
             "image", "create", "blank", "--format", "ASIF", "--fs", "None", "--size", String(diskBytes), bundle.disk.path,
@@ -113,7 +118,7 @@ public struct WindowsVMBundle: VMBundle {
 
         let graphics = VZVirtioGraphicsDeviceConfiguration()
         graphics.scanouts = [VZVirtioGraphicsScanoutConfiguration(
-            widthInPixels: Int(Self.displayPixels.width), heightInPixels: Int(Self.displayPixels.height)
+            widthInPixels: Int(displayPixels.width), heightInPixels: Int(displayPixels.height)
         )]
 
         var storage: [VZStorageDeviceConfiguration] = [VZNVMExpressControllerDeviceConfiguration(

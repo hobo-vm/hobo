@@ -44,6 +44,12 @@ echo [%time%] applying %EDITION% >> %LOG%
 dism /Apply-Image /ImageFile:%IMAGE% %EDITION% /ApplyDir:W:\ /Compact >> %LOG% 2>&1 || goto failed
 echo [%time%] adding drivers >> %LOG%
 dism /Image:W:\ /Add-Driver /Driver:%HOBO%\drivers /Recurse >> %LOG% 2>&1 || goto failed
+rem [windows] resizable_display: the patched viogpudo, which only test signing lets load.
+set TESTSIGNED=%HOBO%\test-signed-drivers
+if exist %TESTSIGNED% (
+  echo [!time!] adding test-signed drivers >> %LOG%
+  dism /Image:W:\ /Add-Driver /Driver:%TESTSIGNED% /Recurse /ForceUnsigned >> %LOG% 2>&1 || goto failed
+)
 
 rem The answer file's later passes, and what SetupComplete.cmd runs on the way to the first logon.
 mkdir W:\Windows\Panther W:\Windows\Setup\Scripts W:\ProgramData\Hobo
@@ -52,6 +58,9 @@ copy /y %HOBO%\SetupComplete.cmd W:\Windows\Setup\Scripts\ >> %LOG% || goto fail
 xcopy /y /e %HOBO%\guest W:\ProgramData\Hobo\ >> %LOG% || goto failed
 
 bcdboot W:\Windows /s S: /f UEFI >> %LOG% 2>&1 || goto failed
+if exist %TESTSIGNED% (
+  bcdedit /store S:\EFI\Microsoft\Boot\BCD /set {default} testsigning on >> %LOG% 2>&1 || goto failed
+)
 rem The driver registered this path when the media booted; from the next boot the firmware finds it here.
 mkdir S:\EFI\hobo
 copy /y %HOBO%\framebuffer.efi S:\EFI\hobo\ >> %LOG% || goto failed

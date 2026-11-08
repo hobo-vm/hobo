@@ -126,7 +126,7 @@ extension VMStore {
     func snapshotAtRest(_ bundle: URL, tag: String, config: VMConfig) throws {
         let partial = try Snapshot.begin(tag, in: bundle)
         do {
-            try vmBundle(at: bundle, os: config.os).copyPlatformFiles(to: partial)
+            try vmBundle(at: bundle, config: config).copyPlatformFiles(to: partial)
             if SavedState.load(in: bundle) != nil { try Self.cloneSavedState(from: bundle, to: partial) }
             try Snapshot.finish(tag, partial: partial, in: bundle, config: config)
         } catch {
@@ -158,7 +158,7 @@ extension VMStore {
                     + "can't be used; booting from its disk, as after a power loss"
             )
         }
-        let snapshotBundle = try vmBundle(at: source, os: config.os)
+        let snapshotBundle = try vmBundle(at: source, config: config)
         try snapshotBundle.copyPlatformFiles(to: restoring)
         if restoresState { try Self.cloneSavedState(from: source, to: restoring) }
 

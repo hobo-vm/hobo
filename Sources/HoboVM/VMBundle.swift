@@ -16,10 +16,10 @@ public protocol VMBundle: Sendable {
     /// its text isn't half size; the window scales it up.
     static var hiDPIDisplay: Bool { get }
     /// The guest display's size, in pixels, while no window has resized it.
-    static var displayPixels: CGSize { get }
+    var displayPixels: CGSize { get }
     /// Whether the guest display resizes to the window showing it. False keeps the configured size,
     /// which the window scales.
-    static var displayFollowsWindow: Bool { get }
+    var displayFollowsWindow: Bool { get }
     /// Sets a resumed guest's clock over NTP, if the guest has a one-shot command for it; the VM
     /// process falls back to `setClockCommand` when this is nil or fails.
     static var ntpClockCommand: String? { get }
@@ -63,8 +63,8 @@ extension VMBundle {
 }
 
 extension VMBundle {
-    public static var displayPixels: CGSize { GuestDisplay.pixels }
-    public static var displayFollowsWindow: Bool { true }
+    public var displayPixels: CGSize { GuestDisplay.pixels }
+    public var displayFollowsWindow: Bool { true }
 
     /// macOS and Linux guests don't care what `resize` does to the table's identity.
     public func keepingDiskIdentity(_ resize: () throws -> Void) throws { try resize() }
@@ -98,11 +98,11 @@ func clockAgreesCommand(_ date: Date) -> String {
 }
 
 /// The bundle a VM's `config.json` says it has.
-public func vmBundle(at directory: URL, os: VMConfig.OS) throws -> any VMBundle {
-    switch os {
+public func vmBundle(at directory: URL, config: VMConfig) throws -> any VMBundle {
+    switch config.os {
     case .macOS: MacVMBundle(directory: directory)
     case .linux: LinuxVMBundle(directory: directory)
-    case .windows: WindowsVMBundle(directory: directory)
+    case .windows: WindowsVMBundle(directory: directory, resizableDisplay: config.resizableDisplay)
     }
 }
 

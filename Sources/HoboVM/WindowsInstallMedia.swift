@@ -14,6 +14,8 @@ public enum WindowsInstallMedia {
         var virtioWin: URL
         var openSSH: URL
         var winFsp: URL
+        /// `vzDisplayDriver`, for `[windows] resizable_display`; nil keeps virtio-win's viogpudo.
+        var vzDisplayDriver: URL?
     }
 
     /// A download of one of those files.
@@ -30,6 +32,13 @@ public enum WindowsInstallMedia {
         url: URL(string: "https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.4.0.0p1-Preview/OpenSSH-ARM64-v10.4.0.0.msi")!,
         sha256: "75fa139d8975eedb706d9180f454e2148af09d417692825f383fe00610b00e21"
     )
+    /// viogpudo with the fix that lets it change mode under VZ, test-signed: built from the
+    /// `vz-scanout` branch of a fork of virtio-win's source, until a signed release has the fix
+    /// (design.md decision 20). A zip of a `viogpudo` folder holding the .inf, .sys and .cat.
+    static let vzDisplayDriver = PinnedPackage(
+        url: URL(string: "https://github.com/ggal625/kvm-guest-drivers-windows/releases/download/viogpudo-vz-1/viogpudo-vz-arm64.zip")!,
+        sha256: "a3822c5a24f51d226f3b850d1e9613e128c6c4b531b42f6805d27da22d4f0256"
+    )
     static let winFsp = PinnedPackage(
         url: URL(string: "https://github.com/winfsp/winfsp/releases/download/v2.1/winfsp-2.1.25156.msi")!,
         sha256: "073a70e00f77423e34bed98b86e600def93393ba5822204fac57a29324db9f7a"
@@ -44,6 +53,8 @@ public enum WindowsInstallMedia {
 
     /// What each guest needs from virtio-win: the display, network, entropy, memory balloon and shares.
     private static let drivers = ["viogpudo", "NetKVM", "viorng", "Balloon", "viofs"]
+    /// Where install.cmd finds `vzDisplayDriver`.
+    private static let testSignedDrivers = "hobo/test-signed-drivers"
     private static let resultFile = "hobo/result"
     private static let logFile = "hobo/install.log"
     private static let bootVolume = "HOBOBOOT"
@@ -151,6 +162,7 @@ public enum WindowsInstallMedia {
             (PackageResources.common_ps1, "common.ps1"), (PackageResources.exec_ps1, "exec.ps1"),
             (PackageResources.gui_exec_ps1, "gui-exec.ps1"), (PackageResources.gui_run_ps1, "gui-run.ps1"),
             (PackageResources.cancel_ps1, "cancel.ps1"), (PackageResources.screenshot_ps1, "screenshot.ps1"),
+            (PackageResources.set_display_ps1, "set-display.ps1"),
         ] {
             try writeScript(script, to: guest.appending(path: name))
         }
@@ -160,7 +172,7 @@ public enum WindowsInstallMedia {
 
         try withAttached(packages.virtioWin) { volumes in
             guard let root = volumes.first else { throw VMError.unusableImage(packages.virtioWin.lastPathComponent, "it has no volume") }
-            for driver in drivers {
+            for driver in drivers where !(driver == "viogpudo" && packages.vzDisplayDriver != nil) {
                 let target = hobo.appending(path: "drivers/\(driver)")
                 try manager.createDirectory(at: target, withIntermediateDirectories: true)
                 let source = root.appending(path: "\(driver)/w11/ARM64")
@@ -171,6 +183,11 @@ public enum WindowsInstallMedia {
                 }
             }
             try copy(root.appending(path: "viofs/w11/ARM64/virtiofs.exe"), to: guest.appending(path: "virtiofs.exe"))
+        }
+        // Its own folder, which install.cmd adds with /ForceUnsigned and takes as the sign to turn
+        // test signing on.
+        if let zip = packages.vzDisplayDriver {
+            try runQuietly("/usr/bin/ditto", ["-x", "-k", "--norsrc", "--noextattr", "--noacl", zip.path, volume.appending(path: testSignedDrivers).path])
         }
     }
 

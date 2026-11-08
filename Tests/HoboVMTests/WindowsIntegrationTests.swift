@@ -5,7 +5,7 @@ import Testing
 /// A real `hobo create` from the Windows on Arm ISO named by HOBO_WINDOWS_ISO, which Hobo can't
 /// download, then everything that behaves differently on Windows. Opt-in on top of HOBO_INTEGRATION
 /// (`HOBO_WINDOWS_ISO=<path> make integration-test`). VMs go to a temp `HOBO_VMS`, as in
-/// `HoboVMIntegrationTests`. One test because the build takes 8 minutes; clones keep the steps apart.
+/// `HoboVMIntegrationTests`. One test per build, since a build takes 8 minutes; clones keep the steps apart.
 @Suite(.enabled(if: integrationEnabled && environment["HOBO_WINDOWS_ISO"] != nil), .serialized)
 struct WindowsIntegrationTests {
     @Test(.timeLimit(.minutes(60)))
@@ -94,8 +94,8 @@ struct WindowsIntegrationTests {
             """#
         #expect(try powerShell(automation, gui: true).text.contains("typed by automation"))
 
-        // Screenshot: a PNG of the desktop, at the one size that reaches the VM's window intact. This
-        // sees Windows' desktop, not the window, so it can't tell whether the window is showing it.
+        // Screenshot: a PNG of the desktop, at virtio-win's viogpudo's fixed size. This sees Windows'
+        // desktop, not the window, so it can't tell whether the window is showing it.
         let shot = work.appending(path: "shot.png")
         #expect(try session.run(["screenshot", "vm", "--output", shot.path]).status == 0)
         let png = try Data(contentsOf: shot)
@@ -163,6 +163,42 @@ struct WindowsIntegrationTests {
         started.append(String(name))
         #expect(try session.run(["stop", String(name)]).status == 0)
         #expect(!(try session.run(["list"]).text.contains(String(name))))
+    }
+
+    /// `[windows] resizable_display`: the patched viogpudo, test signing, and a 1920×1200 desktop.
+    /// Whether the window shows that desktop intact can only be seen from the host, by eye.
+    @Test(.timeLimit(.minutes(30)))
+    func resizableDisplay() throws {
+        let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
+        let iso = try #require(environment["HOBO_WINDOWS_ISO"])
+        let work = FileManager.default.temporaryDirectory.appending(path: "hobo-windows-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: work) }
+        let session = Session(hobo: hobo, directory: work, vms: work.appending(path: "vms"))
+        defer { _ = try? session.run(["stop", "--force", "vm"]) }
+
+        #expect(try session.run(["init", "--os", "windows", iso]).status == 0)
+        let recipe = work.appending(path: "Hobo.toml")
+        let resizable = try String(contentsOf: recipe, encoding: .utf8)
+            .replacingOccurrences(of: "# [windows]\n# resizable_display = true", with: "[windows]\nresizable_display = true")
+        #expect(resizable.contains("\n[windows]\n"), "the template offers it")
+        try resizable.write(to: recipe, atomically: true, encoding: .utf8)
+        try #require(try session.run(["create", "vm"]).status == 0)
+        #expect(try VMConfig.load(from: work.appending(path: "vms/vm.hobovm/config.json")).resizableDisplay)
+
+        try #require(try session.run(["start", "vm"]).status == 0)
+        func powerShell(_ line: String) throws -> String {
+            try session.run(["exec", "vm", "--", "powershell.exe", "-NoProfile", "-Command", line]).text
+        }
+        #expect(try powerShell("bcdedit /enum '{current}' | Select-String testsigning").contains("Yes"))
+        let device = try powerShell("$v = Get-CimInstance Win32_VideoController; $v.Status + ' ' + $v.DriverVersion")
+        #expect(device.contains("OK"), "the test-signed driver loaded: \(device)")
+        #expect(!device.contains("30200"), "not virtio-win's 0.1.302 build: \(device)")
+
+        let shot = work.appending(path: "shot.png")
+        #expect(try session.run(["screenshot", "vm", "--output", shot.path]).status == 0)
+        let png = try Data(contentsOf: shot)
+        #expect(png[16..<24] == Data([0, 0, 0x07, 0x80, 0, 0, 0x04, 0xB0]), "1920×1200")
     }
 
     private struct Session {

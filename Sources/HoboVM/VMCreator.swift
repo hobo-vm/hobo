@@ -120,9 +120,10 @@ public struct VMCreator {
     private func buildWindows(_ recipe: Recipe, recipeSHA256: String, in directory: URL) async throws -> VMConfig {
         let (iso, sourceSHA256) = try await resolveSource(recipe.source)
         try WindowsInstallMedia.validate(iso)
-        let packages = try await fetchWindowsPackages()
+        let resizable = recipe.windows.resizableDisplay
+        let packages = try await fetchWindowsPackages(resizableDisplay: resizable)
         let machine = Machine(cpus: recipe.cpus, memory: recipe.memory.bytes, macAddress: .randomLocallyAdministered())
-        var bundle = try WindowsVMBundle.create(at: directory, diskBytes: recipe.disk.bytes)
+        var bundle = try WindowsVMBundle.create(at: directory, diskBytes: recipe.disk.bytes, resizableDisplay: resizable)
 
         log("Building the install media")
         let media = directory.appending(path: "install-media.img")
@@ -145,6 +146,7 @@ public struct VMCreator {
 
         log("Waiting for Windows to finish setting up, and for the Vagrant conventions")
         let version = try await withVM(bundle, machine: machine) { vm, ssh in
+            if resizable { try await setWindowsDisplay(ssh, to: bundle.displayPixels) }
             let version = try await ssh.output(WindowsGuest.versionCommand, what: "reading the Windows version")
             try await Provisioning.run(recipe, ssh: ssh, log: log)
             log("Cleaning up")
@@ -156,11 +158,21 @@ public struct VMCreator {
         return VMConfig(
             os: .windows, cpus: machine.cpus, memory: machine.memory, disk: recipe.disk.bytes,
             macAddress: machine.macAddress.string, guestOSVersion: version,
-            created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256
+            created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256, resizableDisplay: resizable
         )
     }
 
-    private func fetchWindowsPackages() async throws -> WindowsInstallMedia.PackageFiles {
+    /// Windows starts at 1024×768 whatever the display offers, and remembers this from then on.
+    private func setWindowsDisplay(_ ssh: GuestSSH, to size: CGSize) async throws {
+        let command = WindowsGuest.setDisplayCommand(width: Int(size.width), height: Int(size.height))
+        let status = try await ssh.exec(
+            line: { WindowsGuest.guiExecLine(command, marker: $0) }, cancel: { WindowsGuest.cancelCommand(pid: $0) },
+            onOutput: { [log] _, data in log(String(decoding: data, as: UTF8.self)) }
+        )
+        if status != 0 { throw VMError.commandFailed("setting the display size", status) }
+    }
+
+    private func fetchWindowsPackages(resizableDisplay: Bool) async throws -> WindowsInstallMedia.PackageFiles {
         let images = ImageIndex.standard(home: home)
         let fetch = { (package: WindowsInstallMedia.PinnedPackage) async throws -> URL in
             try await images.fetch(package.url, expectedSHA256: package.sha256, log: log, progress: ProgressLine(log: log).report).file
@@ -168,7 +180,8 @@ public struct VMCreator {
         return WindowsInstallMedia.PackageFiles(
             virtioWin: try await fetch(WindowsInstallMedia.virtioWin),
             openSSH: try await fetch(WindowsInstallMedia.openSSH),
-            winFsp: try await fetch(WindowsInstallMedia.winFsp)
+            winFsp: try await fetch(WindowsInstallMedia.winFsp),
+            vzDisplayDriver: resizableDisplay ? try await fetch(WindowsInstallMedia.vzDisplayDriver) : nil
         )
     }
 

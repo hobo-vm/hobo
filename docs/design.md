@@ -405,7 +405,8 @@ global VMs on 2026-11-01.
     - The guest display follows the window's size while it shows, and is set back to the configured
       1920×1200 when it is hidden, so headless runs and screenshots always see that size unless
       someone is watching. `[gui_testing]` may turn resizing off if that matters. Windows guests
-      are the exception: fixed at 1024×768, with the window scaling it (decision 20).
+      are the exception: fixed at 1024×768, or 1920×1200 with `[windows] resizable_display`, and the
+      window scales it (decision 20).
     Agents drive the UI **inside the guest**:
     - SSH sessions run outside the GUI session and TCC blocks them from Accessibility and Screen
       Recording, so recipe `[gui_testing]` (opt-in) pre-grants them. **SIP stays on** (decided
@@ -576,28 +577,43 @@ global VMs on 2026-11-01.
       (`WindowsGuest`), kept free of double quotes, which sshd would have to escape; a command's argv
       travels as base64 of JSON. The ISO is the user's, and virtio-win, OpenSSH and WinFsp are
       pinned downloads through the image index.
-    - **Display: 1024×768, fixed.** `viogpudo` offers its 1024×768 startup mode and the VM display's
-      own size, and through the window only the first works. At 1920×1200, 2048×1280, 1600×1000 and
-      1280×800, Windows accepts the mode and in-guest screenshots look right, but the window is
-      96–99% black, with smeared fragments at some sizes (measured 2026-11-06; row pitch isn't the
-      cause). So the VM's display is 1024×768, the driver doesn't follow the window, and the window
-      scales it. Investigated 2026-11-07 (hobo-n64), comparing the window with in-guest captures:
-      - What's lost is the driver's transfers to the host after a mode change from 1024×768, not
-        the mode. Small updates arrive and big ones don't, so a static desktop stays black. At
-        1024×769, 1024×800 and 1024×1000, any update touching row 768 or below is dropped and the
-        rest arrives intact; at 1920×768 updates land shifted and striped, as if read with a
-        1024-pixel stride. 1152×768 works fully; 1280×800, 1360×768, 1376×768 and 1920×1200 don't.
-        It's the same after a reboot into the saved mode, since Windows commits 1024×768 first.
-      - The likely cause is viogpudo's mode change (`SetCurrentMode`): it detaches and unrefs the
-        resource still on the scanout, then creates the new size under the same resource ID (its
-        allocator hands the freed ID straight back) and sets the scanout to it. Linux, which
-        resizes fine on VZ, creates the new resource first and unrefs the old one after the
-        scanout moves. Unconfirmed without a driver build.
-      - Nothing outside the driver helps: older releases have the same sequence and ID reuse (back
-        to 2023's source, so they weren't installed); `bcdedit highestmode`, clearing Windows'
-        saved display configuration and the driver's registry settings don't change the first
-        commit; and restarting the display device makes VZ stop the VM, as uninstalling the
-        driver does. Beads hobo-y70 tracks patching viogpudo.
+    - **Display: 1024×768 unless the recipe opts in to a patched driver.** virtio-win's `viogpudo`
+      can't leave its 1024×768 startup mode under VZ, so by default the VM's display is 1024×768,
+      the driver doesn't follow the window, and the window scales it. `[windows] resizable_display
+      = true` installs a patched viogpudo instead: the display is 1920×1200 like other guests', and
+      `create` sets the desktop to it (Windows starts at 1024×768 whatever the display offers). The
+      cost is test signing (decided 2026-11-07, hobo-y70):
+      - **The cause.** viogpudo's mode change (`SetCurrentMode`) detaches and unrefs the resource
+        still on the scanout, then creates the new one. VZ refuses `RESOURCE_UNREF` for a resource
+        on a scanout (`ERR_INVALID_PARAMETER`); the driver ignores responses and hands the ID back
+        to its allocator, so the new resource's `CREATE_2D` fails (`ERR_INVALID_RESOURCE_ID`), as do
+        `SET_SCANOUT` and every transfer after it. The host keeps the 1024×768 resource: at
+        1920×1200 the window is almost black, at 1024×1000 rows past 768 are dropped, at 1920×768
+        updates land with a 1024-pixel stride. Found with the driver's WPP trace; the window
+        measurements are from hobo-n64 (2026-11-06/07).
+      - **The fix**, Linux's order: create the new resource under a fresh ID and set the scanout to
+        it, then unref the old one. Holding the old ID back without reordering isn't enough: VZ
+        still refuses the unref, and it only looks right while two IDs alternate. Upstream PR
+        virtio-win/kvm-guest-drivers-windows#1717, from the `vz-scanout` branch of a fork
+        (`ggal625/kvm-guest-drivers-windows`), whose release `viogpudo-vz-1` Hobo pins: the .inf,
+        .sys and .cat, built with the 26H1 EWDK in a Windows VM and signed with upstream's own test
+        certificate. Nothing on the Mac can build it, so it's a pinned download, not source in git.
+      - **Test signing.** A test-signed driver loads only with `testsigning` on, so `install.cmd`
+        adds it with `DISM /ForceUnsigned` (in place of virtio-win's viogpudo, which would outrank
+        it) and turns test signing on in the offline BCD. The guest trusts no certificate: test
+        mode loads the driver without it. The cost is a "Test Mode" watermark on the desktop, in
+        screenshots too, and a guest that loads any test-signed driver, which software checking
+        code integrity may notice; hence opt-in. Once a signed virtio-win release has the fix, the
+        default becomes resizable and the option goes (Beads tracks this).
+      - **It doesn't follow the window yet**; the window scales it. VZ reconfigures the display and
+        the driver takes the new size, but Windows switches modes only when something in user mode
+        asks: virtio-win's `vgpusrv` service and the `viogpuap.exe` it starts in the desktop session,
+        which Hobo doesn't install. Installed by hand they still didn't, since `viogpuap` finds no
+        adapter: `EnumDisplayDevices` fails at index 0 even in the desktop session. Beads tracks it.
+      - Nothing outside the driver helped (hobo-n64): older releases have the same sequence; `bcdedit
+        highestmode`, clearing Windows' saved display configuration and the driver's registry
+        settings don't change the first commit; and restarting the display device makes VZ stop the
+        VM, as uninstalling the driver does, so the driver goes in at create.
     - **Exec.** SSH runs in session 0, so `exec --gui` (and `screenshot`) go through a one-shot
       scheduled task in `vagrant`'s desktop session, with output tailed from files. UI driving
       uses Windows' built-in UI Automation from PowerShell, in the guest; no WinAppDriver, which

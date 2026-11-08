@@ -36,6 +36,8 @@ public struct Recipe: Equatable, Sendable {
     public var guiTesting: GUITesting?
     /// `[security]`: SIP and AMFI, on unless the recipe turns them off.
     public var security: Security
+    /// `[windows]`: Windows guests only.
+    public var windows: Windows
     /// The recipe's directory; relative `path`/`source` values resolve against it.
     public var directory: URL
 
@@ -62,6 +64,18 @@ public struct Recipe: Equatable, Sendable {
         }
     }
 
+    /// `resizable_display` installs a patched viogpudo, test-signed, in place of virtio-win's, so the
+    /// display can leave its 1024×768 startup size: 1920×1200, which the window scales. Test signing
+    /// puts a "Test Mode" watermark on the desktop and lets the guest load any test-signed driver
+    /// (design.md decision 20).
+    public struct Windows: Equatable, Sendable {
+        public var resizableDisplay = false
+
+        public init(resizableDisplay: Bool = false) {
+            self.resizableDisplay = resizableDisplay
+        }
+    }
+
     public struct GUITesting: Equatable, Sendable {
         /// Clients granted on top of `GUITestingGrants.defaultClients`: absolute paths or bundle IDs.
         public var allow: [String]
@@ -76,6 +90,7 @@ public struct Recipe: Equatable, Sendable {
             if raw.security != nil { throw RecipeError.macOSOnly("[security]") }
             if raw.guiTesting != nil { throw RecipeError.macOSOnly("[gui_testing]") }
         }
+        if os != .windows, raw.windows != nil { throw RecipeError.windowsOnly("[windows]") }
         let recipe = Recipe(
             os: os,
             cpus: raw.cpus ?? defaultCPUs,
@@ -85,6 +100,7 @@ public struct Recipe: Equatable, Sendable {
             provisioners: raw.provision ?? [],
             guiTesting: raw.guiTesting?.enabled == true ? GUITesting(allow: raw.guiTesting?.allow ?? []) : nil,
             security: Security(sip: raw.security?.sip ?? true, amfi: raw.security?.amfi ?? true),
+            windows: Windows(resizableDisplay: raw.windows?.resizableDisplay ?? false),
             directory: directory
         )
         // Caught here rather than by diskutil or VZ after the IPSW download.
@@ -151,6 +167,7 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
     case invalidSize(String)
     case sourceKind
     case macOSOnly(String)
+    case windowsOnly(String)
     case missingSHA256(String)
     case invalidSHA256(String)
     case invalidHardware(String)
@@ -166,6 +183,7 @@ public enum RecipeError: Error, Equatable, CustomStringConvertible {
         case .invalidSize(let value): "invalid size \"\(value)\" (expected e.g. \"512MB\" or \"8GB\")"
         case .sourceKind: "[source] needs exactly one of ipsw (a macOS guest), image (a Linux cloud image) or iso (a Windows installer)"
         case .macOSOnly(let table): "\(table) is for macOS guests only; this recipe's [source] isn't an IPSW"
+        case .windowsOnly(let table): "\(table) is for Windows guests only; this recipe's [source] isn't an ISO"
         case .missingSHA256(let source): "source \"\(source)\" needs a sha256 (only ipsw = \"latest\" may omit it)"
         case .invalidSHA256(let sha): "invalid sha256 \"\(sha)\" (expected 64 hex digits)"
         case .invalidHardware(let reason): reason
@@ -196,16 +214,25 @@ private struct RawRecipe: Decodable {
         var amfi: Bool?
     }
 
+    struct Windows: Decodable {
+        var resizableDisplay: Bool?
+
+        private enum CodingKeys: String, CodingKey {
+            case resizableDisplay = "resizable_display"
+        }
+    }
+
     var cpus: Int?
     var memory: ByteSize?
     var disk: ByteSize?
     var source: RawSource
     var guiTesting: GUITesting?
     var security: Security?
+    var windows: Windows?
     var provision: [Provisioner]?
 
     private enum CodingKeys: String, CodingKey {
-        case cpus, memory, disk, source, provision, security
+        case cpus, memory, disk, source, provision, security, windows
         case guiTesting = "gui_testing"
     }
 }

@@ -39,7 +39,7 @@ extension VMSettings {
             log("Growing the disk image to \(ByteSize(bytes: updated.disk))")
             // Moves what ends the disk (a macOS guest's Recovery container, a Linux guest's backup
             // GPT) to the new end, so the free space follows the partition the guest grows.
-            let bundle = try vmBundle(at: vm.bundle, os: config.os)
+            let bundle = try vmBundle(at: vm.bundle, config: config)
             try bundle.keepingDiskIdentity {
                 try run("/usr/sbin/diskutil", ["image", "resize", "--image-only", "--size", String(updated.disk), bundle.disk.path])
             }
