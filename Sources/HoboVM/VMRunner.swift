@@ -379,7 +379,8 @@ public final class VMRunner {
 
     /// Decision 13: pauses the VM, saves its state and clones its disk at that same instant, then
     /// resumes it. The partial folder comes first, so a tag already taken doesn't pause the guest.
-    /// A failed save is cleaned up and the VM resumed either way.
+    /// A failed save is cleaned up and the VM resumed either way, unless a forced stop powered it
+    /// off meanwhile.
     private func saveSnapshot(_ tag: String, _ guest: GuestVM) async -> ControlResponse {
         status.detail = "saving snapshot \(tag)"
         log("Saving snapshot \(tag)")
