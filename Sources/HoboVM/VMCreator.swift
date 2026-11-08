@@ -10,8 +10,9 @@ import Virtualization
 ///   the agent → cleanup → clean shutdown.
 /// - Linux: cloud image → ASIF disk → a boot with a cloud-init seed that applies the guest
 ///   conventions and installs hobo-agent → recipe steps, through the agent → cleanup → clean shutdown.
-/// - Windows: ISO → install media → a boot that installs from it → a boot that runs Windows' own
-///   setup and the guest conventions → recipe steps → cleanup → clean shutdown.
+/// - Windows: ISO → install media, with hobo-agent → a boot that installs from it → a boot that
+///   runs Windows' own setup and the guest conventions → recipe steps, through the agent →
+///   cleanup → clean shutdown.
 @MainActor
 public struct VMCreator {
     public struct Options: Sendable {
@@ -98,11 +99,11 @@ public struct VMCreator {
 
         let version: String
         do {
-            version = try await withVM(bundle, machine: machine) { vm, ssh in
+            version = try await withVM(bundle, machine: machine) { vm, guest in
                 log("Waiting for cloud-init to apply the guest conventions")
-                try await ssh.check(CloudInit.waitCommand, what: "cloud-init")
-                let version = try await ssh.output(#". /etc/os-release && echo "$NAME $VERSION_ID""#, what: "reading /etc/os-release")
-                try await provisionAndShutDown(vm, ssh: ssh, recipe: recipe, cleanupScript: CloudInit.cleanupScript)
+                try await guest.check(CloudInit.waitCommand, what: "cloud-init")
+                let version = try await guest.output(#". /etc/os-release && echo "$NAME $VERSION_ID""#, what: "reading /etc/os-release")
+                try await provisionAndShutDown(vm, shell: guest, recipe: recipe, cleanupScript: CloudInit.cleanupScript)
                 return version
             }
         } catch {
@@ -146,13 +147,13 @@ public struct VMCreator {
         try? FileManager.default.removeItem(at: media)
 
         log("Waiting for Windows to finish setting up, and for the guest conventions")
-        let version = try await withVM(bundle, machine: machine) { vm, ssh in
-            if resizable { try await followWindowsDisplay(ssh) }
-            let version = try await ssh.output(WindowsGuest.versionCommand, what: "reading the Windows version")
-            try await Provisioning.run(recipe, shell: ssh, log: log)
+        let version = try await withVM(bundle, machine: machine) { vm, guest in
+            if resizable { try await followWindowsDisplay(guest) }
+            let version = try await guest.output(WindowsGuest.versionCommand, what: "reading the Windows version")
+            try await Provisioning.run(recipe, shell: guest, log: log)
             log("Cleaning up")
-            try await ssh.check(WindowsGuest.cleanupCommand, what: "cleanup")
-            try await shutDown(vm, ssh: ssh)
+            try await guest.check(WindowsGuest.cleanupCommand, what: "cleanup")
+            try await shutDown(vm, shell: guest)
             return version
         }
         log("Disk uses \(ByteCountFormatter.string(fromByteCount: Int64(bundle.allocatedDiskBytes()), countStyle: .file))")
@@ -165,12 +166,12 @@ public struct VMCreator {
 
     /// Windows starts at 1024×768 whatever the display offers, and remembers the size it's set to. From
     /// the next logon, `display-follower.ps1` keeps it at the display's size, which follows the window.
-    private func followWindowsDisplay(_ ssh: any GuestShell) async throws {
-        let status = try await ssh.exec(WindowsGuest.setDisplayCommand, gui: true, platform: WindowsVMBundle.self) { [log] _, data in
+    private func followWindowsDisplay(_ guest: GuestAgent) async throws {
+        let status = try await guest.exec(WindowsGuest.setDisplayCommand, gui: true, platform: WindowsVMBundle.self) { [log] _, data in
             log(String(decoding: data, as: UTF8.self))
         }
         if status != 0 { throw VMError.commandFailed("setting the display size", status) }
-        try await ssh.check(WindowsGuest.followDisplayCommand, what: "registering the display follower")
+        try await guest.check(WindowsGuest.followDisplayCommand, what: "registering the display follower")
     }
 
     private func fetchWindowsPackages(resizableDisplay: Bool) async throws -> WindowsInstallMedia.PackageFiles {
@@ -221,14 +222,14 @@ public struct VMCreator {
             }
         }
 
-        let security = try await withVM(bundle, machine: machine) { vm, ssh in
-            let security = try await checkSecurity(ssh, wanted: recipe.security)
+        let security = try await withVM(bundle, machine: machine) { vm, guest in
+            let security = try await checkSecurity(guest, wanted: recipe.security)
             if recipe.guiTesting != nil {
                 log("Checking GUI testing permissions")
-                try await ssh.check(GUITestingGrants.checkCommand, what: "GUI testing permission check")
-                try await ssh.check(GUITestingGrants.seedScreenCaptureApprovalCommand, what: "seeding the Screen Recording approval")
+                try await guest.check(GUITestingGrants.checkCommand, what: "GUI testing permission check")
+                try await guest.check(GUITestingGrants.seedScreenCaptureApprovalCommand, what: "seeding the Screen Recording approval")
             }
-            try await provisionAndShutDown(vm, ssh: ssh, recipe: recipe, cleanupScript: Conventions.cleanupScript)
+            try await provisionAndShutDown(vm, shell: guest, recipe: recipe, cleanupScript: Conventions.cleanupScript)
             return security
         }
         log("Disk uses \(ByteCountFormatter.string(fromByteCount: Int64(bundle.allocatedDiskBytes()), countStyle: .file))")
@@ -242,12 +243,12 @@ public struct VMCreator {
     }
 
     /// The end of every create: the recipe's steps, cleanup, and a clean shutdown.
-    private func provisionAndShutDown(_ vm: GuestVM, ssh: any GuestShell, recipe: Recipe, cleanupScript: String) async throws {
-        try await Provisioning.run(recipe, shell: ssh, log: log)
+    private func provisionAndShutDown(_ vm: GuestVM, shell guest: any GuestShell, recipe: Recipe, cleanupScript: String) async throws {
+        try await Provisioning.run(recipe, shell: guest, log: log)
         log("Cleaning up")
-        try await ssh.upload(contents: cleanupScript, to: "/tmp/hobo-cleanup.sh")
-        try await ssh.check("sudo -n /bin/bash /tmp/hobo-cleanup.sh", what: "cleanup")
-        try await shutDown(vm, ssh: ssh)
+        try await guest.upload(contents: cleanupScript, to: "/tmp/hobo-cleanup.sh")
+        try await guest.check("sudo -n /bin/bash /tmp/hobo-cleanup.sh", what: "cleanup")
+        try await shutDown(vm, shell: guest)
     }
 
     /// The hardware every boot of the VM uses: the recipe's values raised to the IPSW's minimums,
@@ -313,7 +314,7 @@ public struct VMCreator {
             log("Waiting for the first login")
             try await ssh.upload(contents: Conventions.waitForLoginScript, to: "/tmp/hobo-wait-login.sh")
             try await ssh.check("sudo -n /bin/bash /tmp/hobo-wait-login.sh && rm /tmp/hobo-wait-login.sh", what: "waiting for the first login")
-            try await shutDown(vm, ssh: ssh, command: "\(passwordSudo) shutdown -h now")
+            try await shutDown(vm, shell: ssh, command: "\(passwordSudo) shutdown -h now")
         } catch {
             try await holdForDebugging(vm, auth: auth, error: error)
             throw error
@@ -334,13 +335,13 @@ public struct VMCreator {
                 throw VMError.cancelled
             }
             log("Checking that SIP is off")
-            let disabled = try await withVM(bundle, machine: machine) { vm, ssh in
-                let disabled = try await ssh.run(Self.sipDisabledCommand, quiet: true) == 0
+            let disabled = try await withVM(bundle, machine: machine) { vm, guest in
+                let disabled = try await guest.run(Self.sipDisabledCommand, quiet: true) == 0
                 if disabled, disableAMFI {
                     log("Turning AMFI off (boot-arg amfi_get_out_of_my_way=1)")
-                    try await ssh.check("sudo -n nvram boot-args=\(Self.amfiBootArg)", what: "setting the AMFI boot-arg")
+                    try await guest.check("sudo -n nvram boot-args=\(Self.amfiBootArg)", what: "setting the AMFI boot-arg")
                 }
-                try await shutDown(vm, ssh: ssh)
+                try await shutDown(vm, shell: guest)
                 return disabled
             }
             if disabled { return }
@@ -353,10 +354,10 @@ public struct VMCreator {
     static let sipDisabledCommand = "csrutil status | grep -q 'status: disabled'"
 
     /// What the guest actually runs with, for `config.json`; fails if it isn't what the recipe asked.
-    private func checkSecurity(_ ssh: any GuestShell, wanted: Recipe.Security) async throws -> Recipe.Security {
+    private func checkSecurity(_ guest: any GuestShell, wanted: Recipe.Security) async throws -> Recipe.Security {
         let actual = Recipe.Security(
-            sip: try await ssh.run(Self.sipDisabledCommand, quiet: true) != 0,
-            amfi: try await ssh.run("sysctl -n kern.bootargs | grep -qw \(Self.amfiBootArg)", quiet: true) != 0
+            sip: try await guest.run(Self.sipDisabledCommand, quiet: true) != 0,
+            amfi: try await guest.run("sysctl -n kern.bootargs | grep -qw \(Self.amfiBootArg)", quiet: true) != 0
         )
         if actual != wanted { throw VMError.securityMismatch(wanted: wanted, actual: actual) }
         return actual
@@ -364,18 +365,13 @@ public struct VMCreator {
 
     /// Boots the bundle, reaches it through its agent (or logs in with its key), runs `body`, and
     /// expects it to shut the VM down.
-    private func withVM<T>(_ bundle: any VMBundle, machine: Machine, _ body: (GuestVM, any GuestShell) async throws -> T) async throws -> T {
+    private func withVM<T>(_ bundle: any VMBundle, machine: Machine, _ body: (GuestVM, GuestAgent) async throws -> T) async throws -> T {
         let auth = try GuestSSH.Auth.forVM(bundle: bundle.directory, home: home)
         let vm = try GuestVM(bundle: bundle, machine: machine)
         log("Booting")
         try await vm.start()
         do {
-            let shell: any GuestShell
-            if type(of: bundle).usesAgent {
-                shell = vm.agent
-            } else {
-                shell = GuestSSH(host: try await vm.waitForIPAddress(timeout: .seconds(10 * 60)), auth: auth)
-            }
+            let shell = vm.agent
             try await shell.waitUntilReachable(timeout: .seconds(10 * 60))
             return try await body(vm, shell)
         } catch {
@@ -385,10 +381,10 @@ public struct VMCreator {
     }
 
     /// `command` is for when the guest's usual one (`VMBundle.shutdownCommand`) won't do yet.
-    private func shutDown(_ vm: GuestVM, ssh: any GuestShell, command: String? = nil) async throws {
+    private func shutDown(_ vm: GuestVM, shell guest: any GuestShell, command: String? = nil) async throws {
         log("Shutting down")
         // The connection usually drops mid-command here; the VM state is what matters.
-        _ = try? await ssh.run(command ?? type(of: vm.bundle).shutdownCommand, quiet: true)
+        _ = try? await guest.run(command ?? type(of: vm.bundle).shutdownCommand, quiet: true)
         if try await !vm.waitForPowerOffOrForce(timeout: .seconds(5 * 60)) {
             log("warning: guest did not power off within 5 minutes; forced it off")
         }

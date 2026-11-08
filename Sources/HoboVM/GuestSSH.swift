@@ -1,10 +1,10 @@
 import Foundation
-import Synchronization
 import HoboControl
 import HoboCore
 
-/// SSH into a guest with the system `ssh`/`scp`. Password auth goes through `SSH_ASKPASS`, since
-/// macOS ships no `sshpass`; it is only used until the insecure key is installed.
+/// SSH into a guest with the system `ssh`/`scp`: for `hobo ssh`, and for a macOS create until it
+/// has installed hobo-agent. Password auth goes through `SSH_ASKPASS`, since macOS ships no
+/// `sshpass`; it is only used until the insecure key is installed.
 public struct GuestSSH: GuestShell {
     public enum Auth: Sendable {
         case password(String)
@@ -52,35 +52,6 @@ public struct GuestSSH: GuestShell {
         try await launch(Self.sshPath, sshArguments([command]), output: .capture(onOutput))
     }
 
-    /// Runs the guest command `line` builds, like `stream`, but cancelling also ends it in the guest:
-    /// without a TTY, closing the ssh session doesn't signal it. `line` takes a marker unique to this
-    /// run and must print it and a process ID on a line of their own before anything else it runs
-    /// (`VMBundle.execLine`). The marker line is kept out of the output and the ID passed to `cancel`
-    /// for the command that ends it; anything a startup file printed first passes through.
-    public func exec(
-        line: @Sendable (String) -> String, cancel: @escaping @Sendable (Int32) -> String,
-        onOutput: @escaping @Sendable (GuestStream, Data) -> Void
-    ) async throws -> Int32 {
-        let pidMarker = PIDMarker(onOutput)
-        let status = try await stream(line(pidMarker.marker), onOutput: pidMarker.receive)
-        pidMarker.finish()
-        if Task.isCancelled, let pid = pidMarker.pid {
-            // A task of its own, since this one's cancellation would end the kill's ssh at once.
-            _ = try? await Task { try await run(cancel(pid), quiet: true) }.value
-        }
-        return status
-    }
-
-    public func exec(
-        _ command: [String], gui: Bool, platform: any VMBundle.Type, onOutput: @escaping @Sendable (GuestStream, Data) -> Void
-    ) async throws -> Int32 {
-        try await exec(
-            line: { gui ? platform.guiExecLine(command, marker: $0) : platform.execLine(command, marker: $0) },
-            cancel: { platform.cancelCommand(pid: $0) },
-            onOutput: onOutput
-        )
-    }
-
     /// Runs `copy` with scp, passing scp's messages to `onOutput`, and returns its exit status.
     /// Cancelling the task ends scp.
     public func copy(_ copy: GuestCopy, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
@@ -117,54 +88,6 @@ public struct GuestSSH: GuestShell {
             options += ["-o", "IdentitiesOnly=yes", "-o", "PasswordAuthentication=no", "-i", key.path]
         }
         return options
-    }
-
-    /// Takes the guest shell's PID from the `<marker><pid>` line in stdout and passes everything
-    /// else on, in order.
-    final class PIDMarker: Sendable {
-        let marker: String
-        private let onOutput: @Sendable (GuestStream, Data) -> Void
-        /// Stdout not yet passed on while looking for the marker line; nil once it has been found.
-        private let state = Mutex<(pending: Data?, pid: Int32?)>((Data(), nil))
-
-        init(token: String = String(UUID().uuidString.prefix(8)).lowercased(), _ onOutput: @escaping @Sendable (GuestStream, Data) -> Void) {
-            marker = "hobo-pid-\(token):"
-            self.onOutput = onOutput
-        }
-
-        var pid: Int32? { state.withLock { $0.pid } }
-
-        func receive(_ stream: GuestStream, _ data: Data) {
-            guard stream == .stdout else { return onOutput(stream, data) }
-            let ready: Data = state.withLock { state in
-                guard var pending = state.pending else { return data }
-                pending.append(data)
-                let markerBytes = Data(marker.utf8)
-                guard let found = pending.firstRange(of: markerBytes) else {
-                    // Hold back a tail that could be the start of a marker split across chunks.
-                    let keep = min(pending.count, markerBytes.count - 1)
-                    state.pending = Data(pending.suffix(keep))
-                    return Data(pending.dropLast(keep))
-                }
-                guard let newline = pending[found.upperBound...].firstIndex(of: UInt8(ascii: "\n")) else {
-                    state.pending = Data(pending[found.lowerBound...])
-                    return Data(pending[..<found.lowerBound])
-                }
-                state.pid = Int32(String(decoding: pending[found.upperBound..<newline], as: UTF8.self))
-                state.pending = nil
-                return Data(pending[..<found.lowerBound]) + pending[pending.index(after: newline)...]
-            }
-            if !ready.isEmpty { onOutput(stream, ready) }
-        }
-
-        /// Passes on anything still held back, once the command's output has ended.
-        func finish() {
-            let rest = state.withLock { state in
-                defer { state.pending = nil }
-                return state.pending ?? Data()
-            }
-            if !rest.isEmpty { onOutput(.stdout, rest) }
-        }
     }
 
     private enum Output {

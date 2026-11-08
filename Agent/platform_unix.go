@@ -3,6 +3,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"os/user"
@@ -15,6 +16,9 @@ import (
 var agentRunDirectory = "/run/hobo-agent"
 
 const agentExecutableName = "hobo-agent"
+
+// prepareStub has nothing to do: the service manager logs the stub's output.
+func prepareStub() {}
 
 func execAgent(path string) error {
 	return syscall.Exec(path, []string{path, "serve"}, os.Environ())
@@ -79,6 +83,53 @@ func (a account) configure(cmd *exec.Cmd) {
 		Credential: &syscall.Credential{Uid: a.uid, Gid: a.gid, Groups: a.groups()},
 	}
 }
+
+// start runs spec as its user: a command line in their login shell, or this binary's put or get.
+func start(spec commandSpec) (process, error) {
+	who, err := lookupAccount(spec.user)
+	if err != nil {
+		return nil, err
+	}
+	var cmd *exec.Cmd
+	if spec.self != nil {
+		cmd = exec.Command(selfPath(), spec.self...)
+		who.configure(cmd)
+	} else {
+		cmd = who.command(spec.line)
+	}
+	cmd.Stdout = spec.stdout
+	cmd.Stderr = spec.stderr
+	proc := &unixProcess{cmd: cmd, exited: make(chan struct{})}
+	if spec.stdin {
+		if proc.stdin, err = cmd.StdinPipe(); err != nil {
+			return nil, err
+		}
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return proc, nil
+}
+
+type unixProcess struct {
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	exited chan struct{}
+}
+
+func (p *unixProcess) Stdin() io.WriteCloser { return p.stdin }
+
+func (p *unixProcess) Wait() (int32, error) {
+	err := p.cmd.Wait()
+	close(p.exited)
+	status, ok := exitStatus(err)
+	if !ok {
+		return 0, err
+	}
+	return status, nil
+}
+
+func (p *unixProcess) Terminate() { terminate(p.cmd, p.exited) }
 
 // terminate ends cmd's process group: SIGTERM, and SIGKILL if it is still there after a grace.
 func terminate(cmd *exec.Cmd, exited <-chan struct{}) {

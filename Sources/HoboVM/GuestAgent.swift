@@ -28,19 +28,27 @@ public struct GuestAgent: GuestShell {
     }
 
     public func stream(_ command: String, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
-        try await perform(AgentRequest(op: "exec", command: command, user: user)) { kind, payload in
+        try await stream(AgentRequest(op: "exec", command: command, user: user), onOutput: onOutput)
+    }
+
+    /// `hobo exec`: runs `command` (an argv) for `platform`'s guest, in its desktop session if `gui`.
+    /// Cancelling the task ends the command in the guest too.
+    public func exec(
+        _ command: [String], gui: Bool, platform: any VMBundle.Type, onOutput: @escaping @Sendable (GuestStream, Data) -> Void
+    ) async throws -> Int32 {
+        var request = AgentRequest(op: "exec", command: platform.agentCommand(command, gui: gui), user: user)
+        if gui && platform.agentStartsInDesktop { request.desktop = true }
+        return try await stream(request, onOutput: onOutput)
+    }
+
+    private func stream(_ request: AgentRequest, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
+        try await perform(request) { kind, payload in
             switch kind {
             case .stdout: onOutput(.stdout, payload)
             case .stderr: onOutput(.stderr, payload)
             default: throw AgentError.unexpectedFrame(kind)
             }
         }
-    }
-
-    public func exec(
-        _ command: [String], gui: Bool, platform: any VMBundle.Type, onOutput: @escaping @Sendable (GuestStream, Data) -> Void
-    ) async throws -> Int32 {
-        try await stream(platform.agentCommand(command, gui: gui), onOutput: onOutput)
     }
 
     public func copy(_ copy: GuestCopy, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
@@ -229,6 +237,7 @@ struct AgentRequest: Encodable, Equatable {
     var version = GuestAgent.protocolVersion
     var op: String
     var command: String?
+    var desktop: Bool?
     var user: String?
     var destination: String?
     var single: Bool?
@@ -454,6 +463,7 @@ final class AgentFetchServer: NSObject, @MainActor VZVirtioSocketListenerDelegat
         switch platform {
         case "linux-arm64": HoboAgentBinaries.linux
         case "darwin-arm64": HoboAgentBinaries.darwin
+        case "windows-arm64": HoboAgentBinaries.windows
         default: nil
         }
     }

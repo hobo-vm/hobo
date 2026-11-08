@@ -1,52 +1,44 @@
 import Foundation
 import HoboControl
 import HoboCore
-import Synchronization
 import Testing
 @testable import HoboVM
 
 /// The guest commands each kind of bundle answers with: the VM process runs whichever its guest's
 /// bundle gives. Needs no VM.
 @Suite struct VMBundleGuestCommandsTests {
-    /// What `GuestSSH.exec` does with an `execLine`, against a local shell standing in for the guest's.
-    @Test func aPOSIXExecLineHandsOverItsPIDThenRunsTheCommandQuoted() throws {
-        let received = Mutex(Data())
-        let marker = GuestSSH.PIDMarker { _, data in received.withLock { $0.append(data) } }
+    /// What hobo-agent runs for a plain `exec`, against a local shell standing in for the guest's.
+    @Test func aPOSIXAgentCommandRunsTheCommandQuoted() throws {
         let process = Process()
         process.executableURL = URL(filePath: "/bin/sh")
-        process.arguments = ["-c", MacVMBundle.execLine(["printf", "%s", "it's a b"], marker: marker.marker)]
+        process.arguments = ["-c", MacVMBundle.agentCommand(["printf", "%s", "it's a b"], gui: false)]
         let out = Pipe()
         process.standardOutput = out
         try process.run()
         let stdout = out.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        marker.receive(.stdout, stdout)
-        marker.finish()
-        #expect(marker.pid == process.processIdentifier, "exec keeps the shell's PID")
-        #expect(received.withLock { String(decoding: $0, as: UTF8.self) } == "it's a b")
+        #expect(String(decoding: stdout, as: UTF8.self) == "it's a b")
     }
 
     @Test func macOSAndLinuxShareThePOSIXWays() {
-        #expect(LinuxVMBundle.execLine(["a"], marker: "m:") == MacVMBundle.execLine(["a"], marker: "m:"))
+        #expect(LinuxVMBundle.agentCommand(["a"], gui: false) == MacVMBundle.agentCommand(["a"], gui: false))
         for bundle in [MacVMBundle.self, LinuxVMBundle.self] as [any VMBundle.Type] {
             #expect(bundle.shutdownCommand == "sudo -n shutdown -h now")
-            #expect(bundle.cancelCommand(pid: 42) == "kill -TERM -- -42")
+            // A local, since #expect can't take a static member through an existential metatype.
+            let startsInDesktop = bundle.agentStartsInDesktop
+            #expect(!startsInDesktop)
         }
+        #expect(MacVMBundle.agentCommand(["a"], gui: true) == MacVMBundle.guiExecScript(["a"]))
+        #expect(LinuxVMBundle.agentCommand(["a"], gui: true) == LinuxVMBundle.guiExecScript(["a"]))
     }
 
-    @Test func aMacGUILinePrintsTheMarkerBeforeItsScript() {
-        #expect(MacVMBundle.guiExecLine(["a"], marker: "m:") == "echo m:$$; " + MacVMBundle.guiExecScript(["a"]))
-    }
-
-    @Test func aLinuxGUILinePrintsTheMarkerBeforeItsScript() {
-        #expect(LinuxVMBundle.guiExecLine(["a"], marker: "m:") == "echo m:$$; " + LinuxVMBundle.guiExecScript(["a"]))
-    }
-
-    /// A Windows guest has no POSIX shell, so none of those defaults may reach it.
+    /// A Windows guest has no POSIX shell, so none of those defaults may reach it, and its agent
+    /// enters the desktop session itself.
     @Test func windowsGoesThroughItsOwnScripts() {
-        #expect(WindowsVMBundle.execLine(["a"], marker: "m:") == WindowsGuest.execLine(["a"], marker: "m:"))
-        #expect(WindowsVMBundle.guiExecLine(["a"], marker: "m:") == WindowsGuest.guiExecLine(["a"], marker: "m:"))
-        #expect(WindowsVMBundle.cancelCommand(pid: 42) == WindowsGuest.cancelCommand(pid: 42))
+        for gui in [false, true] {
+            #expect(WindowsVMBundle.agentCommand(["a"], gui: gui) == WindowsGuest.execCommand(["a"]))
+        }
+        #expect(WindowsVMBundle.agentStartsInDesktop)
         #expect(WindowsVMBundle.shutdownCommand == WindowsGuest.shutdownCommand)
     }
 
@@ -58,7 +50,9 @@ import Testing
         let windows = type(of: bundle)
         #expect(bundle is WindowsVMBundle)
         #expect(windows.shutdownCommand == WindowsGuest.shutdownCommand)
-        #expect(windows.execLine(["a"], marker: "m:") == WindowsGuest.execLine(["a"], marker: "m:"))
+        let startsInDesktop = windows.agentStartsInDesktop
+        #expect(startsInDesktop)
+        #expect(windows.agentCommand(["a"], gui: false) == WindowsGuest.execCommand(["a"]))
         #expect(try vmBundle(at: directory, config: config(.macOS)) is MacVMBundle)
         #expect(try vmBundle(at: directory, config: config(.linux)) is LinuxVMBundle)
     }

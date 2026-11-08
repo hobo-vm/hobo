@@ -1,5 +1,5 @@
-# What exec.ps1, gui-exec.ps1 and gui-run.ps1 share. A command arrives as base64 of a JSON array of
-# its arguments, which needs no quoting on the way through ssh and PowerShell.
+# What exec.ps1 needs. A command arrives as base64 of a JSON array of its arguments, which needs no
+# quoting on its way into PowerShell's command line.
 
 # Commands inherit this console, whose code page would otherwise turn their non-ASCII output into `?` or
 # worse on its way to the host. Only this session's console: the guest's locale stays what a real install's is.
@@ -10,15 +10,6 @@ $utf8 = New-Object Text.UTF8Encoding($false)
 function Read-Command([string]$Encoded) {
     $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Encoded))
     return @($json | ConvertFrom-Json)
-}
-
-# Hands sshd's caller this process's ID, for cancelling (GuestSSH.PIDMarker), unmangled by PowerShell's
-# text formatting.
-function Write-Marker([string]$Marker) {
-    $bytes = [Text.Encoding]::ASCII.GetBytes("$Marker$PID`n")
-    $out = [Console]::OpenStandardOutput()
-    $out.Write($bytes, 0, $bytes.Length)
-    $out.Flush()
 }
 
 # What to report when a command was found but wouldn't start, which exits 126.

@@ -102,6 +102,9 @@ struct WindowsIntegrationTests {
         #expect(png.starts(with: [0x89, 0x50, 0x4E, 0x47]))
         #expect(png[16..<24] == Data([0, 0, 0x04, 0x00, 0, 0, 0x03, 0x00]), "1024×768")
 
+        // SSH is still there for people.
+        #expect(try session.run(["ssh", "vm", "--", "whoami"]).text.lowercased().contains("vagrant"))
+
         // Copies, both ways, to a Windows path.
         let copy = work.appending(path: "copy.txt")
         try "copied".write(to: copy, atomically: true, encoding: .utf8)
@@ -110,7 +113,7 @@ struct WindowsIntegrationTests {
         #expect(try session.run(["cp", "vm:C:/Users/hobo/copy.txt", back.path]).status == 0)
         #expect(try String(contentsOf: back, encoding: .utf8) == "copied")
 
-        // Cancelling ends the command in the guest, and leaves nothing of a --gui command behind.
+        // Cancelling ends the command in the guest, --gui or not.
         for gui in [false, true] {
             let tag = gui ? 7001 : 7000
             let process = try session.start(["exec", "vm"] + (gui ? ["--gui"] : []) + ["--", "powershell.exe", "-Command", "Start-Sleep \(tag)"])
@@ -118,7 +121,7 @@ struct WindowsIntegrationTests {
             process.interrupt()
             process.waitUntilExit()
             Thread.sleep(forTimeInterval: 15)
-            let left = #"@(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'Start-Sleep \#(tag)' -and $_.CommandLine -notmatch 'CimInstance' }).Count + @(Get-ScheduledTask hobo-gui* -EA 0).Count + @(dir C:\ProgramData\Hobo\gui).Count"#
+            let left = #"@(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'Start-Sleep \#(tag)' -and $_.CommandLine -notmatch 'CimInstance' }).Count"#
             #expect(try powerShell(left).text.trimmingCharacters(in: .whitespacesAndNewlines) == "0", "gui \(gui)")
         }
 

@@ -122,7 +122,7 @@ public enum CloudInit {
 
         """
 
-    /// Run over SSH once the guest answers: waits for cloud-init to finish, then checks that the
+    /// Run once the guest's agent answers: waits for cloud-init to finish, then checks that the
     /// conventions took. `status --wait` exits 2 for a finished run with warnings, which is fine.
     public static let waitCommand = "cloud-init status --wait >/dev/null; test $? -ne 1 && sudo -n true"
 

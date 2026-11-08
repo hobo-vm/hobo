@@ -163,7 +163,7 @@ global VMs on 2026-11-01.
    container is intact, the guest still boots normally, and booting with
    `startUpFromMacOSRecovery` reaches the recoveryOS startup options.
    `hobo set --disk` does the host step and updates `config.json`'s `disk`, setting
-   `diskGrowPending`. At the next boot the VM process runs the guest step once SSH answers, against
+   `diskGrowPending`. At the next boot the VM process runs the guest step once the agent answers, against
    the boot volume's APFS physical store (looked up with `diskutil info /`, not assumed to be
    `disk0s2`), before `start` reports the VM running, and clears the flag. A Linux guest's host
    step moves the backup GPT instead, and its guest step is `growpart` on the root partition then
@@ -363,8 +363,7 @@ global VMs on 2026-11-01.
       main actor.
 15. **Guest channel.** hobo-agent over virtio-vsock for everything Hobo itself does in a guest, and
     SSH for people (`hobo ssh`, raw `ssh`) and for the steps of a create before the agent is in
-    place. Linux and macOS guests have the agent; Windows guests are still on SSH until theirs lands
-    (hobo-yis), and `VMBundle.usesAgent` picks per guest until then. SSH is the `hobo` user with
+    place (a macOS create's conventions step). SSH is the `hobo` user with
     hobo's insecure key; host keys aren't checked, since IPs are reused across VMs and rebuilds. `ssh`/`scp` are spawned with responsibility disclaimed
     (`responsibility_spawnattrs_setdisclaim`, as terminals do), so macOS's Local Network privacy
     sees Apple's `ssh` rather than hobo (decided 2026-11-02): the VM process runs under launchd as
@@ -386,7 +385,15 @@ global VMs on 2026-11-01.
       working. A stub could have been a script, but no guest has a tool that opens a vsock socket.
       Linux's is a systemd unit from the cloud-init seed (decision 21); macOS's is a LaunchDaemon
       (`com.hobo.agent`, logging to `/var/log/hobo-agent.log`) that create's conventions step
-      installs over SSH. A stub that fails to fetch retries every second.
+      installs over SSH; Windows' is a startup task as SYSTEM (`hobo-agent`, logging to
+      `C:\ProgramData\Hobo\hobo-agent.log`), from the install media (decision 20). A stub that
+      fails to fetch retries every second. Windows has no `exec`, so its stub runs the agent as a
+      child, and fetches it again if it exits.
+    - **vsock in each guest.** Linux and macOS have `AF_VSOCK` in the kernel; the agent calls
+      `socket`/`bind`/`connect` itself, since Go's `syscall` has no sockaddr for it (and the agent
+      takes no dependencies). Windows gets it from virtio-win's viosock driver, whose .inf also
+      installs a Winsock provider: its address family is whatever the driver answers (an IOCTL),
+      and the agent calls ws2_32 directly (2026-11-08, virtio-win 0.1.302).
     - **Requests.** The agent runs as root and listens on guest port 1101, accepting only the
       host's CID (2), so a guest process can't reach a root agent over vsock loopback. There is
       no other authentication: only the VM process can reach the device, and `vagrant` has
@@ -405,6 +412,18 @@ global VMs on 2026-11-01.
       got a Background session from pam_launchd, which has no public API, so plain `exec` is in
       the desktop's bootstrap (Aqua) once `vagrant` is logged in, as `--gui` is; `--gui` still
       waits for that login (2026-11-08, macOS 27.2).
+      On Windows the agent is a SYSTEM process in session 0, so it starts commands itself
+      (checked 2026-11-08 on 11 build 26300): plain `exec` as a logon of `vagrant`'s own, with the
+      convention's password, elevated (UAC's linked token), through `CreateProcessWithTokenW`, whose
+      secondary logon service loads the profile and gives the logon session 0's `winsta0\default`
+      (left to inherit the task's window station, commands die with `STATUS_DLL_INIT_FAILED`).
+      `--gui` is a `desktop` flag on the request: the console user's token (`WTSQueryUserToken`,
+      once Explorer runs in that session, up to 60 s, then 125), elevated, through
+      `CreateProcessAsUser` on `winsta0\default`, since `CreateProcessWithTokenW` puts a process in
+      session 0 whatever its token's session. Either way the command is `exec.ps1` in PowerShell, as
+      sshd ran it, starts suspended in a job object of its own, which a cancel terminates, and has
+      no console window. This replaced a scheduled task per `--gui` command with its output tailed
+      from files.
     - `cp` is a tar stream: the host's `tar` (no AppleDouble files or extended attributes) makes
       or extracts it, and the agent runs itself as `vagrant` to extract or make the guest's side,
       so files belong to `vagrant` and relative paths are from its home. Both sides give scp's
@@ -423,7 +442,7 @@ global VMs on 2026-11-01.
       supported way for root to start a process in it); a fallback to SSH when the agent doesn't
       answer, which would hide its failures.
 
-    Before hobo-agent (decided 2026-11-01), and still for guests on SSH:
+    Before hobo-agent (decided 2026-11-01), replaced by the above:
     - `hobo ip` asks the VM process, which knows the guest's lease; a stopped VM, or one without a
       lease yet, is an error.
     - `hobo ssh` gets the IP the same way and `execv`s the system `ssh`, so sessions, TTYs and exit
@@ -544,7 +563,7 @@ global VMs on 2026-11-01.
       <uid> sudo -u hobo env PATH=… <cmd>` (`asuser` needs root; the inner `sudo` makes it the user
       again and resets the environment, hence `PATH`). It's a `gui` field on the `exec` request, so
       streaming, exit status, cancelling and leases are `exec`'s; killing the process group reaches
-      through both `sudo`s (checked 2026-11-05 on 27.2). Auto-login can finish after SSH answers, so
+      through both `sudo`s (checked 2026-11-05 on 27.2). Auto-login can finish after the agent answers, so
       it waits up to 60 s for `/dev/console` and the `gui/<uid>` domain to be the user's, then exits
       125; holding `running` back instead would slow every start, and leave a VM with broken
       auto-login unreachable by plain `exec`. Decided 2026-11-05.
@@ -601,7 +620,7 @@ global VMs on 2026-11-01.
       It's plain text and not agent-specific. Reference lives here and nowhere else.
     - A Claude Code skill teaches the CLI path. Its description triggers on testing or UI-testing in
       a clean VM; its body is workflow and rules only (the ephemeral session pattern, test inside
-      the guest over SSH and never drive the host UI, `exec --gui` for Aqua, the 2-macOS-guest
+      the guest through `hobo exec` and never drive the host UI, `exec --gui` for Aqua, the 2-macOS-guest
       limit) and says "run `hobo usage`" for flags. MCP clients get the same guidance from the
       server's `instructions` field, built from the same text in `HoboCore` (`AgentGuidance`), so
       there is no MCP skill.
@@ -635,19 +654,23 @@ global VMs on 2026-11-01.
       and an exFAT one (the whole ISO, which Setup looks for, then the answer file, drivers and guest
       files), attached as USB storage. Setup's windowsPE pass calls our `install.cmd`, which
       partitions the NVMe disk with Windows last (so `hobo set --disk` can grow it), applies the
-      image with DISM, adds the virtio-win drivers (viogpudo, NetKVM, viorng, Balloon, viofs),
+      image with DISM, adds the virtio-win drivers (viogpudo, NetKVM, viorng, Balloon, viofs,
+      viosock),
       runs `bcdboot` and powers off, leaving its result on the media. The next boot, without the
       media, runs specialize and OOBE, and `SetupComplete.cmd` runs `setup.ps1` as SYSTEM. OOBE then
       restarts the machine about a minute after the first logon, clearing the auto-login settings,
-      so a startup task (`finish-setup.ps1`) restores them after that restart, enables sshd and
-      restarts once more. SSH answering means it's done. A whole `hobo create` takes about 8 minutes and about 11 GB of ASIF; a clone then boots to SSH in about 11 s.
+      so a startup task (`finish-setup.ps1`) restores them after that restart, registers
+      hobo-agent's startup task, enables sshd and restarts once more. The agent answering means
+      it's done. A whole `hobo create` takes about 8 minutes and about 11 GB of ASIF; a stopped VM
+      then starts in about 16 s.
       The bypass of Setup is what makes it fast and is also why no TPM or Secure Boot is needed.
     - **Conventions.** `hobo`/`hobo` is an administrator, logged in at boot. The clock is
       `RealTimeIsUniversal`, since VZ's runs on UTC. Growing the disk restores the GPT disk GUID
-      afterwards: `diskutil image resize` replaces it, and Windows' BCD names its disk by it. Win32-OpenSSH
-      (pinned MSI) has PowerShell 5.1 as its shell, so what Hobo sends is PowerShell
-      (`WindowsGuest`), kept free of double quotes, which sshd would have to escape; a command's argv
-      travels as base64 of JSON. The ISO is the user's, and virtio-win, OpenSSH and WinFsp are
+      afterwards: `diskutil image resize` replaces it, and Windows' BCD names its disk by it. What
+      Hobo sends is PowerShell (`WindowsGuest`), which the agent runs as sshd runs its shell
+      (Win32-OpenSSH, a pinned MSI, with PowerShell 5.1 as `DefaultShell`), kept free of double
+      quotes, which would need escaping on their way into PowerShell's command line; a command's
+      argv travels as base64 of JSON. The ISO is the user's, and virtio-win, OpenSSH and WinFsp are
       pinned downloads through the image index.
     - **Display: 1024×768 unless the recipe opts in to a patched driver.** virtio-win's `viogpudo`
       can't leave its 1024×768 startup mode under VZ, so by default the VM's display is 1024×768,
@@ -695,16 +718,16 @@ global VMs on 2026-11-01.
         highestmode`, clearing Windows' saved display configuration and the driver's registry
         settings don't change the first commit; and restarting the display device makes VZ stop the
         VM, as uninstalling the driver does, so the driver goes in at create.
-    - **Exec.** SSH runs in session 0, so `exec --gui` (and `screenshot`) go through a one-shot
-      scheduled task in `hobo`'s desktop session, with output tailed from files. UI driving
-      uses Windows' built-in UI Automation from PowerShell, in the guest; no WinAppDriver, which
-      Microsoft no longer develops. `[security]` and `[gui_testing]` are rejected, since no grant
-      is needed; `privileged = false` too, since SSH gives an elevated token.
+    - **Exec.** hobo-agent starts plain `exec` in session 0 and `exec --gui` (and `screenshot`) in
+      `hobo`'s desktop session (decision 15). UI driving uses Windows' built-in UI Automation
+      from PowerShell, in the guest; no WinAppDriver, which Microsoft no longer develops.
+      `[security]` and `[gui_testing]` are rejected, since no grant is needed; `privileged = false`
+      too, since the agent runs everything elevated, as SSH did.
     - **Network after a restore.** The virtio NIC doesn't pass traffic after a VM restore, and
       nothing on the host side fixes it; `Restart-NetAdapter` in the guest does. A startup task
       (`network-watchdog.ps1`) pings the gateway every second and restarts the adapter when it stops
       answering. The first plan was to also compare wall-clock jumps; the ping alone proved enough,
-      with SSH back about 10 s after a resume.
+      with the network back about 10 s after a resume (which the agent, over vsock, never needed).
     - **Shares** use viofs and WinFsp: one virtio-fs tag, `hobo`, always attached, with each share a
       folder of `Z:\`. `read_only` holds.
     - **Licensing.** Microsoft's authorized way to virtualize Windows 11 on Arm on Apple Silicon is
@@ -848,7 +871,7 @@ builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` ind
   skill and `hobo claude install|uninstall`.
 - **M4, Linux guests:** done (2026-11-02): `[source] image`, cloud-init conventions, `images`/`init --os linux`; GUI testing (`exec --gui`, `screenshot`, AT-SPI) on 2026-11-07.
 - **M5, Windows guests:** on VZ (decision 20): `[source] iso`, `init --os windows`, install with our
-  own WinPE script, `exec --gui` through a scheduled task, UI Automation.
+  own WinPE script, `exec --gui` in the desktop session, UI Automation.
 - **Later:** see Beads (`bd list --status deferred`).
 
 ## Comparison with Tart and Lume

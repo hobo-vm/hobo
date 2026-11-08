@@ -38,10 +38,6 @@ public struct MacVMBundle: VMBundle {
     public static let growDiskCommand =
         #"sudo -n diskutil apfs resizeContainer "$(diskutil info / | awk '/APFS Physical Store:/ { print $NF }')" 0"#
 
-    public static func guiExecLine(_ command: [String], marker: String) -> String {
-        "echo \(marker)$$; " + guiExecScript(command)
-    }
-    public static let usesAgent = true
     public static func agentCommand(_ command: [String], gui: Bool) -> String {
         gui ? guiExecScript(command) : shellQuote(command)
     }

@@ -51,8 +51,9 @@ public enum WindowsInstallMedia {
         `hobo init --os windows <path-to-iso>`.
         """
 
-    /// What each guest needs from virtio-win: the display, network, entropy, memory balloon and shares.
-    private static let drivers = ["viogpudo", "NetKVM", "viorng", "Balloon", "viofs"]
+    /// What each guest needs from virtio-win: the display, network, entropy, memory balloon, shares,
+    /// and vsock for hobo-agent (whose .inf also installs the Winsock provider's service).
+    private static let drivers = ["viogpudo", "NetKVM", "viorng", "Balloon", "viofs", "viosock"]
     /// Where install.cmd finds `vzDisplayDriver`.
     private static let testSignedDrivers = "hobo/test-signed-drivers"
     private static let resultFile = "hobo/result"
@@ -160,12 +161,12 @@ public enum WindowsInstallMedia {
             (PackageResources.setup_ps1, "setup.ps1"), (PackageResources.finish_setup_ps1, "finish-setup.ps1"),
             (PackageResources.network_watchdog_ps1, "network-watchdog.ps1"),
             (PackageResources.common_ps1, "common.ps1"), (PackageResources.exec_ps1, "exec.ps1"),
-            (PackageResources.gui_exec_ps1, "gui-exec.ps1"), (PackageResources.gui_run_ps1, "gui-run.ps1"),
-            (PackageResources.cancel_ps1, "cancel.ps1"), (PackageResources.screenshot_ps1, "screenshot.ps1"),
-            (PackageResources.display_follower_ps1, "display-follower.ps1"),
+            (PackageResources.screenshot_ps1, "screenshot.ps1"), (PackageResources.display_follower_ps1, "display-follower.ps1"),
         ] {
             try writeScript(script, to: guest.appending(path: name))
         }
+        // hobo-agent's stub, which finish-setup.ps1 starts at every boot from then on (decision 15).
+        try HoboAgentBinaries.windows.write(to: guest.appending(path: WindowsGuest.agentFile))
         try Data(Conventions.insecurePublicKey.utf8).write(to: guest.appending(path: "authorized_keys"))
         try copy(packages.openSSH, to: guest.appending(path: packages.openSSH.lastPathComponent))
         try copy(packages.winFsp, to: guest.appending(path: packages.winFsp.lastPathComponent))

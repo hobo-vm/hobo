@@ -32,6 +32,9 @@ type request struct {
 	Op      string `json:"op"` // ping, exec, put, get
 	// exec: a command line for User's login shell, as sshd would run it.
 	Command string `json:"command,omitempty"`
+	// exec on Windows: run it in the console's desktop session (`exec --gui`). Elsewhere the
+	// host's command line gets there itself, and this is false.
+	Desktop bool `json:"desktop,omitempty"`
 	// exec, put, get: who runs it, and whose files the copy reads or writes.
 	User string `json:"user,omitempty"`
 	// put: where the copy goes; single says the tar holds one top-level entry.

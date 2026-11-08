@@ -30,6 +30,7 @@ type fetchResponse struct {
 }
 
 func runStub() {
+	prepareStub()
 	for attempt := 0; ; attempt++ {
 		path, err := fetchAgent()
 		if err == nil {

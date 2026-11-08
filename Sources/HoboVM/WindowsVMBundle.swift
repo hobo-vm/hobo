@@ -13,9 +13,9 @@ public struct WindowsVMBundle: VMBundle {
     public static let remountSharesCommand: String? = nil
     public static let growDiskCommand = WindowsGuest.growDiskCommand
     public static let shutdownCommand = WindowsGuest.shutdownCommand
-    public static func execLine(_ command: [String], marker: String) -> String { WindowsGuest.execLine(command, marker: marker) }
-    public static func guiExecLine(_ command: [String], marker: String) -> String { WindowsGuest.guiExecLine(command, marker: marker) }
-    public static func cancelCommand(pid: Int32) -> String { WindowsGuest.cancelCommand(pid: pid) }
+    /// The same line either way: the agent starts it in the desktop session for `--gui`.
+    public static func agentCommand(_ command: [String], gui: Bool) -> String { WindowsGuest.execCommand(command) }
+    public static let agentStartsInDesktop = true
 
     public var directory: URL
     /// The install media, attached as USB storage while `create` installs.
@@ -145,6 +145,7 @@ public struct WindowsVMBundle: VMBundle {
         config.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
         config.memoryBalloonDevices = [VZVirtioTraditionalMemoryBalloonDeviceConfiguration()]
         config.directorySharingDevices = [shareDevice(tag: Self.shareTag, shares: shares)]
+        config.socketDevices = [agentSocketDevice()]
         try config.validate()
         return config
     }

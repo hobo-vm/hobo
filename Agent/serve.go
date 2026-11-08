@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 )
 
 // serve answers the host's requests, one per connection, until the guest shuts down.
@@ -31,7 +30,7 @@ func serve() {
 	}
 }
 
-func handle(conn *os.File) {
+func handle(conn io.ReadWriteCloser) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 	frames := &frameWriter{w: conn}
@@ -58,44 +57,69 @@ func handle(conn *os.File) {
 	}
 }
 
+// process is a command a request started, through the platform's start.
+type process interface {
+	// Stdin is the command's input, if its commandSpec asked for one.
+	Stdin() io.WriteCloser
+	// Wait waits for the command to exit and its output to be passed on, and gives its exit
+	// status as a shell would report it.
+	Wait() (int32, error)
+	// Terminate ends the command and everything it started.
+	Terminate()
+}
+
+// commandSpec is what start runs: a command line in the user's shell, or this binary's put or get.
+type commandSpec struct {
+	user string
+	// A command line for the user's login shell, or else this binary's arguments.
+	line string
+	self []string
+	// Windows: in the console's desktop session.
+	desktop bool
+	stdin   bool
+	stdout  io.Writer
+	stderr  io.Writer
+}
+
+// exitEarly is a start that ends the request with a status of its own, having said why.
+type exitEarly struct {
+	status  int32
+	message string
+}
+
+func (e exitEarly) Error() string { return e.message }
+
 // runExec runs the command as the request's user and streams its output. The host closing the
 // connection cancels it: nothing else is ever sent, so any read returning means the host is gone.
 func runExec(req request, conn io.Reader, frames *frameWriter) {
-	who, err := lookupAccount(req.User)
-	if err != nil {
-		_ = frames.fail("%v", err)
+	proc, err := start(commandSpec{
+		user: req.User, line: req.Command, desktop: req.Desktop,
+		stdout: streamWriter{frames, frameStdout}, stderr: streamWriter{frames, frameStderr},
+	})
+	if !started(err, frames) {
 		return
 	}
-	cmd := who.command(req.Command)
-	cmd.Stdout = streamWriter{frames, frameStdout}
-	cmd.Stderr = streamWriter{frames, frameStderr}
-	run(cmd, conn, frames, nil, nil)
+	run(proc, conn, frames, nil, nil)
 }
 
 // runPut extracts the host's tar stream as the request's user, by running this binary's `put`
 // as them: the agent itself stays root.
 func runPut(req request, conn io.Reader, frames *frameWriter) {
-	who, err := lookupAccount(req.User)
-	if err != nil {
-		_ = frames.fail("%v", err)
-		return
-	}
 	single := "0"
 	if req.Single {
 		single = "1"
 	}
-	cmd := exec.Command(selfPath(), "put", req.Destination, single)
-	who.configure(cmd)
-	cmd.Stdout = streamWriter{frames, frameStderr}
-	cmd.Stderr = streamWriter{frames, frameStderr}
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		_ = frames.fail("%v", err)
+	proc, err := start(commandSpec{
+		user: req.User, self: []string{"put", req.Destination, single}, stdin: true,
+		stdout: streamWriter{frames, frameStderr}, stderr: streamWriter{frames, frameStderr},
+	})
+	if !started(err, frames) {
 		return
 	}
 	// The tar stream comes first; once it has ended, a read returning means the host is gone.
 	data := &dataReader{r: conn}
-	run(cmd, conn, frames, func() {
+	run(proc, conn, frames, func() {
+		stdin := proc.Stdin()
 		_, _ = io.Copy(stdin, data)
 		stdin.Close()
 		// The rest, if `put` stopped reading: the host sends all of it before it reads an answer.
@@ -105,49 +129,61 @@ func runPut(req request, conn io.Reader, frames *frameWriter) {
 
 // runGet sends a tar stream of the request's sources, read as its user.
 func runGet(req request, conn io.Reader, frames *frameWriter) {
-	who, err := lookupAccount(req.User)
-	if err != nil {
-		_ = frames.fail("%v", err)
-		return
-	}
 	recursive := "0"
 	if req.Recursive {
 		recursive = "1"
 	}
-	cmd := exec.Command(selfPath(), append([]string{"get", recursive}, req.Sources...)...)
-	who.configure(cmd)
-	cmd.Stdout = streamWriter{frames, frameData}
-	cmd.Stderr = streamWriter{frames, frameStderr}
-	run(cmd, conn, frames, nil, func() {
-		_ = frames.write(frameData, nil) // Ends the stream, now that cmd.Wait has copied all of it.
+	proc, err := start(commandSpec{
+		user: req.User, self: append([]string{"get", recursive}, req.Sources...),
+		stdout: streamWriter{frames, frameData}, stderr: streamWriter{frames, frameStderr},
+	})
+	if !started(err, frames) {
+		return
+	}
+	run(proc, conn, frames, nil, func() {
+		_ = frames.write(frameData, nil) // Ends the stream, now that Wait has passed all of it on.
 	})
 }
 
-// run starts cmd, does feed (copying its input) if there is one, then waits for it while watching
-// the connection: the host hanging up kills the command's process group. Once it has exited and
-// its output is sent, finish runs if there is one, then the exit frame ends the request.
-func run(cmd *exec.Cmd, conn io.Reader, frames *frameWriter, feed func(), finish func()) {
-	if err := cmd.Start(); err != nil {
-		_ = frames.fail("%v", err)
-		return
+// started reports a start that failed, and says whether the request goes on.
+func started(err error, frames *frameWriter) bool {
+	if early, ok := err.(exitEarly); ok {
+		_ = frames.write(frameStderr, []byte(early.message+"\n"))
+		_ = frames.exit(early.status)
+		return false
 	}
+	if err != nil {
+		_ = frames.fail("%v", err)
+		return false
+	}
+	return true
+}
+
+// run does feed (copying the command's input) if there is one, then waits for the command while
+// watching the connection: the host hanging up terminates it. Once it has exited, its output is
+// sent and its input all read, finish runs if there is one, then the exit frame ends the request.
+// Answering before the host's stream has all been read would cut it off: tar stops reading at
+// its end-of-archive blocks, short of the stream's end.
+func run(proc process, conn io.Reader, frames *frameWriter, feed func(), finish func()) {
 	exited := make(chan struct{})
+	fed := make(chan struct{})
 	go func() {
 		if feed != nil {
 			feed()
 		}
+		close(fed)
 		var buffer [1]byte
 		_, _ = conn.Read(buffer[:])
 		select {
 		case <-exited:
 		default:
-			terminate(cmd, exited)
+			proc.Terminate()
 		}
 	}()
-	err := cmd.Wait()
+	status, err := proc.Wait()
 	close(exited)
-	status, ok := exitStatus(err)
-	if !ok {
+	<-fed
+	if err != nil {
 		_ = frames.fail("%v", err)
 		return
 	}

@@ -1,11 +1,14 @@
 import Foundation
 
-/// The commands Hobo sends a Windows guest over SSH, where the shell is PowerShell. Each is one line
-/// with no double quotes, which sshd would have to escape on its way to PowerShell. The scripts it
-/// names were installed by create (`Sources/HoboVM/Resources/Windows`).
+/// The commands Hobo sends a Windows guest, which hobo-agent runs with PowerShell, as Windows' sshd
+/// does with Hobo's `DefaultShell`. Each is one line with no double quotes, which would need
+/// escaping on their way into PowerShell's command line. The scripts it names were installed by
+/// create (`Sources/HoboVM/Resources/Windows`).
 public enum WindowsGuest {
     public static let scriptsDirectory = #"C:\ProgramData\Hobo"#
-    /// A guest path scp accepts, for files a create or provision step uploads.
+    /// hobo-agent's stub, in `scriptsDirectory`.
+    public static let agentFile = "hobo-agent.exe"
+    /// A guest path for files a create or provision step uploads.
     public static let temporaryDirectory = "C:/Windows/Temp"
 
     public static let shutdownCommand = "shutdown.exe /s /t 0"
@@ -18,22 +21,14 @@ public enum WindowsGuest {
         """
     /// Drops what the build left, then hands the freed blocks back to the ASIF.
     public static let cleanupCommand = """
-        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue C:\\Windows\\Temp\\*, $env:TEMP\\*, $env:ProgramData\\Hobo\\gui\\*; \
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue C:\\Windows\\Temp\\*, $env:TEMP\\*; \
         Optimize-Volume -DriveLetter C -ReTrim
         """
 
-    /// Starts `exec.ps1`, which prints `marker` and its process ID (`GuestSSH.PIDMarker`), then runs `command`.
-    public static func execLine(_ command: [String], marker: String) -> String {
-        script("exec.ps1", marker, encoded(command))
-    }
-
-    /// `execLine` in the desktop session, through `gui-exec.ps1`.
-    public static func guiExecLine(_ command: [String], marker: String) -> String {
-        script("gui-exec.ps1", marker, encoded(command))
-    }
-
-    public static func cancelCommand(pid: Int32) -> String {
-        script("cancel.ps1", String(pid))
+    /// `hobo exec` of `command`, through `exec.ps1`, in the desktop session or not as the agent
+    /// starts it.
+    public static func execCommand(_ command: [String]) -> String {
+        script("exec.ps1", encoded(command))
     }
 
     /// Sets the clock to `date`. PowerShell turns the UTC time into local time itself.

@@ -35,22 +35,16 @@ public protocol VMBundle: Sendable {
     /// Grows the guest's root filesystem, live, into a disk `hobo set --disk` enlarged. It runs
     /// again at the next start if it fails, so it must be safe to repeat.
     static var growDiskCommand: String { get }
-    /// Shuts the guest down, over SSH.
+    /// Shuts the guest down.
     static var shutdownCommand: String { get }
-    /// The guest command that prints `marker` and a process ID (`GuestSSH.PIDMarker`), then runs `command`.
-    static func execLine(_ command: [String], marker: String) -> String
-    /// `execLine` in the SSH user's desktop session (`exec --gui`). It waits up to
-    /// `GUISession.waitSeconds` for the session, which auto-login can finish after SSH answers, and
-    /// exits `GUISession.unavailableStatus` if it never comes up.
-    static func guiExecLine(_ command: [String], marker: String) -> String
-    /// Ends what `execLine` or `guiExecLine` started, given the process ID it printed.
-    static func cancelCommand(pid: Int32) -> String
-    /// Whether the host reaches this guest through hobo-agent rather than SSH (decision 15). Until
-    /// every guest has the agent, the others stay on SSH.
-    static var usesAgent: Bool { get }
-    /// The line hobo-agent runs in the login shell for `hobo exec` of `command`, in the desktop
-    /// session if `gui`. The agent kills its process group on a cancel, so there is no PID to report.
+    /// The line hobo-agent runs in the user's shell for `hobo exec` of `command`, in the desktop
+    /// session if `gui`: getting there itself, unless `agentStartsInDesktop`. In the desktop
+    /// session it waits up to `GUISession.waitSeconds` for it, since auto-login can finish after
+    /// the agent answers, and exits `GUISession.unavailableStatus` if it never comes up.
     static func agentCommand(_ command: [String], gui: Bool) -> String
+    /// Whether hobo-agent starts an `exec --gui` command in the desktop session itself (Windows,
+    /// where the agent is a SYSTEM process in session 0), rather than `agentCommand`'s line.
+    static var agentStartsInDesktop: Bool { get }
     /// Runs `resize`, which rewrites the disk's partition table, leaving whatever the guest's boot
     /// depends on as it was.
     func keepingDiskIdentity(_ resize: () throws -> Void) throws
@@ -64,21 +58,7 @@ public protocol VMBundle: Sendable {
 /// A POSIX shell's way of doing these, which macOS and Linux guests share.
 extension VMBundle {
     public static var shutdownCommand: String { "sudo -n shutdown -h now" }
-
-    /// sshd made the guest shell a process group leader, so its PID names the group `cancelCommand` kills.
-    public static func execLine(_ command: [String], marker: String) -> String {
-        "echo \(marker)$$; exec " + shellQuote(command)
-    }
-
-    public static func cancelCommand(pid: Int32) -> String { "kill -TERM -- -\(pid)" }
-}
-
-/// Guests still on SSH, which never ask the agent for anything.
-extension VMBundle {
-    public static var usesAgent: Bool { false }
-    public static func agentCommand(_ command: [String], gui: Bool) -> String {
-        preconditionFailure("\(Self.self) doesn't run hobo-agent yet")
-    }
+    public static var agentStartsInDesktop: Bool { false }
 }
 
 extension VMBundle {

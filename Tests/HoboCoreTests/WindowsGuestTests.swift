@@ -3,12 +3,11 @@ import Testing
 @testable import HoboCore
 
 @Suite struct WindowsGuestTests {
-    /// sshd would have to escape a double quote on its way to PowerShell, and these go that way.
+    /// A double quote would need escaping on its way into PowerShell's command line.
     @Test func noCommandHasADoubleQuote() {
         let command = ["app.exe", #"say "hi""#, "it's"]
         for line in [
-            WindowsGuest.execLine(command, marker: "m"), WindowsGuest.guiExecLine(command, marker: "m"),
-            WindowsGuest.cancelCommand(pid: 7), WindowsGuest.shutdownCommand, WindowsGuest.versionCommand,
+            WindowsGuest.execCommand(command), WindowsGuest.shutdownCommand, WindowsGuest.versionCommand,
             WindowsGuest.growDiskCommand, WindowsGuest.cleanupCommand, WindowsGuest.setClockCommand(.now),
             WindowsGuest.followDisplayCommand,
         ] {
@@ -19,8 +18,8 @@ import Testing
 
     @Test func aCommandTravelsAsBase64OfJSON() throws {
         let command = ["app.exe", #"say "hi""#, "it's", "ünï"]
-        let line = WindowsGuest.execLine(command, marker: "MARK")
-        let prefix = #"& 'C:\ProgramData\Hobo\exec.ps1' 'MARK' '"#
+        let line = WindowsGuest.execCommand(command)
+        let prefix = #"& 'C:\ProgramData\Hobo\exec.ps1' '"#
         let suffix = "'; exit $LASTEXITCODE"
         #expect(line.hasPrefix(prefix) && line.hasSuffix(suffix))
         let encoded = line.dropFirst(prefix.count).dropLast(suffix.count)
@@ -38,14 +37,6 @@ import Testing
     @Test(arguments: [[0xFF, 0xFE, 0x41, 0x00], [0xFE, 0xFF, 0x00, 0x41], [0x63, 0xE9]] as [[UInt8]])
     func aScriptInAnotherEncodingGoesUnchanged(_ bytes: [UInt8]) {
         #expect(WindowsGuest.powerShellScript(Data(bytes)) == nil)
-    }
-
-    @Test func guiExecGoesThroughItsOwnScript() {
-        #expect(WindowsGuest.guiExecLine(["a"], marker: "m").hasPrefix(#"& 'C:\ProgramData\Hobo\gui-exec.ps1' 'm' "#))
-    }
-
-    @Test func cancelNamesTheProcess() {
-        #expect(WindowsGuest.cancelCommand(pid: 42) == #"& 'C:\ProgramData\Hobo\cancel.ps1' '42'; exit $LASTEXITCODE"#)
     }
 
     @Test func theClockIsSetInDotNetTicksFromUTC() {

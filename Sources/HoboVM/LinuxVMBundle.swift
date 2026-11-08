@@ -4,7 +4,7 @@ import Virtualization
 
 /// The files that make up one Linux VM: an ASIF disk converted from a cloud image, the EFI
 /// variable store, and a machine identifier. The guest boots through EFI from the disk, and its
-/// serial console goes to `console.log`, the only record of a boot that never reaches SSH.
+/// serial console goes to `console.log`, the only record of a boot that never gets as far as hobo-agent.
 public struct LinuxVMBundle: VMBundle {
     public static let platformFiles = ["disk.asif", "efi-vars.fd", "machine-identifier.bin"]
     public static let hiDPIDisplay = false
@@ -24,10 +24,6 @@ public struct LinuxVMBundle: VMBundle {
     /// cloud-init's growpart did this at create but is off afterwards. growpart exits 1 when the
     /// partition already fills the disk, as on a retry after `resize2fs` failed.
     public static let growDiskCommand = #"root=$(findmnt -no SOURCE /) && part=$(cat "/sys/class/block/${root#/dev/}/partition") && { sudo -n growpart "/dev/$(lsblk -no PKNAME "$root")" "$part" || [ $? -eq 1 ]; } && sudo -n resize2fs "$root""#
-    public static func guiExecLine(_ command: [String], marker: String) -> String {
-        "echo \(marker)$$; " + guiExecScript(command)
-    }
-    public static let usesAgent = true
     public static func agentCommand(_ command: [String], gui: Bool) -> String {
         gui ? guiExecScript(command) : shellQuote(command)
     }
@@ -35,8 +31,8 @@ public struct LinuxVMBundle: VMBundle {
     /// Waits for `hobo`'s graphical session, then runs the command with that session's
     /// environment: the one GNOME hands the systemd user manager, which is what apps started from the
     /// desktop get (`WAYLAND_DISPLAY`, `DISPLAY`, `XAUTHORITY`, `XDG_SESSION_TYPE`, the accessibility
-    /// variables). SSH's `PATH` stays, so it finds what plain `exec` finds. SSH runs as the same user,
-    /// so there is no `sudo`, and the command stays in the process group a cancel kills. A guest
+    /// variables). The agent's `PATH` stays, so it finds what plain `exec` finds. Plain `exec` runs as
+    /// the same user, so there is no `sudo`, and the command stays in the process group a cancel kills. A guest
     /// with no display manager, built with `init --os linux --server`, fails at once rather than
     /// waiting. `systemctl` quotes values with bash's `$'…'`, so this needs bash, the login shell
     /// cloud-init gives `hobo`.

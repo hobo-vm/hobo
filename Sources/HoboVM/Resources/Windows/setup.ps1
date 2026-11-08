@@ -4,7 +4,7 @@
 $ErrorActionPreference = 'Stop'
 $hobo = 'C:\ProgramData\Hobo'
 
-# Hobo's own scripts run over SSH, and provision steps as scripts, which Windows refuses by default.
+# Hobo's own scripts run through hobo-agent, and provision steps as scripts, which Windows refuses by default.
 Set-ExecutionPolicy Bypass -Scope LocalMachine -Force
 
 function Install-Msi([string]$Pattern, [string[]]$Options = @()) {
@@ -15,7 +15,7 @@ function Install-Msi([string]$Pattern, [string[]]$Options = @()) {
 }
 
 Install-Msi 'OpenSSH-*.msi' 'ADDLOCAL=Server,Client'
-# Off until finish-setup.ps1, since SSH answering says setup has finished.
+# Off until finish-setup.ps1, which turns it on with hobo-agent, whose answering says setup has finished.
 Stop-Service sshd -ErrorAction SilentlyContinue
 Set-Service sshd -StartupType Disabled
 New-NetFirewallRule -Name hobo-sshd -DisplayName 'OpenSSH Server (Hobo)' -Direction Inbound `

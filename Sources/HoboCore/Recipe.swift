@@ -32,7 +32,7 @@ public struct Recipe: Equatable, Sendable {
     public var disk: ByteSize
     public var source: Source
     public var provisioners: [Provisioner]
-    /// `[gui_testing]` when enabled: TCC pre-grants so agents can drive the guest UI over SSH.
+    /// `[gui_testing]` when enabled: TCC pre-grants so agents can drive the guest UI with `hobo exec`.
     public var guiTesting: GUITesting?
     /// `[security]`: SIP and AMFI, on unless the recipe turns them off.
     public var security: Security
@@ -52,7 +52,7 @@ public struct Recipe: Equatable, Sendable {
     }
 
     /// Turning SIP off needs a person: `create` boots recoveryOS and waits for `csrutil disable`.
-    /// AMFI off is the `amfi_get_out_of_my_way=1` boot-arg, set over SSH once SIP is off, so ad-hoc
+    /// AMFI off is the `amfi_get_out_of_my_way=1` boot-arg, set in the guest once SIP is off, so ad-hoc
     /// signed binaries may claim restricted entitlements.
     public struct Security: Equatable, Sendable {
         public var sip = true
@@ -109,7 +109,7 @@ public struct Recipe: Equatable, Sendable {
         if recipe.disk.bytes == 0 { throw RecipeError.invalidHardware("disk must be more than 0") }
         for (index, step) in recipe.provisioners.enumerated() {
             if let problem = step.problem { throw RecipeError.invalidProvisioner(index, problem) }
-            // Over SSH, hobo is an elevated administrator with no way to run as anything less.
+            // hobo-agent runs steps as hobo elevated, as SSH did, with no way to run as anything less.
             if os == .windows, step.privileged == false {
                 throw RecipeError.invalidProvisioner(index, "privileged = false isn't available on Windows, where steps run as hobo, an administrator")
             }

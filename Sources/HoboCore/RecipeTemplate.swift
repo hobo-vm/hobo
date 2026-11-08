@@ -70,7 +70,7 @@ extension Recipe {
         return """
         # Hobo recipe: build a VM from it with `hobo create <name>`.
         # The install adds the guest conventions (hobo/hobo, an administrator, SSH with PowerShell
-        # as its shell, logged in to the desktop at boot); add your own setup as [[provision]] steps.
+        # as its shell, logged in to the desktop at boot) and hobo-agent; add your own setup as [[provision]] steps.
 
         cpus   = 4
         memory = "8GB"
@@ -88,7 +88,7 @@ extension Recipe {
         # [windows]
         # resizable_display = true
 
-        # Steps run once each, in order, over SSH. Scripts are PowerShell. Paths are relative to this file.
+        # Steps run once each, in order, as vagrant. Scripts are PowerShell. Paths are relative to this file.
         #
         # [[provision]]
         # type = "shell"

@@ -1,9 +1,8 @@
 # hobo exec: runs a command as a child with this process's own stdin, stdout and stderr, so its
 # output stays byte for byte what it wrote, and exits with its status.
-param([string]$Marker, [string]$Encoded)
+param([string]$Encoded)
 $ProgressPreference = 'SilentlyContinue'
 . "$PSScriptRoot\common.ps1"
-Write-Marker $Marker
 
 $arguments = Read-Command $Encoded
 $command = Resolve-Command $arguments

@@ -21,8 +21,8 @@ public enum ControlRequest: Codable, Equatable, Sendable {
     /// Starts the stop sequence and replies at once; the VM process exits when the VM is off.
     case stop(force: Bool)
     /// Runs a command in the guest, without stdin or a TTY: `output` lines, then `exited`.
-    /// The arguments are quoted for the guest user's login shell (`VMBundle.execLine`); with `gui`,
-    /// the command runs in that user's desktop session (`VMBundle.guiExecLine`).
+    /// The arguments are quoted for the guest user's login shell (`VMBundle.agentCommand`); with
+    /// `gui`, the command runs in that user's desktop session.
     case exec(command: [String], gui: Bool = false)
     /// Copies between host paths and the guest: the copy's messages as `output` lines, then `exited`.
     case copy(GuestCopy)
@@ -61,7 +61,7 @@ public enum GuestStream: String, Codable, Equatable, Sendable {
 /// What a VM process reports about itself.
 public struct VMRunStatus: Codable, Equatable, Sendable {
     public enum State: String, Codable, Sendable {
-        /// Booting, until the guest answers (its agent, or SSH).
+        /// Booting, until the guest's agent answers.
         case starting
         case running
         case stopping

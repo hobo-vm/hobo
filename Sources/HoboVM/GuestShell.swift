@@ -3,20 +3,15 @@ import HoboControl
 import HoboCore
 import Synchronization
 
-/// How the host runs things in a guest: `GuestAgent` over virtio-vsock, or `GuestSSH` for guests
-/// that don't have the agent yet (decision 15). Commands are lines for the `vagrant` user's login
-/// shell either way, so the same command strings work over both.
+/// How the host runs things in a guest: `GuestAgent` over virtio-vsock (decision 15), or
+/// `GuestSSH` for the part of a macOS create before the agent is installed. Commands are lines
+/// for the `vagrant` user's login shell either way, so the same command strings work over both.
 public protocol GuestShell: Sendable {
     /// Runs `command`, streaming its output to the log unless `quiet`, and returns its exit status.
     @discardableResult
     func run(_ command: String, quiet: Bool) async throws -> Int32
     /// Runs `command`, passing its output to `onOutput` as it arrives, and returns its exit status.
     func stream(_ command: String, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32
-    /// `hobo exec`: runs `command` (an argv) for `platform`'s guest, in its desktop session if `gui`.
-    /// Cancelling the task ends the command in the guest too.
-    func exec(
-        _ command: [String], gui: Bool, platform: any VMBundle.Type, onOutput: @escaping @Sendable (GuestStream, Data) -> Void
-    ) async throws -> Int32
     /// `hobo cp`; its messages arrive as output. Returns its exit status.
     func copy(_ copy: GuestCopy, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32
     /// Copies a host file or directory to the guest path `remote`, as `scp -r` would.
