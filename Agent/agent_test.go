@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,5 +170,43 @@ func TestEntryNamesStayInside(t *testing.T) {
 	}
 	if name, err := entryName("a/./b/"); err != nil || name != "a/b" {
 		t.Errorf("a/./b/: %q %v", name, err)
+	}
+}
+
+// ask sends one request line to handle, as the host would, and returns the frame that ends it.
+func ask(t *testing.T, line string) (byte, []byte) {
+	t.Helper()
+	host, agent := net.Pipe()
+	defer host.Close()
+	go handle(agent)
+	go func() { _, _ = host.Write([]byte(line + "\n")) }()
+	kind, payload, err := readFrame(host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return kind, payload
+}
+
+func TestHandleAnswersAPingAndRefusesWhatItCantDo(t *testing.T) {
+	if kind, payload := ask(t, `{"version":1,"op":"ping"}`); kind != frameExit || !bytes.Equal(payload, []byte{0, 0, 0, 0}) {
+		t.Fatalf("ping: %q %v", kind, payload)
+	}
+	// An agent left running across a host upgrade says so, rather than misreading the request.
+	if kind, payload := ask(t, `{"version":2,"op":"ping"}`); kind != frameError || !strings.Contains(string(payload), "protocol 1, not 2") {
+		t.Fatalf("version: %q %q", kind, payload)
+	}
+	if kind, payload := ask(t, `{"version":1,"op":"shell"}`); kind != frameError || !strings.Contains(string(payload), `unknown request "shell"`) {
+		t.Fatalf("op: %q %q", kind, payload)
+	}
+	if kind, _ := ask(t, `not json`); kind != frameError {
+		t.Fatalf("bad line: %q", kind)
+	}
+}
+
+func TestDataReaderRejectsAnotherFrame(t *testing.T) {
+	var buffer bytes.Buffer
+	_ = (&frameWriter{w: &buffer}).write(frameStdout, []byte("x"))
+	if _, err := io.ReadAll(&dataReader{r: &buffer}); err == nil {
+		t.Fatal("a stdout frame read as data")
 	}
 }
