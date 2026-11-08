@@ -746,6 +746,18 @@ global VMs on 2026-11-01.
     the two can't differ (2026-11-04: of an image's sizes the Dock shows only the largest, and
     `NSDockTile`'s custom view changes ⌘Tab as well). The drawings are our own, and whether hobos ever
     used these signs is doubtful, so they aren't presented as history.
+27. **Docs.** Every feature is described once, in `docs/features/<slug>.md` (decided 2026-11-08):
+    frontmatter (`title`, `description`, `sidebar.order`), a short part (a paragraph, an example,
+    a screenshot if there is one), a `<!-- more -->` line, then the full guide. `make readme`
+    (`site/scripts/readme.mjs`) pastes the short parts, in order, between README.md's
+    `features:start`/`features:end` markers, each linking to its page; `make test` and the site
+    build fail if the README is out of date, so the two can't disagree. The site,
+    hobo.gsquared.app, is Astro Starlight in `site/`, reading `docs/features` and `docs/site` (home
+    and getting-started pages) directly, so the files stay plain Markdown that reads well on GitHub;
+    a remark plugin turns their links to each other into site URLs. Cloudflare Workers Builds
+    deploys it from this repo (`Cloudflare.md`). Starlight over MkDocs Material, which is in
+    maintenance mode, and over a hand-rolled generator, which would have to rebuild search and
+    navigation. Screenshots live in `docs/images/`; regenerating them with demo VMs is Beads work.
 
 ## Milestones
 

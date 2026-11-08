@@ -1,0 +1,13 @@
+---
+// A card per feature for the home page, from each feature file's title and description, in
+// sidebar order.
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+import { getCollection } from 'astro:content';
+
+const features = (await getCollection('docs', (entry) => entry.filePath?.includes('/features/')))
+  .sort((a, b) => (a.data.sidebar.order ?? 0) - (b.data.sidebar.order ?? 0));
+---
+
+<CardGrid>
+  {features.map((feature) => <LinkCard title={feature.data.title} description={feature.data.description} href={`/${feature.id}/`} />)}
+</CardGrid>

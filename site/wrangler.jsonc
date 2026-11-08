@@ -1,0 +1,9 @@
+// The hobo.gsquared.app Worker: the built site as static assets, no code. See ../Cloudflare.md.
+{
+  "name": "hobo-site",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "404-page"
+  }
+}

@@ -3,7 +3,7 @@ HOBO_SIGN_IDENTITY ?= -
 BIN := .build/release/hobo
 
 .DEFAULT_GOAL := help
-.PHONY: help build sign install test integration-test clean
+.PHONY: help build sign install test integration-test readme readme-check site clean
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -21,8 +21,18 @@ install: sign ## Install the signed binary to $(PREFIX)/bin
 	install -m 755 $(BIN) $(PREFIX)/bin/hobo
 	@if grep -qs '^hobo-version:' $(SKILL); then $(PREFIX)/bin/hobo claude install; fi
 
-test: ## Unit tests
+test: readme-check ## README check, then unit tests
 	swift test
+
+# README.md's feature tour is generated from docs/features/*.md (site/scripts/readme.mjs).
+readme: ## Regenerate README.md's features from docs/features
+	node site/scripts/readme.mjs
+
+readme-check: ## Fail if README.md is out of date with docs/features
+	node site/scripts/readme.mjs --check
+
+site: ## Build the hobo.gsquared.app site into site/dist
+	cd site && npm ci && npm run build
 
 # The test runner can't hold the entitlement, so VM tests drive the signed binary. A host-wide
 # lock queues runs from different worktrees: only 2 macOS guests fit on a host.

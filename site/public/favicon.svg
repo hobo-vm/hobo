@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Hobo</title>
+  <!-- The drawing for 16-32 px: same bindle, thicker and bigger, with no pattern or folds. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FCF5E4"/>
+      <stop offset="1" stop-color="#EBDABA"/>
+    </linearGradient>
+    <linearGradient id="cloth" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#CE4A43"/>
+      <stop offset="1" stop-color="#A02B2A"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#tile)"/>
+  <path d="M 172 806 L 856 214" stroke="#7E5630" stroke-width="72" stroke-linecap="round"/>
+  <path d="M 618 370 C 540 410 366 480 348 610 C 332 730 450 840 620 840 C 790 840 906 730 890 606 C 872 480 740 410 690 366 Z" fill="url(#cloth)"/>
+  <path d="M 660 340 C 668 280 700 220 752 176 C 780 250 760 330 700 400 Z" fill="#B5322E"/>
+  <path d="M 640 350 C 596 306 546 286 486 286 C 512 340 566 392 630 410 Z" fill="#B5322E"/>
+  <circle cx="660" cy="378" r="62" fill="#A02B2A"/>
+</svg>
