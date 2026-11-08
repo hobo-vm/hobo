@@ -81,9 +81,9 @@ extension Recipe {
         iso    = "\(quotedPath)"
         sha256 = "\(sha256)"
 
-        # The display is 1024x768, which the window scales. 1920x1200 needs a patched display driver,
-        # test-signed, so Windows runs in Test Mode: a watermark on the desktop, and any test-signed
-        # driver loads.
+        # The display is 1024x768, which the window scales. 1920x1200, following the window, needs a
+        # patched display driver, test-signed, so Windows runs in Test Mode: a watermark on the
+        # desktop, and any test-signed driver loads.
         #
         # [windows]
         # resizable_display = true

@@ -165,8 +165,8 @@ struct WindowsIntegrationTests {
         #expect(!(try session.run(["list"]).text.contains(String(name))))
     }
 
-    /// `[windows] resizable_display`: the patched viogpudo, test signing, and a 1920×1200 desktop.
-    /// Whether the window shows that desktop intact can only be seen from the host, by eye.
+    /// `[windows] resizable_display`: the patched viogpudo, test signing, a 1920×1200 desktop, and one
+    /// that follows the window. Whether the window shows it intact can only be seen from the host, by eye.
     @Test(.timeLimit(.minutes(30)))
     func resizableDisplay() throws {
         let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
@@ -196,9 +196,24 @@ struct WindowsIntegrationTests {
         #expect(!device.contains("30200"), "not virtio-win's 0.1.302 build: \(device)")
 
         let shot = work.appending(path: "shot.png")
-        #expect(try session.run(["screenshot", "vm", "--output", shot.path]).status == 0)
-        let png = try Data(contentsOf: shot)
-        #expect(png[16..<24] == Data([0, 0, 0x07, 0x80, 0, 0, 0x04, 0xB0]), "1920×1200")
+        func desktopSize() throws -> (width: Int, height: Int) {
+            #expect(try session.run(["screenshot", "vm", "--output", shot.path]).status == 0)
+            let png = try Data(contentsOf: shot)
+            let field = { (offset: Int) in png[offset..<offset + 4].reduce(0) { $0 << 8 | Int($1) } }
+            return (field(16), field(20))
+        }
+        let configured = try desktopSize()
+        #expect(configured == (1920, 1200))
+
+        // The desktop follows the window, which is sized in points and keeps the display's shape.
+        #expect(try session.run(["view", "vm"]).status == 0)
+        var followed = configured
+        for _ in 0..<15 where followed == configured {
+            Thread.sleep(forTimeInterval: 2)
+            followed = try desktopSize()
+        }
+        #expect(followed != configured, "the desktop stayed at the display's configured size")
+        #expect(abs(Double(followed.width) / Double(followed.height) - 1.6) < 0.01, "\(followed)")
     }
 
     private struct Session {

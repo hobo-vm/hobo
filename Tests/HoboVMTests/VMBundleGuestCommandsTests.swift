@@ -63,9 +63,8 @@ import Testing
         #expect(try vmBundle(at: directory, config: config(.linux)) is LinuxVMBundle)
     }
 
-    /// virtio-win's viogpudo stays at its startup mode; the patched one (`[windows] resizable_display`)
-    /// gets every other guest's size. Either way the window scales it, since nothing in the guest
-    /// applies a new size yet.
+    /// virtio-win's viogpudo stays at its startup mode, which the window scales; the patched one
+    /// (`[windows] resizable_display`) gets every other guest's size, and follows the window.
     @Test func onlyAResizableWindowsDisplayLeaves1024x768() throws {
         let directory = URL(filePath: "/nowhere")
         let fixed = try vmBundle(at: directory, config: config(.windows))
@@ -73,7 +72,7 @@ import Testing
         #expect(!fixed.displayFollowsWindow)
         let resizable = try vmBundle(at: directory, config: config(.windows, resizableDisplay: true))
         #expect(resizable.displayPixels == GuestDisplay.pixels)
-        #expect(!resizable.displayFollowsWindow)
+        #expect(resizable.displayFollowsWindow)
     }
 
     private func config(_ os: VMConfig.OS, resizableDisplay: Bool = false) -> VMConfig {

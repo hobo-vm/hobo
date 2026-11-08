@@ -32,9 +32,9 @@ public struct WindowsVMBundle: VMBundle {
 
     /// viogpudo's startup mode, unless the patched driver can leave it.
     public var displayPixels: CGSize { resizableDisplay ? GuestDisplay.pixels : CGSize(width: 1024, height: 768) }
-    /// Windows applies a new display size only through virtio-win's user-mode helper, which Hobo
-    /// doesn't install yet, so the window scales the display instead (design.md decision 20).
-    public var displayFollowsWindow: Bool { false }
+    /// The patched driver takes the window's size, and `display-follower.ps1` has Windows switch to
+    /// it; virtio-win's can't, so the window scales the display instead (design.md decision 20).
+    public var displayFollowsWindow: Bool { resizableDisplay }
 
     public var disk: URL { directory.appending(path: "disk.asif") }
     public var efiVariables: URL { directory.appending(path: "efi-vars.fd") }

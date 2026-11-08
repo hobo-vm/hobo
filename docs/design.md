@@ -405,8 +405,8 @@ global VMs on 2026-11-01.
     - The guest display follows the window's size while it shows, and is set back to the configured
       1920×1200 when it is hidden, so headless runs and screenshots always see that size unless
       someone is watching. `[gui_testing]` may turn resizing off if that matters. Windows guests
-      are the exception: fixed at 1024×768, or 1920×1200 with `[windows] resizable_display`, and the
-      window scales it (decision 20).
+      follow it only with `[windows] resizable_display`; otherwise the display is a fixed 1024×768
+      and the window scales it (decision 20).
     Agents drive the UI **inside the guest**:
     - SSH sessions run outside the GUI session and TCC blocks them from Accessibility and Screen
       Recording, so recipe `[gui_testing]` (opt-in) pre-grants them. **SIP stays on** (decided
@@ -581,8 +581,7 @@ global VMs on 2026-11-01.
       can't leave its 1024×768 startup mode under VZ, so by default the VM's display is 1024×768,
       the driver doesn't follow the window, and the window scales it. `[windows] resizable_display
       = true` installs a patched viogpudo instead: the display is 1920×1200 like other guests', and
-      `create` sets the desktop to it (Windows starts at 1024×768 whatever the display offers). The
-      cost is test signing (decided 2026-11-07, hobo-y70):
+      follows the window. The cost is test signing (decided 2026-11-07, hobo-y70):
       - **The cause.** viogpudo's mode change (`SetCurrentMode`) detaches and unrefs the resource
         still on the scanout, then creates the new one. VZ refuses `RESOURCE_UNREF` for a resource
         on a scanout (`ERR_INVALID_PARAMETER`); the driver ignores responses and hands the ID back
@@ -605,11 +604,21 @@ global VMs on 2026-11-01.
         screenshots too, and a guest that loads any test-signed driver, which software checking
         code integrity may notice; hence opt-in. Once a signed virtio-win release has the fix, the
         default becomes resizable and the option goes (Beads tracks this).
-      - **It doesn't follow the window yet**; the window scales it. VZ reconfigures the display and
-        the driver takes the new size, but Windows switches modes only when something in user mode
-        asks: virtio-win's `vgpusrv` service and the `viogpuap.exe` it starts in the desktop session,
-        which Hobo doesn't install. Installed by hand they still didn't, since `viogpuap` finds no
-        adapter: `EnumDisplayDevices` fails at index 0 even in the desktop session. Beads tracks it.
+      - **Following the window** (2026-11-08, hobo-s1u). VZ reconfigures the display, and the
+        driver takes the new size as its custom mode and pulses a named event
+        (`VioGpuResolutionEvent<id>`), but Windows switches modes only when something in the desktop
+        session asks. virtio-win's helper (`vgpusrv` starting `viogpuap.exe` in the session) never
+        does here: its search for the adapter stops at the first display device that isn't the
+        virtio GPU, and under VZ the first is Microsoft Basic Display (the session lists it before
+        the virtio GPU, which is the primary). Fixing that would mean a second binary built in a
+        Windows VM, so Hobo has its own: `display-follower.ps1`, PowerShell with a little C#, which
+        does what `viogpuap` does (the driver escape for its ID, which also creates the event; a
+        wait on the event; the escape for the custom mode; `ChangeDisplaySettingsEx`) for every
+        attached virtio GPU, checking every 2 s as well since the event is only pulsed. A logon task
+        (`hobo-display-follower`, as `vagrant`, interactive) runs it, so it follows from the first
+        boot after create. Create also runs it once (`-Once`) through `exec --gui`: Windows starts
+        at 1024×768 whatever the display offers, and the size it sets is saved, so later boots
+        start at it.
       - Nothing outside the driver helped (hobo-n64): older releases have the same sequence; `bcdedit
         highestmode`, clearing Windows' saved display configuration and the driver's registry
         settings don't change the first commit; and restarting the display device makes VZ stop the

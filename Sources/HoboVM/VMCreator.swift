@@ -146,7 +146,7 @@ public struct VMCreator {
 
         log("Waiting for Windows to finish setting up, and for the Vagrant conventions")
         let version = try await withVM(bundle, machine: machine) { vm, ssh in
-            if resizable { try await setWindowsDisplay(ssh, to: bundle.displayPixels) }
+            if resizable { try await followWindowsDisplay(ssh) }
             let version = try await ssh.output(WindowsGuest.versionCommand, what: "reading the Windows version")
             try await Provisioning.run(recipe, ssh: ssh, log: log)
             log("Cleaning up")
@@ -162,14 +162,16 @@ public struct VMCreator {
         )
     }
 
-    /// Windows starts at 1024×768 whatever the display offers, and remembers this from then on.
-    private func setWindowsDisplay(_ ssh: GuestSSH, to size: CGSize) async throws {
-        let command = WindowsGuest.setDisplayCommand(width: Int(size.width), height: Int(size.height))
+    /// Windows starts at 1024×768 whatever the display offers, and remembers the size it's set to. From
+    /// the next logon, `display-follower.ps1` keeps it at the display's size, which follows the window.
+    private func followWindowsDisplay(_ ssh: GuestSSH) async throws {
         let status = try await ssh.exec(
-            line: { WindowsGuest.guiExecLine(command, marker: $0) }, cancel: { WindowsGuest.cancelCommand(pid: $0) },
+            line: { WindowsGuest.guiExecLine(WindowsGuest.setDisplayCommand, marker: $0) },
+            cancel: { WindowsGuest.cancelCommand(pid: $0) },
             onOutput: { [log] _, data in log(String(decoding: data, as: UTF8.self)) }
         )
         if status != 0 { throw VMError.commandFailed("setting the display size", status) }
+        try await ssh.check(WindowsGuest.followDisplayCommand, what: "registering the display follower")
     }
 
     private func fetchWindowsPackages(resizableDisplay: Bool) async throws -> WindowsInstallMedia.PackageFiles {

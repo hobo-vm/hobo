@@ -36,7 +36,7 @@ public struct VMConfig: Codable, Equatable, Sendable {
     /// can't be cloned.
     @MissingAsFalse public var nicMatchedByDriver: Bool
     /// A Windows guest built with `[windows] resizable_display`: its patched display driver can leave
-    /// 1024×768, so the display is 1920×1200.
+    /// 1024×768, so the display is 1920×1200 and follows the window.
     @MissingAsFalse public var resizableDisplay: Bool
 
     public init(

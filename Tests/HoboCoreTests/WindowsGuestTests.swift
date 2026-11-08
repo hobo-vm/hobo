@@ -10,6 +10,7 @@ import Testing
             WindowsGuest.execLine(command, marker: "m"), WindowsGuest.guiExecLine(command, marker: "m"),
             WindowsGuest.cancelCommand(pid: 7), WindowsGuest.shutdownCommand, WindowsGuest.versionCommand,
             WindowsGuest.growDiskCommand, WindowsGuest.cleanupCommand, WindowsGuest.setClockCommand(.now),
+            WindowsGuest.followDisplayCommand,
         ] {
             #expect(!line.contains("\""), "\(line)")
             #expect(!line.contains("\n"), "\(line)")

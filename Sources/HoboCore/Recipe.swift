@@ -65,7 +65,7 @@ public struct Recipe: Equatable, Sendable {
     }
 
     /// `resizable_display` installs a patched viogpudo, test-signed, in place of virtio-win's, so the
-    /// display can leave its 1024×768 startup size: 1920×1200, which the window scales. Test signing
+    /// display can leave its 1024×768 startup size: 1920×1200, following the window. Test signing
     /// puts a "Test Mode" watermark on the desktop and lets the guest load any test-signed driver
     /// (design.md decision 20).
     public struct Windows: Equatable, Sendable {
