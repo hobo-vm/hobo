@@ -474,13 +474,14 @@ final class HostTar: Sendable {
 /// form `<tool>-<GOOS>-<GOARCH>`, which no stub sends.
 @MainActor
 final class AgentFetchServer: NSObject, @MainActor VZVirtioSocketListenerDelegate {
-    /// The agents a stub can fetch, by Go's `<GOOS>-<GOARCH>`, and the tools an agent can.
-    nonisolated static func binary(for platform: String) -> Data? {
+    /// The agents a stub can fetch, by Go's `<GOOS>-<GOARCH>`, and the tools an agent can: nil for
+    /// a platform there is none for, and a throw if this build is missing the file.
+    nonisolated static func binary(for platform: String) throws -> Data? {
         switch platform {
-        case "linux-arm64": try? Payloads.agent("linux")
-        case "darwin-arm64": try? Payloads.agent("darwin")
-        case "windows-arm64": try? Payloads.agent("windows")
-        case "ui-darwin-arm64": try? Payloads.hoboUI()
+        case "linux-arm64": try Payloads.agent("linux")
+        case "darwin-arm64": try Payloads.agent("darwin")
+        case "windows-arm64": try Payloads.agent("windows")
+        case "ui-darwin-arm64": try Payloads.hoboUI()
         default: nil
         }
     }
@@ -507,7 +508,13 @@ final class AgentFetchServer: NSObject, @MainActor VZVirtioSocketListenerDelegat
             guard let line = try socket.readLine(), let fetch = try? JSONDecoder().decode(Fetch.self, from: Data(line.utf8)) else {
                 return try answer(["error": "expected a fetch"])
             }
-            guard let binary = binary(for: fetch.fetch) else {
+            let binary: Data?
+            do {
+                binary = try Self.binary(for: fetch.fetch)
+            } catch {
+                return try answer(["error": "\(error)"])
+            }
+            guard let binary else {
                 return try answer(["error": "this hobo has no agent for \(fetch.fetch)"])
             }
             try answer(["size": binary.count])

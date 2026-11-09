@@ -99,8 +99,8 @@ import Testing
         _ = try await agent.exec(["true"], gui: true, platform: MacVMBundle.self, tool: "ui") { _, _ in }
         #expect(seen.fields["tool"] == "ui")
         #expect(seen.fields["desktop"] == nil)
-        #expect(AgentFetchServer.binary(for: "ui-darwin-arm64")?.isEmpty == false)
-        #expect(AgentFetchServer.binary(for: "ui-linux-arm64") == nil)
+        #expect(try AgentFetchServer.binary(for: "ui-darwin-arm64")?.isEmpty == false)
+        #expect(try AgentFetchServer.binary(for: "ui-linux-arm64") == nil)
     }
 
     @Test func anErrorFrameIsARefusal() async throws {
