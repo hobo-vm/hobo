@@ -38,7 +38,8 @@ public struct CommandLineTool: Sendable {
         "/bin/mkdir -p \(shellQuote(link.deletingLastPathComponent().path)) && /bin/ln -sfn \(shellQuote(target.path)) \(shellQuote(link.path))"
     }
 
-    /// Makes the link, asking for an administrator's password. Throws if it is refused or fails.
+    /// Makes the link, asking for an administrator's password. Throws `CancellationError` if the
+    /// password prompt is cancelled, and `CommandLineToolError` if it is refused or the link fails.
     public func install() throws {
         let script = "do shell script \(Self.appleScriptString(command)) with administrator privileges"
         let process = Process()
@@ -49,10 +50,16 @@ public struct CommandLineTool: Sendable {
         try process.run()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
-            let message = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw CommandLineToolError(description: message.isEmpty ? "couldn't link \(link.path)" : message)
+            throw failure(String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))
         }
+    }
+
+    /// The error for osascript's `stderr`. Cancelling the password prompt is AppleScript's
+    /// `userCanceledErr` (-128), which isn't a failure to report.
+    func failure(_ stderr: String) -> any Error {
+        let message = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        if message.hasSuffix("(-128)") { return CancellationError() }
+        return CommandLineToolError(description: message.isEmpty ? "couldn't link \(link.path)" : message)
     }
 
     static func appleScriptString(_ text: String) -> String {

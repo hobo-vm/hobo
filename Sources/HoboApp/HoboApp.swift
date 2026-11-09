@@ -77,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         do {
             try tool.install()
+        } catch is CancellationError {
         } catch {
             library.model.failure = "Couldn't install the hobo command: \(error)"
         }

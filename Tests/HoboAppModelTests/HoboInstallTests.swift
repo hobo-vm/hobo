@@ -40,6 +40,14 @@ import Testing
         #expect(other.state == .linkedElsewhere("/Applications/Hobo.app/Contents/Helpers/hobo"))
     }
 
+    @Test func cancellingThePasswordPromptIsNotAFailure() {
+        let tool = CommandLineTool(link: URL(filePath: "/usr/local/bin/hobo"), target: URL(filePath: "/elsewhere/hobo"))
+        #expect(tool.failure("0:150: execution error: User canceled. (-128)\n") is CancellationError)
+        let refused = tool.failure("0:150: execution error: ln: /usr/local/bin/hobo: Operation not permitted (1)\n")
+        #expect("\(refused)" == "0:150: execution error: ln: /usr/local/bin/hobo: Operation not permitted (1)")
+        #expect("\(tool.failure(""))" == "couldn't link /usr/local/bin/hobo")
+    }
+
     @Test func appleScriptStringsEscapeQuotesAndBackslashes() {
         #expect(CommandLineTool.appleScriptString(#"ln -s '/a "b"\c'"#) == #""ln -s '/a \"b\"\\c'""#)
     }
