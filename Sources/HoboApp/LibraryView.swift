@@ -10,6 +10,8 @@ struct LibraryView: View {
     @State private var cloning: String?
     @State private var renaming: String?
     @State private var deleting: String?
+    /// A recipe picked with Create from Recipe…, waiting for the VM's name.
+    @State private var recipeToName: URL?
 
     private var model: Library { library.model }
 
@@ -54,9 +56,9 @@ struct LibraryView: View {
             }
         }
         .fileImporter(isPresented: $library.presentRecipePicker, allowedContentTypes: [UTType(filenameExtension: "toml") ?? .plainText]) { result in
-            if case .success(let file) = result { askNameForRecipe = file }
+            if case .success(let file) = result { recipeToName = file }
         }
-        .sheet(item: $askNameForRecipe) { file in
+        .sheet(item: $recipeToName) { file in
             NameSheet(title: "Create a VM from \(file.lastPathComponent)", action: "Create") { name in
                 model.create(name, recipe: file)
                 selection = BuildRow.tag
@@ -66,7 +68,7 @@ struct LibraryView: View {
             NameSheet(title: "Clone \(source)", action: "Clone", initial: "\(source)-clone") { model.clone(source, to: $0) }
         }
         .sheet(item: $renaming) { old in
-            NameSheet(title: "Rename \(old)", action: "Rename", initial: old) { new in
+            NameSheet(title: "Rename \(old)", action: "Rename", initial: old, requiresChange: true) { new in
                 model.rename(old, to: new)
                 selection = new
             }
@@ -85,8 +87,6 @@ struct LibraryView: View {
             Text(model.failure ?? "")
         }
     }
-
-    @State private var askNameForRecipe: URL?
 
     private var selected: VMSummary? { selection.flatMap(model.summary(named:)) }
 
@@ -113,13 +113,13 @@ struct LibraryView: View {
             Button { vm.map { model.start($0.name) } } label: { Label("Start", systemImage: "play.fill") }
                 .disabled(!actions.start)
             Button { vm.map { model.stop($0.name) } } label: { Label("Stop", systemImage: "stop.fill") }
-                .disabled(!actions.stop)
+                .disabled(!actions.running)
             Button { vm.map { model.suspend($0.name) } } label: { Label("Suspend", systemImage: "pause.fill") }
-                .disabled(!actions.stop)
+                .disabled(!actions.running)
             Button { vm.map { model.showWindow($0.name) } } label: { Label("Show Window", systemImage: "macwindow") }
-                .disabled(!actions.stop)
+                .disabled(!actions.running)
             Button { cloning = vm?.name } label: { Label("Clone", systemImage: "plus.square.on.square") }
-                .disabled(!actions.clone)
+                .disabled(!actions.stopped)
             Button { deleting = vm?.name } label: { Label("Delete", systemImage: "trash") }
                 .disabled(!actions.delete)
         }
@@ -129,13 +129,13 @@ struct LibraryView: View {
     private func contextMenu(for vm: VMSummary) -> some View {
         let actions = Actions(vm)
         Button("Start") { model.start(vm.name) }.disabled(!actions.start)
-        Button("Stop") { model.stop(vm.name) }.disabled(!actions.stop)
-        Button("Suspend") { model.suspend(vm.name) }.disabled(!actions.stop)
+        Button("Stop") { model.stop(vm.name) }.disabled(!actions.running)
+        Button("Suspend") { model.suspend(vm.name) }.disabled(!actions.running)
         if vm.state == .suspended { Button("Discard Saved State") { model.discard(vm.name) } }
-        Button("Show Window") { model.showWindow(vm.name) }.disabled(!actions.stop)
+        Button("Show Window") { model.showWindow(vm.name) }.disabled(!actions.running)
         Divider()
-        Button("Rename…") { renaming = vm.name }.disabled(!actions.clone)
-        Button("Clone…") { cloning = vm.name }.disabled(!actions.clone)
+        Button("Rename…") { renaming = vm.name }.disabled(!actions.stopped)
+        Button("Clone…") { cloning = vm.name }.disabled(!actions.stopped)
         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: vm.bundle)]) }
         Divider()
         Button("Delete…", role: .destructive) { deleting = vm.name }.disabled(!actions.delete)
@@ -143,15 +143,19 @@ struct LibraryView: View {
 
     /// Which actions a VM's state allows; the core refuses the rest anyway, with its own message.
     struct Actions {
-        var start = false, stop = false, clone = false, delete = false
+        var start = false, delete = false
+        /// Stop, Suspend and Show Window.
+        var running = false
+        /// Clone and Rename, which need the VM stopped.
+        var stopped = false
 
         init() {}
 
         init(_ vm: VMSummary) {
             switch vm.state {
-            case .stopped, .crashed: (start, clone, delete) = (true, true, true)
+            case .stopped, .crashed: (start, stopped, delete) = (true, true, true)
             case .suspended: (start, delete) = (true, true)
-            case .running: (stop, delete) = (true, true)
+            case .running: (running, delete) = (true, true)
             case .failed, .broken: delete = true
             case .building: break
             }
@@ -183,7 +187,7 @@ struct VMRow: View {
                 Text(vm.name).font(.headline)
                 HStack(spacing: 4) {
                     if busy != nil { ProgressView().controlSize(.mini) }
-                    Text(busy.map { "\($0)…" } ?? VMState.text(vm)).font(.caption).foregroundStyle(.secondary)
+                    Text(busy.map { "\($0)…" } ?? stateText(vm)).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -193,6 +197,7 @@ struct VMRow: View {
 
 /// A build's row, above the VMs.
 struct BuildRow: View {
+    /// A selection tag no VM name can be.
     static let tag = "\u{0}build"
     var build: Library.Build
 
@@ -208,16 +213,18 @@ struct BuildRow: View {
     }
 }
 
-/// A short state, the words `hobo list` uses.
-enum VMState {
-    static func text(_ vm: VMSummary) -> String {
-        var text = switch vm.state {
-        case .running:
-            vm.phase.map { $0 + (vm.phaseDetail.map { " (\($0))" } ?? "") } ?? (vm.windowShown == true ? "running (window)" : "running")
-        case .crashed: "crashed"
-        default: vm.state.rawValue
+/// A VM's state in a few words, the ones `hobo list` uses.
+func stateText(_ vm: VMSummary) -> String {
+    var text: String
+    switch vm.state {
+    case .running:
+        if let phase = vm.phase {
+            text = phase + (vm.phaseDetail.map { " (\($0))" } ?? "")
+        } else {
+            text = vm.windowShown == true ? "running (window)" : "running"
         }
-        if vm.config?.ephemeral == true { text += ", ephemeral" }
-        return text
+    default: text = vm.state.rawValue
     }
+    if vm.config?.ephemeral == true { text += ", ephemeral" }
+    return text
 }

@@ -40,7 +40,7 @@ public struct SettingsForm: Equatable, Sendable {
     }
 
     /// What can be edited for a VM in a given state, following `VMSettings.apply`: the machine only
-    /// when stopped (or crashed), `keep` whenever the VM has a config and isn't being built.
+    /// when stopped (or crashed), `keep` whenever the VM is built and usable.
     public struct Editable: Equatable, Sendable {
         public var machine: Bool
         public var keep: Bool

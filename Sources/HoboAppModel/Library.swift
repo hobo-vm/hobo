@@ -62,7 +62,7 @@ public final class Library {
             return
         }
         refreshing = true
-        let lifecycle = VMLifecycle(store: store) { _ in }
+        let lifecycle = lifecycle
         Task {
             let listing = await Task.detached { await lifecycle.listing() }.value
             vms = listing.vms
@@ -75,6 +75,8 @@ public final class Library {
         }
     }
 
+    private var lifecycle: VMLifecycle { VMLifecycle(store: store) { _ in } }
+
     public func summary(named name: String) -> VMSummary? { vms.first { $0.name == name } }
 
     /// The VM's Dock icon (`VMIcon`), drawn once per name.
@@ -86,8 +88,6 @@ public final class Library {
     }
 
     // MARK: Actions
-
-    private var lifecycle: VMLifecycle { VMLifecycle(store: store) { _ in } }
 
     /// Runs `work` for `name` off the main thread, marked busy with `what`, then refreshes. A
     /// failure goes to `failure`.

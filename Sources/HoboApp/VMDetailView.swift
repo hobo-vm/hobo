@@ -12,7 +12,7 @@ struct VMDetailView: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("State", value: VMState.text(vm))
+                LabeledContent("State", value: stateText(vm))
                 if let config = vm.config {
                     LabeledContent("OS", value: config.osDescription)
                     LabeledContent("Created", value: config.created.formatted(date: .abbreviated, time: .shortened))

@@ -112,6 +112,8 @@ struct NameSheet: View {
     var title: String
     var action: String
     var initial = ""
+    /// Whether `initial` itself is refused, as a rename to the same name is.
+    var requiresChange = false
     var submit: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
@@ -138,7 +140,7 @@ struct NameSheet: View {
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(problem != nil || name == initial && action == "Rename")
+                .disabled(problem != nil || requiresChange && name == initial)
             }
         }
         .padding()
