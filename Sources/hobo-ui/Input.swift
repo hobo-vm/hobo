@@ -93,7 +93,8 @@ enum Input {
     /// Each character as a key event carrying it as Unicode, whatever the keyboard layout.
     static func type(_ text: String) {
         for character in text {
-            if character == "\n" || character == "\r" {
+            // `isNewline`, as "\r\n" is one Character, equal to neither "\n" nor "\r".
+            if character.isNewline {
                 key(KeySpec(modifiers: [], keyCode: 0x24))
                 continue
             }

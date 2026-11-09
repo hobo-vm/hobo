@@ -54,7 +54,7 @@ public struct AppSnapshot: Codable, Equatable, Sendable {
     /// In quotes, on one line, and cut short past `limit` characters.
     static func quoted(_ text: String, limit: Int = 80) -> String {
         var text = text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n").replacingOccurrences(of: "\t", with: "\\t")
+            .replacingOccurrences(of: "\r", with: "\\r").replacingOccurrences(of: "\n", with: "\\n").replacingOccurrences(of: "\t", with: "\\t")
         if text.count > limit { text = String(text.prefix(limit)) + "…" }
         return "\"" + text + "\""
     }

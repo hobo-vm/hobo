@@ -172,6 +172,8 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(AppSnapshot.line(node) == #"checkbox "Wrap" [e5] disabled checked"#)
         node = SnapshotNode(ref: 6, attributes: ElementAttributes(role: "AXTextArea", value: "a \"b\"\nc"), scale: PixelScale(1))
         #expect(AppSnapshot.line(node) == #"textarea [e6] = "a \"b\"\nc""#)
+        node = SnapshotNode(ref: 7, attributes: ElementAttributes(role: "AXTextArea", value: "a\r\nb\rc"), scale: PixelScale(1))
+        #expect(AppSnapshot.line(node) == #"textarea [e7] = "a\r\nb\rc""#)
     }
 
     @Test func leavesOutWhatSaysNothing() {
