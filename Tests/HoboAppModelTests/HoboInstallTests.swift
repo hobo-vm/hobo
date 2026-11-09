@@ -38,6 +38,10 @@ import Testing
         #expect(tool.state == .installed)
         let other = CommandLineTool(link: link, target: URL(filePath: "/elsewhere/hobo"))
         #expect(other.state == .linkedElsewhere("/Applications/Hobo.app/Contents/Helpers/hobo"))
+        // A copied binary where the link goes, as an older install left.
+        try FileManager.default.removeItem(at: link)
+        try Data("binary".utf8).write(to: link)
+        #expect(tool.state == .otherFile)
     }
 
     @Test func cancellingThePasswordPromptIsNotAFailure() {
