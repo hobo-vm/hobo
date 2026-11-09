@@ -156,6 +156,30 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(all.more == nil && all.offscreen == nil)
     }
 
+    // `snapshot --root e2`: the element itself heads the tree, under the ref it already had.
+    @Test func aRootShowsItsOwnSubtreeUnderItsRef() throws {
+        var refs = RefMap()
+        let app = Fake("AXApplication", [Fake("AXWindow", "Main", [Fake("AXGroup", "Panel", [Fake("AXButton", "A")]), Fake("AXButton", "B")])])
+        _ = snapshot(app, refs: &refs)
+        let locator = try #require(refs.locator(for: 2))
+        let panel = try #require(locator.resolve(from: app))
+        let shown = SnapshotBuilder(options: SnapshotOptions(), scale: PixelScale(1)).build(root: panel, locator: locator, isApp: false, refs: &refs)
+        #expect(shown.map(\.ref) == ["e2"])
+        #expect(shown[0].children.map(\.ref) == ["e3"])
+    }
+
+    // A scroll area inside another shows only what both let through.
+    @Test func nestedScrollAreasClipToBoth() {
+        var refs = RefMap()
+        let rows = (0..<10).map { Fake("AXRow", "Row \($0)", frame: rect(0, Double($0) * 20, 100, 20)) }
+        let app = Fake("AXApplication", [Fake("AXWindow", "Main", [
+            Fake("AXScrollArea", "Outer", frame: rect(0, 0, 100, 60), [Fake("AXScrollArea", "Inner", frame: rect(0, 0, 100, 200), rows)]),
+        ])])
+        let inner = snapshot(app, refs: &refs).elements[0].children[0].children[0]
+        #expect(inner.children.map(\.name) == ["Row 0", "Row 1", "Row 2"])
+        #expect(inner.offscreen == 7)
+    }
+
     @Test func depthOneShowsWindowsOnly() {
         var refs = RefMap()
         let app = Fake("AXApplication", [Fake("AXWindow", "Main", [Fake("AXButton", "A")])])
@@ -174,6 +198,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(AppSnapshot.line(node) == #"textarea [e6] = "a \"b\"\nc""#)
         node = SnapshotNode(ref: 7, attributes: ElementAttributes(role: "AXTextArea", value: "a\r\nb\rc"), scale: PixelScale(1))
         #expect(AppSnapshot.line(node) == #"textarea [e7] = "a\r\nb\rc""#)
+        #expect(AppSnapshot.quoted(String(repeating: "x", count: 81)) == "\"" + String(repeating: "x", count: 80) + "…\"")
     }
 
     @Test func leavesOutWhatSaysNothing() {
