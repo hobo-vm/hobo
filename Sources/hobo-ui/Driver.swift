@@ -317,18 +317,17 @@ struct Driver {
             items = found.children().first.map { $0.children() } ?? []
         }
         guard let current else { throw UIError.failed("give a menu") }
-        let isMenu = titles.count == 1 || !(current.children().isEmpty)
-        if isMenu {
+        let chosen = path.joined(separator: " > ")
+        if titles.count == 1 || !current.children().isEmpty {
             let listed = items.map(MenuItemInfo.init)
-            let lines = listed.map(\.line)
-            return Outcome(text: ([path.joined(separator: " > ")] + lines.map { "  " + $0 }).joined(separator: "\n"), items: listed)
+            return Outcome(text: ([chosen] + listed.map { "  " + $0.line }).joined(separator: "\n"), items: listed)
         }
         let info = MenuItemInfo(current)
-        guard info.enabled else { throw UIError.failed("\(path.joined(separator: " > ")) is disabled") }
+        guard info.enabled else { throw UIError.failed("\(chosen) is disabled") }
         let result = current.perform("AXPress")
-        guard result == .success else { throw UIError.failed("pressing \(path.joined(separator: " > ")) failed (\(result.rawValue))") }
+        guard result == .success else { throw UIError.failed("pressing \(chosen) failed (\(result.rawValue))") }
         let state = info.checked ? " (it was checked)" : ""
-        return Outcome(text: "chose \(path.joined(separator: " > "))\(state)", items: [info])
+        return Outcome(text: "chose \(chosen)\(state)", items: [info])
     }
 
     // MARK: wait

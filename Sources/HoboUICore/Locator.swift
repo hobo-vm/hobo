@@ -46,13 +46,8 @@ public struct Locator: Hashable, Codable, Sendable, CustomStringConvertible {
         var current = root
         for step in steps {
             let children = current.children()
-            let attributes = children.map { $0.attributes() }
-            var found: E?
-            for (child, childStep) in zip(children, Self.steps(for: attributes)) where childStep == step {
-                found = child
-                break
-            }
-            guard let found else { return nil }
+            let steps = Self.steps(for: children.map { $0.attributes() })
+            guard let found = zip(children, steps).first(where: { $0.1 == step })?.0 else { return nil }
             current = found
         }
         return current
