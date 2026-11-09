@@ -340,12 +340,16 @@ struct Driver {
         let what = c.ref.map { "element \($0)" } ?? c.text.map { "text \"\($0)\"" } ?? "app \(c.target.app ?? "")"
         while true {
             // Looked up afresh each time: the app may be starting, quitting or relaunching.
-            let app = try? app(c.target.app)
-            if let found = app.flatMap({ check(c, in: $0) }), found.present != c.gone {
-                let text = c.gone ? "\(what) is gone" : found.node.map { "found " + AppSnapshot.line($0) } ?? "\(app!.identity.name) is running with a window"
-                return Outcome(text: text, element: c.gone ? nil : found.node)
+            if let app = try? app(c.target.app) {
+                let found = try check(c, in: app)
+                if found.present != c.gone {
+                    let text = c.gone ? "\(what) is gone" : found.node.map { "found " + AppSnapshot.line($0) } ?? "\(app.identity.name) is running with a window"
+                    return Outcome(text: text, element: c.gone ? nil : found.node)
+                }
+            } else if c.gone {
+                // The app has quit: its elements and text went with it.
+                return Outcome(text: "\(what) is gone")
             }
-            if app == nil && c.gone && c.ref == nil && c.text == nil { return Outcome(text: "\(what) is gone") }
             if Date() >= deadline { break }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
@@ -358,9 +362,13 @@ struct Driver {
         var node: SnapshotNode?
     }
 
-    func check(_ c: HoboUI.Wait, in app: App) -> Found? {
+    /// Throws for a ref no snapshot gave, which no amount of waiting will bring.
+    func check(_ c: HoboUI.Wait, in app: App) throws -> Found {
         if let ref = c.ref.flatMap(RefMap.parse) {
-            guard let element = try? element(ref, in: app) else { return Found(present: false) }
+            guard let locator = store.load(app.identity.storeKey).locator(for: ref) else {
+                throw UIError.failed("\(app.identity.name) has no ref \(RefMap.format(ref)); take a snapshot first")
+            }
+            guard let element = locator.resolve(from: app.element) else { return Found(present: false) }
             return Found(present: true, node: describe(element, ref: ref))
         }
         if let text = c.text {
