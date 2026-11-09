@@ -105,13 +105,13 @@ struct Init: OutputCommand {
             try WindowsInstallMedia.validate(iso)
             image = .windows(WindowsISO(path: iso.path, sha256: try ImageIndex.standard().hash(of: iso, log: output.log)))
         }
-        let template = switch image {
-        case .macOS(let image): Recipe.template(pinnedTo: image)
-        case .linux(let image): Recipe.template(pinnedTo: image, desktop: !server)
-        case .windows(let iso): Recipe.template(windowsISO: iso.path, sha256: iso.sha256)
-        case nil: Recipe.template
+        let source: RecipeDraft.Source = switch image {
+        case .macOS(let image): .macOS(image)
+        case .linux(let image): .linux(image, desktop: !server)
+        case .windows(let iso): .windows(iso: iso.path, sha256: iso.sha256)
+        case nil: .macOS(nil)
         }
-        try template.write(to: url, atomically: true, encoding: .utf8)
+        try RecipeDraft(source: source).text().write(to: url, atomically: true, encoding: .utf8)
         let pinned = switch image {
         case .macOS(let image): " pinned to \(image.name) \(image.version) (\(image.build))"
         case .linux(let image): " pinned to \(image.name), release \(image.serial)\(server ? "" : ", with a desktop")"

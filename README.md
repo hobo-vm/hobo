@@ -23,13 +23,13 @@ hobo stop dev                      # clean shutdown; --force powers off
 
 - Apple Silicon Mac, macOS 27+
 - Xcode 27 (Swift 6.4+)
-- `brew install lld`, to build: the Windows boot driver is compiled from source during the build
+- `brew install lld go`, to build: the Windows boot driver and the guest agent are compiled from source during the build
 - To run Windows guests, a Windows on Arm ISO from [Microsoft](https://www.microsoft.com/en-us/software-download/windows11arm64). Read the caveats in [Guest operating systems](https://hobo.gsquared.app/guests/#windows) first
 
 ## Install
 
 ```sh
-make install                 # release build, ad-hoc signed, installs to ~/.local/bin/hobo
+make install                 # release build, ad-hoc signed: /Applications/Hobo.app, linked as /usr/local/bin/hobo
 ```
 
 ## Features
@@ -89,6 +89,15 @@ ubuntu   running  192.168.64.6  Ubuntu 26.04           4     4 GB    6.26 GB / 3
 ```
 
 Full guide → [hobo.gsquared.app/running-vms](https://hobo.gsquared.app/running-vms/)
+
+### The Hobo app
+
+Hobo.app lists your VMs with their state and disk use. From it you can start, stop, suspend, open
+a VM's window, clone, rename and delete VMs, and change their settings. **New VM** builds one
+without a recipe file. The app and the `hobo` command are the same program, so they always agree.
+Use either, or both at once.
+
+Full guide → [hobo.gsquared.app/app](https://hobo.gsquared.app/app/)
 
 ### Getting inside
 
@@ -220,8 +229,9 @@ Full guide → [hobo.gsquared.app/agents](https://hobo.gsquared.app/agents/)
 ## Build from source
 
 ```sh
-make install                 # release build, ad-hoc signed, installs to ~/.local/bin/hobo
+make install                 # release build, ad-hoc signed: /Applications/Hobo.app, linked as /usr/local/bin/hobo
 HOBO_SIGN_IDENTITY="Developer ID Application: …" make install
+make app                     # assemble .build/Hobo.app without installing it
 make test                    # README check, then unit tests
 make integration-test        # tests that drive the signed binary
 HOBO_WINDOWS_ISO=<path> make integration-test   # also build and test a Windows guest from that ISO

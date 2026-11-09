@@ -9,7 +9,7 @@ public enum UbuntuCatalog {
     /// Item paths in the index are relative to this.
     static let mirror = URL(string: "https://cloud-images.ubuntu.com/")!
 
-    public struct Image: Codable, Equatable, Sendable {
+    public struct Image: Codable, Hashable, Sendable {
         /// e.g. `Ubuntu 26.04 LTS`.
         public var name: String
         /// The series, e.g. `26.04`.

@@ -7,6 +7,7 @@ let package = Package(
     platforms: [.macOS(.v27)],
     products: [
         .executable(name: "hobo", targets: ["hobo"]),
+        .executable(name: "HoboApp", targets: ["HoboApp"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.8.0"),
@@ -21,15 +22,16 @@ let package = Package(
         .target(
             name: "HoboVM",
             dependencies: ["HoboCore", "HoboControl"],
-            // Compiled in: `make install` copies only the binary, so a resource bundle wouldn't follow it.
-            resources: [.embedInCode("Resources/Signs"), .embedInCode("Resources/Windows")],
+            // Files, read through `Payloads`: from Hobo.app's Contents/Resources, or SwiftPM's resource
+            // bundle in a dev build. The plugins' outputs (agents, hobo-ui, the Windows boot driver) join them.
+            resources: [.copy("Resources/Signs"), .copy("Resources/Windows")],
             // For `ucal_getWindowsTimeZoneID`, which Foundation doesn't surface.
             linkerSettings: [.linkedLibrary("icucore")],
             plugins: ["WindowsBootPlugin", "HoboAgentPlugin", "HoboUIPlugin"]
         ),
         .plugin(name: "WindowsBootPlugin", capability: .buildTool()),
         .plugin(name: "HoboAgentPlugin", capability: .buildTool()),
-        // hobo-ui, the macOS guests' accessibility driver (`hobo ui`), embedded in HoboVM.
+        // hobo-ui, the macOS guests' accessibility driver (`hobo ui`), a resource of HoboVM.
         .plugin(name: "HoboUIPlugin", capability: .buildTool(), dependencies: ["hobo-ui"]),
         .target(name: "HoboUICore", dependencies: [.product(name: "ArgumentParser", package: "swift-argument-parser")]),
         .executableTarget(name: "hobo-ui", dependencies: ["HoboUICore"]),
@@ -41,10 +43,14 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
+        // Hobo.app's GUI (`make app` puts it in the bundle as Contents/MacOS/Hobo) and its testable model.
+        .target(name: "HoboAppModel", dependencies: ["HoboCore", "HoboControl", "HoboVM"]),
+        .executableTarget(name: "HoboApp", dependencies: ["HoboAppModel", "HoboCore", "HoboControl", "HoboVM"]),
         .testTarget(name: "HoboCoreTests", dependencies: ["HoboCore"]),
         .testTarget(name: "HoboControlTests", dependencies: ["HoboControl", "HoboCore"]),
         .testTarget(name: "hoboTests", dependencies: ["hobo"]),
         .testTarget(name: "HoboUICoreTests", dependencies: ["HoboUICore"]),
+        .testTarget(name: "HoboAppModelTests", dependencies: ["HoboAppModel", "HoboCore"]),
         .testTarget(name: "HoboVMTests", dependencies: ["HoboCore", "HoboControl", "HoboVM", "HoboUICore"]),
     ]
 )

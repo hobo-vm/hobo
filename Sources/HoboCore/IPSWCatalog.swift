@@ -6,7 +6,7 @@ import Foundation
 public enum IPSWCatalog {
     public static let url = URL(string: "https://api.ipsw.me/v4/device/VirtualMac2,1?type=ipsw")!
 
-    public struct Image: Codable, Equatable, Sendable {
+    public struct Image: Codable, Hashable, Sendable {
         public var name: String
         public var version: String
         public var build: String

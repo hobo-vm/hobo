@@ -104,6 +104,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         let replayd = try output(hobo, ["exec", "itest", "--", "/usr/bin/log", "show", "--last", "10m", "--predicate", #"process == "replayd""#, "--style", "compact"], environment: env)
         #expect(replayd.contains("requireAlertWithCanonicalBundleID"), "replayd's log has changed wording")
         try checkUI("itest", hobo: hobo, work: work, env: env)
+        try checkApp("itest", hobo: hobo, work: work, env: env)
         #expect(!replayd.contains("userAcknowledgementAlert"), "the approval dialog was raised")
         let payload = work.appending(path: "payload.txt")
         try "over and back\n".write(to: payload, atomically: true, encoding: .utf8)
@@ -684,18 +685,8 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
     /// checked through the apps' own state: the text area's value, a checkbox's, and a file a drag moved.
     private func checkUI(_ vm: String, hobo: String, work: URL, env: [String: String]) throws {
         func ui(_ arguments: [String]) throws -> Int32 { try run(hobo, ["ui", vm] + arguments, in: work, environment: env) }
-        func snapshot(_ app: String) throws -> [SnapshotNode] {
-            let json = try output(hobo, ["ui", vm, "snapshot", "--app", app, "--all", "--json"], environment: env)
-            struct Reply: Decodable { var snapshot: AppSnapshot }
-            return try JSONDecoder().decode(Reply.self, from: Data(json.utf8)).snapshot.elements
-        }
-        func find(_ nodes: [SnapshotNode], _ match: (SnapshotNode) -> Bool) -> SnapshotNode? {
-            for node in nodes {
-                if match(node) { return node }
-                if let found = find(node.children, match) { return found }
-            }
-            return nil
-        }
+        func snapshot(_ app: String) throws -> [SnapshotNode] { try uiSnapshot(vm, app: app, hobo: hobo, env: env) }
+        let find = Self.find
 
         #expect(try ui(["wait", "--app", "TextEdit"]) == 0)
         let text = try #require(find(try snapshot("TextEdit")) { $0.role == "textarea" })
@@ -726,6 +717,93 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try ui(["drag", file.ref, folder.ref, "--app", "Finder"]) == 0)
         #expect(try ui(["wait", "--ref", file.ref, "--gone", "--app", "Finder"]) == 0)
         #expect(try run(hobo, ["exec", vm, "--", "test", "-f", "DragTest/Folder/a.txt"], in: work, environment: env) == 0)
+    }
+
+    /// Hobo.app in the guest (designs/hobo-app.md), from the bundle HOBO_BIN is in, over a store seeded
+    /// with two stopped VMs: its list, a settings change and a rename, checked in the bundles, and
+    /// the New VM sheet's recipe. The guest can't run VMs itself, so a build is made to fail at once,
+    /// by naming a VM that exists, after the sheet has written its recipe.
+    private func checkApp(_ vm: String, hobo: String, work: URL, env: [String: String]) throws {
+        let app = "app.gsquared.hobo"
+        func ui(_ arguments: [String]) throws -> Int32 { try run(hobo, ["ui", vm] + arguments + ["--app", app], in: work, environment: env) }
+        func guest(_ command: String) throws -> String { try output(hobo, ["exec", vm, "--", "sh", "-c", command], environment: env) }
+        func snapshot() throws -> [SnapshotNode] { try uiSnapshot(vm, app: app, hobo: hobo, env: env) }
+        func row(_ name: String) throws -> SnapshotNode {
+            try #require(Self.find(try snapshot()) { $0.role == "cell" && $0.children.contains { $0.value == name } }, "no row for \(name)")
+        }
+        let bundle = URL(filePath: hobo).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        try #require(bundle.lastPathComponent == "Hobo.app", "HOBO_BIN must be the CLI in Hobo.app (make integration-test)")
+
+        let config = work.appending(path: "seed-config.json")
+        try VMConfig(
+            os: .linux, cpus: 2, memory: 4 << 30, disk: 32 << 30, macAddress: "5a:00:00:00:00:01", guestOSVersion: "Ubuntu 26.04",
+            created: .now, recipeSHA256: "a", sourceSHA256: "b"
+        ).write(to: config)
+        #expect(try guest("mkdir -p ~/Applications ~/Hobo/alpha.hobovm ~/Hobo/beta.hobovm") == "")
+        for name in ["alpha", "beta"] {
+            #expect(try run(hobo, ["cp", config.path, "\(vm):/Users/hobo/Hobo/\(name).hobovm/config.json"], in: work, environment: env) == 0)
+        }
+        #expect(try run(hobo, ["cp", "-r", bundle.path, "\(vm):/Users/hobo/Applications/"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["exec", vm, "--gui", "--", "open", "/Users/hobo/Applications/Hobo.app"], in: work, environment: env) == 0)
+        #expect(try ui(["wait", "--text", "beta"]) == 0)
+
+        // A settings change: the memory stepper up a step, then Save, as hobo set --memory 5GB. (Not the
+        // disk, which would resize the seeded bundle's disk image, and it has none.)
+        #expect(try ui(["click", try row("alpha").ref]) == 0)
+        #expect(try ui(["wait", "--text", "Memory: 4 GB"]) == 0)
+        var steppers = [SnapshotNode]()
+        func collect(_ nodes: [SnapshotNode]) { for node in nodes { if node.role == "incrementor" { steppers.append(node) }; collect(node.children) } }
+        collect(try snapshot())
+        let memoryUp = try #require(steppers.count == 3 ? steppers[1].children.first : nil, "CPUs, memory and disk steppers")
+        #expect(try ui(["click", memoryUp.ref, "--press"]) == 0)
+        #expect(try ui(["wait", "--text", "Memory: 5 GB"]) == 0)
+        let save = try #require(Self.find(try snapshot()) { $0.role == "button" && $0.name == "Save" })
+        #expect(try ui(["scroll", "--to", save.ref]) == 0)
+        #expect(try ui(["click", save.ref]) == 0)
+        let memory = try guest("for i in $(seq 50); do grep -q 5368709120 ~/Hobo/alpha.hobovm/config.json && break; sleep 0.2; done; grep -o '\"memory\" : [0-9]*' ~/Hobo/alpha.hobovm/config.json")
+        try #require(memory == "\"memory\" : 5368709120\n", "\(memory)")
+
+        // A rename, from the row's context menu.
+        #expect(try ui(["click", try row("beta").ref, "--right"]) == 0)
+        let rename = try #require(Self.find(try snapshot()) { $0.role == "menuitem" && $0.name == "Rename…" })
+        #expect(try ui(["click", rename.ref]) == 0)
+        let field = try #require(Self.find(try snapshot()) { $0.role == "textfield" && $0.value == "beta" })
+        #expect(try ui(["click", field.ref]) == 0)
+        #expect(try run(hobo, ["ui", vm, "key", "cmd+a"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["ui", vm, "type", "gamma"], in: work, environment: env) == 0)
+        let confirm = try #require(Self.find(try snapshot()) { $0.role == "button" && $0.name == "Rename" })
+        #expect(try ui(["click", confirm.ref]) == 0)
+        #expect(try ui(["wait", "--text", "gamma"]) == 0)
+        #expect(try guest("ls ~/Hobo") == "alpha.hobovm\ngamma.hobovm\n")
+
+        // New VM: the recipe it writes has the sheet's settings.
+        #expect(try ui(["menu", "File > New VM…"]) == 0)
+        #expect(try ui(["wait", "--text", "GUI testing"]) == 0)
+        let sheet = try snapshot()
+        let name = try #require(Self.find(sheet) { $0.role == "textfield" })
+        let guiTesting = try #require(Self.find(sheet) { $0.role == "switch" })
+        let create = try #require(Self.find(sheet) { $0.role == "button" && $0.name == "Create" })
+        #expect(try ui(["type", "alpha", "--into", name.ref]) == 0)
+        #expect(try ui(["click", guiTesting.ref]) == 0)
+        #expect(try ui(["click", create.ref]) == 0)
+        #expect(try ui(["wait", "--text", "already exists"]) == 0)
+        let recipe = try guest(#"grep -E '^(cpus|memory|disk|ipsw|enabled) ' "$(getconf DARWIN_USER_TEMP_DIR)"Hobo-*/Hobo.toml"#)
+        #expect(recipe == "cpus   = 4\nmemory = \"8GB\"\ndisk   = \"80GB\"\nipsw = \"latest\"\nenabled = true\n", "\(recipe)")
+        #expect(try guest("osascript -e 'quit app id \"\(app)\"'; rm -rf ~/Applications/Hobo.app ~/Hobo") == "")
+    }
+
+    private func uiSnapshot(_ vm: String, app: String, hobo: String, env: [String: String]) throws -> [SnapshotNode] {
+        let json = try output(hobo, ["ui", vm, "snapshot", "--app", app, "--all", "--json"], environment: env)
+        struct Reply: Decodable { var snapshot: AppSnapshot }
+        return try JSONDecoder().decode(Reply.self, from: Data(json.utf8)).snapshot.elements
+    }
+
+    private static func find(_ nodes: [SnapshotNode], _ match: (SnapshotNode) -> Bool) -> SnapshotNode? {
+        for node in nodes {
+            if match(node) { return node }
+            if let found = find(node.children, match) { return found }
+        }
+        return nil
     }
 
     private func run(_ executable: String, _ arguments: [String], in directory: URL, environment extra: [String: String] = [:]) throws -> Int32 {

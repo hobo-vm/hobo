@@ -477,10 +477,10 @@ final class AgentFetchServer: NSObject, @MainActor VZVirtioSocketListenerDelegat
     /// The agents a stub can fetch, by Go's `<GOOS>-<GOARCH>`, and the tools an agent can.
     nonisolated static func binary(for platform: String) -> Data? {
         switch platform {
-        case "linux-arm64": HoboAgentBinaries.linux
-        case "darwin-arm64": HoboAgentBinaries.darwin
-        case "windows-arm64": HoboAgentBinaries.windows
-        case "ui-darwin-arm64": HoboUIBinary.darwin
+        case "linux-arm64": try? Payloads.agent("linux")
+        case "darwin-arm64": try? Payloads.agent("darwin")
+        case "windows-arm64": try? Payloads.agent("windows")
+        case "ui-darwin-arm64": try? Payloads.hoboUI()
         default: nil
         }
     }

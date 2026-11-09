@@ -6,7 +6,7 @@ description: Install hobo, build a VM from a recipe, and log in.
 ## Requirements
 
 - An Apple Silicon Mac running macOS 27 or later.
-- To build from source: Xcode 27 (Swift 6.4 or later) and `brew install lld`.
+- To build from source: Xcode 27 (Swift 6.4 or later) and `brew install lld go`.
 - For Windows guests, a Windows on Arm ISO from
   [Microsoft](https://www.microsoft.com/en-us/software-download/windows11arm64).
 
@@ -15,10 +15,12 @@ description: Install hobo, build a VM from a recipe, and log in.
 ```sh
 git clone https://github.com/ggal625/hobo.git
 cd hobo
-make install      # builds, signs and installs ~/.local/bin/hobo
+make install      # builds and signs Hobo.app, installs it in /Applications, links /usr/local/bin/hobo
 ```
 
-Make sure `~/.local/bin` is on your `PATH`.
+`make install` may ask for your password to make the link. If you install Hobo.app some other way,
+its **Hobo › Install Command Line Tool…** menu item makes the same link. You can use VMs from
+[the app](../features/app.md), the `hobo` command, or both.
 
 ## Your first VM
 

@@ -164,7 +164,7 @@ public struct LinuxVMBundle: VMBundle {
         let iso = directory.appending(path: "cidata.iso")
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: staging) }
-        for (name, contents) in CloudInit.seed(vmName: vmName, uid: getuid(), agent: HoboAgentBinaries.linux) {
+        for (name, contents) in CloudInit.seed(vmName: vmName, uid: getuid(), agent: try Payloads.agent("linux")) {
             try contents.write(to: staging.appending(path: name), atomically: true, encoding: .utf8)
         }
         try? FileManager.default.removeItem(at: iso)

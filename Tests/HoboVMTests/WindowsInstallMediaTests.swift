@@ -134,8 +134,8 @@ import Testing
         #expect(WindowsInstallMedia.crlf(text) == expected)
     }
 
-    @Test func theAnswerFileIsWellFormedWithThisVMsValues() {
-        let answerFile = WindowsInstallMedia.answerFile(computerName: "dev-box", timeZone: "Pacific Standard Time")
+    @Test func theAnswerFileIsWellFormedWithThisVMsValues() throws {
+        let answerFile = try WindowsInstallMedia.answerFile(computerName: "dev-box", timeZone: "Pacific Standard Time")
         #expect(XMLParser(data: Data(answerFile.utf8)).parse())
         #expect(answerFile.contains("<ComputerName>dev-box</ComputerName>"))
         #expect(answerFile.contains("<TimeZone>Pacific Standard Time</TimeZone>"))

@@ -5,14 +5,14 @@ import HoboCore
 /// launchd job, which runs `hobo _vm-run <name>`; both then talk to that process over its socket.
 public struct VMLifecycle: Sendable {
     public var store: VMStore
-    /// The binary launchd runs as the VM process. It defaults to this one, so a client and the VM
+    /// The binary launchd runs as the VM process. It defaults to this build's CLI, so a client and the VM
     /// process it starts are always the same build and speak the same protocol.
     public var executable: URL
     public var log: @Sendable (String) -> Void
 
     public init(store: VMStore = .standard(), executable: URL? = nil, log: @escaping @Sendable (String) -> Void) {
         self.store = store
-        self.executable = executable ?? Bundle.main.executableURL!.resolvingSymlinksInPath()
+        self.executable = executable ?? HoboInstall.cli
         self.log = log
     }
 

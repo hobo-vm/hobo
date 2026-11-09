@@ -3,8 +3,8 @@ import AppKit
 import Testing
 
 @MainActor struct VMIconTests {
-    /// Swift can't list embedded resources, so `VMIcon.signs` is written by hand; a sign left out of
-    /// it would never appear, without any error.
+    /// `VMIcon.signs` is written by hand, so the order (and so each VM's icon) is fixed; a sign left
+    /// out of it would never appear, without any error.
     @Test func everySignFileIsListed() throws {
         let directory = URL(filePath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -13,7 +13,7 @@ import Testing
         #expect(files.filter { $0.hasSuffix(".svg") }.count == VMIcon.signCount)
     }
 
-    /// The bytes compiled into the binary decode to an icon big enough for ⌘Tab.
+    /// The signs `Payloads` reads decode to an icon big enough for ⌘Tab.
     @Test func iconDraws() throws {
         let image = try #require(VMIcon.image(for: "ubuntu2604"))
         let bitmap = try #require(image.representations.first)

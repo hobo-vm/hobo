@@ -376,7 +376,8 @@ global VMs on 2026-11-01.
       agent answering rather than SSH polling, and one way into the desktop session per guest.
     - One Go program (`Agent/`), with no dependencies: it builds for each guest from the Mac with
       `GOOS`/`GOARCH` alone, in SwiftPM's sandbox (`HoboAgentPlugin`, like the Windows boot driver),
-      and the binaries are compiled into `hobo`. Building needs `brew install go`.
+      and the binaries are resources of `HoboVM`, in Hobo.app's `Contents/Resources` (`Payloads`,
+      decision 22). Building needs `brew install go`.
     - **The stub.** Create installs the agent's binary in the guest, run at boot by the guest's
       service manager as `hobo-agent stub`. The stub fetches the agent from the host on every boot
       (guest port → host port 1100: `{"fetch":"linux-arm64"}`, answered `{"size":n}` and the bytes)
@@ -583,10 +584,10 @@ global VMs on 2026-11-01.
       System Events' `click at` returns without clicking in a guest, the guest has no compiler for
       a CGEvent tool, coordinates read off screenshots go stale, and waits were sleeps.
       - `hobo-ui`, a Swift executable in this package (pure logic in `HoboUICore`, unit-tested on
-        synthetic trees), embedded in `HoboVM` by `HoboUIPlugin`: host and guest are both arm64
+        synthetic trees), a resource of `HoboVM` by `HoboUIPlugin`: host and guest are both arm64
         macOS, so the tool SwiftPM builds for the host is the guest's binary. Not in the Go agent,
-        which would need cgo for AX and CGEvent. When there is a Hobo.app, it and the other
-        embedded payloads move into the bundle.
+        which would need cgo for AX and CGEvent. It ships in Hobo.app with the other payloads
+        (decision 22).
       - Delivery: a `ui` control request runs `exec --gui` of `hobo-ui` with a `tool` field, and the
         agent fetches the tool on first use each boot (`Agent/tool.go`), over the stub's fetch port
         by a name no stub sends (`ui-darwin-arm64`), into its run directory, root's, which a boot
@@ -843,25 +844,45 @@ global VMs on 2026-11-01.
 
 ### Engineering
 
-22. **Install.** Build from source: `make install` builds release, signs with `entitlements.plist`
-    (ad-hoc by default, `HOBO_SIGN_IDENTITY` for Developer ID), installs to `$(PREFIX)/bin`
-    (default `~/.local/bin`). A VM's launchd plist runs the `hobo` binary that started it (symlinks
-    resolved), so client and VM process are the same build; for an install that is this stable path.
+22. **Install: Hobo.app.** (Decided 2026-11-08; the interview is `designs/hobo-app.md`.) Hobo
+    ships as one app bundle: the GUI is `Contents/MacOS/Hobo`, the CLI `Contents/Helpers/hobo`, and
+    the payloads (the agents, `hobo-ui`, the Windows boot driver and scripts, the VM icons' signs)
+    are files in `Contents/Resources`. The CLI sits outside `MacOS` so that VM processes, which run
+    it, aren't taken for the app (each has its own Dock icon), and so `Hobo` and `hobo` can't collide
+    on a case-insensitive volume. `Payloads` reads the files from there, or from SwiftPM's resource
+    bundle in a bare build (`swift build`, `swift test`); not through `Bundle.module`, whose accessor
+    looks at the top of `Hobo.app`, where code signing allows nothing. `make app` assembles the
+    bundle from SwiftPM's products (there is no Xcode project). `make sign` signs the CLI, then the
+    app, with `entitlements.plist` (ad-hoc by default, `HOBO_SIGN_IDENTITY` for Developer ID).
+    `make install` copies it to `/Applications` and links `/usr/local/bin/hobo` to the CLI, as the
+    app's **Install Command Line Tool…** does with an administrator prompt (`osascript`, no
+    privileged helper). A VM's launchd plist runs the CLI of the build that started it
+    (`HoboInstall.cli`, symlinks resolved; from the GUI, its `Helpers/hobo`), so client and VM
+    process are the same build. Notarized releases are Beads work.
+    **The GUI** (`HoboApp`, its logic in `HoboAppModel`) is a library window over the same core:
+    a sidebar of VMs and a detail pane with `set`'s settings. It keeps current through FSEvents on
+    the store and hobo's home, plus a 5 s poll. It starts, stops, suspends, shows, clones, renames
+    and deletes through `VMLifecycle`/`VMStore`. It creates in its own process through `VMCreator`,
+    one build at a time; quitting during one asks, then cancels it as ^C does. New VM writes the
+    recipe `hobo init` would (`RecipeDraft`) to a temporary directory. Recipes, snapshots and
+    provisioning stay in the CLI.
     `start` refuses a binary without the virtualization entitlement, since a VM process failing
     that way would only say so in its log.
-23. **Layout.** One Swift package, one `hobo` executable (with `hobo-ui` built into it):
+23. **Layout.** One Swift package, with the `hobo` and `HoboApp` executables that `make app` puts in
+    Hobo.app (decision 22):
     - `HoboCore`: recipes, the VM store (`VMStore`: bundle paths, names, list, rename, delete) and
       `config.json` (`VMConfig`), image index, provisioners
     - `HoboVM`: VM bundles (`VMBundle`: `MacVMBundle`, `LinuxVMBundle`, `WindowsVMBundle`, each
       building its VZ configuration), VM creation, the VM
       process (`VMRunner`), display, and the host's side of the guest channel (`GuestShell`:
       `GuestAgent`, `GuestSSH`)
-    - `Agent`: hobo-agent, in Go, built into `HoboVM` by `HoboAgentPlugin` (decision 15)
-    - `HoboUICore` and `hobo-ui`: `hobo ui`'s commands and the guest-side driver, embedded in
-      `HoboVM` by `HoboUIPlugin` (decision 17)
+    - `Agent`: hobo-agent, in Go, built as resources of `HoboVM` by `HoboAgentPlugin` (decision 15)
+    - `HoboUICore` and `hobo-ui`: `hobo ui`'s commands and the guest-side driver, a resource of
+      `HoboVM` through `HoboUIPlugin` (decision 17)
     - `HoboControl`: client ↔ VM-process socket protocol, and the client side of `start`/`stop` (`VMLifecycle`)
     - `HoboMCP`: MCP tools
     - `hobo`: CLI plus hidden `_vm-run` and `mcp` subcommands
+    - `HoboAppModel` and `HoboApp`: Hobo.app's GUI (decision 22)
     - `HoboVMTests` boot real VMs only with `HOBO_INTEGRATION=1`. The test runner can't hold the
       virtualization entitlement, so they drive the signed `hobo` binary (`make integration-test`).
       There is no CI; GitHub is a backup.
@@ -871,14 +892,14 @@ global VMs on 2026-11-01.
 26. **Logo.** A bindle, a stick with a tied red bandana bag, on a cream macOS icon tile (decided
     2026-11-03). `assets/icon.svg` is the master and `assets/icon-small.svg` the simplified drawing
     for 16-32 px; `swift assets/render.swift` regenerates everything else from them. `assets/Hobo.icns`
-    is for the planned GUI wrapper; nothing uses it yet, and the bindle is that app's icon alone.
+    is Hobo.app's icon, and the bindle is that app's alone.
     **VM icons.** Each VM window has its own icon, to find it among several in the Dock and ⌘Tab and to
     tell it from the GUI app (decided 2026-11-04): a hobo sign in chalk on a dark tile, with the VM's
     name in white under it. A SHA-256 of the name picks one of 24 signs and, from separate bits, one of
     8 colors, so a VM's icon never changes and needs no state, and a clone gets its own. Two VMs can
     share a sign or a color, and the name settles it. Long names shrink, then lose their middle, since
-    clones differ only in their last characters. The binary isn't an app bundle and `make install` copies
-    only the binary, so `HoboVM` compiles in the signs (`.embedInCode`, from `assets/draw_signs.py`).
+    clones differ only in their last characters. The signs (from `assets/draw_signs.py`) are files in
+    Hobo.app's resources, read through `Payloads`.
     `VMIcon` draws the icon, and `VMWindow` sets it right after the process turns regular and appears
     in the Dock (the Dock ignores one set earlier). The name stays even though it's unreadable in a
     small Dock: ⌘Tab shows icons at about 128 pt, where it reads well, and a process has one image, so

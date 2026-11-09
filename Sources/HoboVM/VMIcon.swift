@@ -4,19 +4,15 @@ import HoboCore
 
 /// A VM's icon for the Dock and ⌘Tab: a hobo sign in chalk on a dark tile, with the VM's name under
 /// it. The name picks the sign and the color, so a VM's icon never changes and needs no state.
-enum VMIcon {
-    /// Compiled in, since the binary isn't an app bundle. `assets/draw_signs.py` draws them. Changing
+public enum VMIcon {
+    /// The signs' files in `Resources/Signs` (`Payloads`), drawn by `assets/draw_signs.py`. Changing
     /// this list or `tileColors` moves VMs to other icons, which costs nothing but familiarity.
-    private static let signs: [[UInt8]] = [
-        PackageResources.all_right_svg, PackageResources.barking_dog_svg, PackageResources.burned_house_svg,
-        PackageResources.camp_here_svg, PackageResources.courthouse_svg, PackageResources.cursed_out_svg,
-        PackageResources.defend_yourself_svg, PackageResources.doctor_svg, PackageResources.fresh_water_svg,
-        PackageResources.good_for_a_handout_svg, PackageResources.good_road_svg, PackageResources.hit_the_road_svg,
-        PackageResources.jail_svg, PackageResources.keep_quiet_svg, PackageResources.man_with_gun_svg,
-        PackageResources.not_safe_svg, PackageResources.nothing_to_gain_svg, PackageResources.police_svg,
-        PackageResources.rich_svg, PackageResources.road_spoiled_svg, PackageResources.thieves_svg,
-        PackageResources.this_is_the_place_svg, PackageResources.this_way_svg, PackageResources.work_here_svg,
-    ]
+    private static let signs = [
+        "all-right", "barking-dog", "burned-house", "camp-here", "courthouse", "cursed-out", "defend-yourself",
+        "doctor", "fresh-water", "good-for-a-handout", "good-road", "hit-the-road", "jail", "keep-quiet",
+        "man-with-gun", "not-safe", "nothing-to-gain", "police", "rich", "road-spoiled", "thieves",
+        "this-is-the-place", "this-way", "work-here",
+    ].map { "\($0).svg" }
     private static let tileColors: [UInt32] = [
         0x3A4A5C, 0x7A2E2A, 0x2F5240, 0x22375E, 0x54305A, 0x86491F, 0x1F5558, 0x45413C,
     ]
@@ -61,7 +57,7 @@ enum VMIcon {
     }
 
     /// The icon for the VM called `name`, or nil if it can't be drawn, which leaves the default icon.
-    @MainActor static func image(for name: String) -> NSImage? {
+    @MainActor public static func image(for name: String) -> NSImage? {
         let (sign, color) = assignment(for: name)
         guard let chalk = signImage(at: sign), let bitmap = newBitmap() else { return nil }
         let tileColor = nsColor(tileColors[color])
@@ -80,9 +76,9 @@ enum VMIcon {
         return image(wrapping: bitmap)
     }
 
-    /// One sign with chalk grain knocked out of it, or nil if its SVG doesn't decode.
+    /// One sign with chalk grain knocked out of it, or nil if its SVG is missing or doesn't decode.
     @MainActor static func signImage(at index: Int) -> NSImage? {
-        guard let svg = NSImage(data: Data(signs[index])), svg.isValid, let bitmap = newBitmap() else { return nil }
+        guard let data = try? Payloads.sign(signs[index]), let svg = NSImage(data: data), svg.isValid, let bitmap = newBitmap() else { return nil }
         let bounds = NSRect(x: 0, y: 0, width: canvas, height: canvas)
         drawing(in: bitmap) {
             svg.draw(in: bounds)

@@ -306,7 +306,7 @@ public struct VMCreator {
             log("Applying guest conventions")
             // The conventions script installs it as the stub, through which the rest of create runs.
             let agent = FileManager.default.temporaryDirectory.appending(path: "hobo-agent-\(UUID().uuidString)")
-            try HoboAgentBinaries.darwin.write(to: agent)
+            try Payloads.agent("darwin").write(to: agent)
             defer { try? FileManager.default.removeItem(at: agent) }
             try await ssh.upload(agent, to: Conventions.agentUpload)
             try await ssh.upload(contents: Conventions.script, to: "/tmp/hobo-conventions.sh")

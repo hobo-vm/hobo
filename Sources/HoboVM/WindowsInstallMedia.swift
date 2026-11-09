@@ -102,7 +102,7 @@ public enum WindowsInstallMedia {
             // Partitioning mounts them where Finder shows them, under names another create may hold.
             try runQuietly("/usr/sbin/diskutil", ["unmountDisk", disk])
             try withMounted(["\(disk)s1", "\(disk)s2"]) { mounted in
-                let answerFile = answerFile(computerName: computerName, timeZone: timeZone)
+                let answerFile = try answerFile(computerName: computerName, timeZone: timeZone)
                 try writeBootPartition(mounted[0], from: root, answerFile: answerFile)
                 try writeDataPartition(mounted[1], from: root, packages: packages, answerFile: answerFile)
             }
@@ -138,8 +138,8 @@ public enum WindowsInstallMedia {
         try copy(iso.appending(path: "efi/microsoft"), to: volume.appending(path: "EFI/microsoft"))
         try copy(iso.appending(path: "efi/boot/bootaa64.efi"), to: volume.appending(path: "EFI/BOOT/windows.efi"))
         try copy(iso.appending(path: "sources/boot.wim"), to: volume.appending(path: "sources/boot.wim"))
-        try WindowsBootFiles.loader.write(to: volume.appending(path: "EFI/BOOT/BOOTAA64.EFI"))
-        try WindowsBootFiles.framebuffer.write(to: volume.appending(path: "EFI/hobo/framebuffer.efi"))
+        try Payloads.windowsBoot("loader.efi").write(to: volume.appending(path: "EFI/BOOT/BOOTAA64.EFI"))
+        try Payloads.windowsBoot("framebuffer.efi").write(to: volume.appending(path: "EFI/hobo/framebuffer.efi"))
     }
 
     private static func writeDataPartition(
@@ -154,19 +154,17 @@ public enum WindowsInstallMedia {
         try manager.createDirectory(at: guest, withIntermediateDirectories: true)
 
         try Data(answerFile.utf8).write(to: volume.appending(path: "autounattend.xml"))
-        try writeScript(PackageResources.install_cmd, to: hobo.appending(path: "install.cmd"))
-        try writeScript(PackageResources.SetupComplete_cmd, to: hobo.appending(path: "SetupComplete.cmd"))
-        try WindowsBootFiles.framebuffer.write(to: hobo.appending(path: "framebuffer.efi"))
-        for (script, name) in [
-            (PackageResources.setup_ps1, "setup.ps1"), (PackageResources.finish_setup_ps1, "finish-setup.ps1"),
-            (PackageResources.network_watchdog_ps1, "network-watchdog.ps1"),
-            (PackageResources.common_ps1, "common.ps1"), (PackageResources.exec_ps1, "exec.ps1"),
-            (PackageResources.screenshot_ps1, "screenshot.ps1"), (PackageResources.display_follower_ps1, "display-follower.ps1"),
+        try writeScript("install.cmd", to: hobo.appending(path: "install.cmd"))
+        try writeScript("SetupComplete.cmd", to: hobo.appending(path: "SetupComplete.cmd"))
+        try Payloads.windowsBoot("framebuffer.efi").write(to: hobo.appending(path: "framebuffer.efi"))
+        for name in [
+            "setup.ps1", "finish-setup.ps1", "network-watchdog.ps1", "common.ps1", "exec.ps1", "screenshot.ps1",
+            "display-follower.ps1",
         ] {
-            try writeScript(script, to: guest.appending(path: name))
+            try writeScript(name, to: guest.appending(path: name))
         }
         // hobo-agent's stub, which finish-setup.ps1 starts at every boot from then on (decision 15).
-        try HoboAgentBinaries.windows.write(to: guest.appending(path: WindowsGuest.agentFile))
+        try Payloads.agent("windows").write(to: guest.appending(path: WindowsGuest.agentFile))
         try Data(Conventions.insecurePublicKey.utf8).write(to: guest.appending(path: "authorized_keys"))
         try copy(packages.openSSH, to: guest.appending(path: packages.openSSH.lastPathComponent))
         try copy(packages.winFsp, to: guest.appending(path: packages.winFsp.lastPathComponent))
@@ -194,15 +192,16 @@ public enum WindowsInstallMedia {
 
     /// The answer file with this VM's values in. They're already safe in XML: `computerName` is
     /// letters, digits and hyphens, and a time zone comes from `hostTimeZone`.
-    static func answerFile(computerName: String, timeZone: String) -> String {
-        String(decoding: PackageResources.autounattend_xml, as: UTF8.self)
+    static func answerFile(computerName: String, timeZone: String) throws -> String {
+        String(decoding: try Payloads.windows("autounattend.xml"), as: UTF8.self)
             .replacingOccurrences(of: "@@NAME@@", with: computerName)
             .replacingOccurrences(of: "@@TIMEZONE@@", with: timeZone)
     }
 
-    /// `cmd.exe` needs CRLF line ends, and they're harmless to PowerShell.
-    private static func writeScript(_ bytes: [UInt8], to file: URL) throws {
-        try Data(crlf(String(decoding: bytes, as: UTF8.self)).utf8).write(to: file)
+    /// Writes a script of `Resources/Windows`, with CRLF line ends: `cmd.exe` needs them, and they're
+    /// harmless to PowerShell.
+    private static func writeScript(_ name: String, to file: URL) throws {
+        try Data(crlf(String(decoding: try Payloads.windows(name), as: UTF8.self)).utf8).write(to: file)
     }
 
     static func crlf(_ text: String) -> String {

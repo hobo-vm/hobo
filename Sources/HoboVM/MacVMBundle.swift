@@ -155,6 +155,7 @@ public enum VMError: Error, CustomStringConvertible {
     case diskTooSmall(wanted: UInt64, image: UInt64)
     case spawnFailed(String, String)
     case unusableImage(String, String)
+    case missingPayload(String)
 
     public var description: String {
         switch self {
@@ -181,6 +182,7 @@ public enum VMError: Error, CustomStringConvertible {
         case .diskTooSmall(let wanted, let image):
             "the recipe's disk (\(ByteSize(bytes: wanted))) is smaller than the image's (\(ByteSize(bytes: image)))"
         case .unusableImage(let image, let reason): "can't use the image \(image): \(reason)"
+        case .missingPayload(let file): "this hobo build is missing \(file); reinstall it"
         }
     }
 }
