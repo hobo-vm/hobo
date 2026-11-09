@@ -68,12 +68,16 @@ struct Driver {
         return first
     }
 
-    func element(_ ref: Int, in app: App) throws -> AXElement {
-        let map = store.load(app.identity.storeKey)
-        guard let locator = map.locator(for: ref) else {
+    /// Where a snapshot found the element `ref` names; throws for a ref no snapshot gave.
+    func locator(_ ref: Int, in app: App) throws -> Locator {
+        guard let locator = store.load(app.identity.storeKey).locator(for: ref) else {
             throw UIError.failed("\(app.identity.name) has no ref \(RefMap.format(ref)); take a snapshot first")
         }
-        guard let element = locator.resolve(from: app.element) else {
+        return locator
+    }
+
+    func element(_ ref: Int, in app: App) throws -> AXElement {
+        guard let element = try locator(ref, in: app).resolve(from: app.element) else {
             throw UIError.failed("stale ref \(RefMap.format(ref)): it isn't where it was; take a new snapshot")
         }
         return element
@@ -93,7 +97,7 @@ struct Driver {
         let elements: [SnapshotNode]
         if let root = c.root.flatMap(RefMap.parse) {
             let element = try element(root, in: app)
-            elements = builder.build(root: element, locator: refs.locator(for: root)!, isApp: false, refs: &refs)
+            elements = builder.build(root: element, locator: try locator(root, in: app), isApp: false, refs: &refs)
         } else {
             elements = builder.build(root: app.element, locator: Locator(), isApp: true, refs: &refs)
         }
@@ -177,16 +181,10 @@ struct Driver {
     /// What's in the way, by the sheet, window, popover or menu it's part of.
     func covering(_ hit: AXElement) -> String {
         let owner = NSRunningApplication(processIdentifier: hit.pid)?.localizedName ?? "pid \(hit.pid)"
-        var current: AXElement? = hit
-        var steps = 0
-        while let element = current, steps < 200 {
-            let attributes = element.attributes()
-            if ["AXSheet", "AXWindow", "AXPopover", "AXMenu", "AXDialog"].contains(attributes.role) {
-                let name = (attributes.displayName ?? attributes.identifier).map { " \"\($0)\"" } ?? ""
-                return "\(SnapshotNode.displayRole(attributes.role))\(name) of \(owner)"
-            }
-            current = element.parent
-            steps += 1
+        let containers: Set<String> = ["AXSheet", "AXWindow", "AXPopover", "AXMenu", "AXDialog"]
+        for attributes in hit.lineage.lazy.map({ $0.attributes() }) where containers.contains(attributes.role) {
+            let name = (attributes.displayName ?? attributes.identifier).map { " \"\($0)\"" } ?? ""
+            return "\(SnapshotNode.displayRole(attributes.role))\(name) of \(owner)"
         }
         return "\(SnapshotNode.displayRole(hit.attributes().role)) of \(owner)"
     }
@@ -240,9 +238,10 @@ struct Driver {
         case .ref(let ref):
             let app = try app(c.target.app)
             let element = try element(ref, in: app)
-            node = describe(element, ref: ref)
+            let described = describe(element, ref: ref)
+            node = described
             bringForward(app, element)
-            guard let frame = element.attributes().frame else { throw UIError.failed("\(AppSnapshot.line(node!)) has no frame") }
+            guard let frame = element.attributes().frame else { throw UIError.failed("\(AppSnapshot.line(described)) has no frame") }
             point = CGPoint(x: frame.midX, y: frame.midY)
         }
         Input.scroll(at: point, direction, lines: c.lines)
@@ -316,6 +315,7 @@ struct Driver {
             }
             path.append(title)
             current = found
+            // A menu bar item, or an item with a submenu, holds its menu as its only child.
             items = found.children().first.map { $0.children() } ?? []
         }
         guard let current else { throw UIError.failed("give a menu") }
@@ -365,10 +365,7 @@ struct Driver {
     /// Throws for a ref no snapshot gave, which no amount of waiting will bring.
     func check(_ c: HoboUI.Wait, in app: App) throws -> Found {
         if let ref = c.ref.flatMap(RefMap.parse) {
-            guard let locator = store.load(app.identity.storeKey).locator(for: ref) else {
-                throw UIError.failed("\(app.identity.name) has no ref \(RefMap.format(ref)); take a snapshot first")
-            }
-            guard let element = locator.resolve(from: app.element) else { return Found(present: false) }
+            guard let element = try locator(ref, in: app).resolve(from: app.element) else { return Found(present: false) }
             return Found(present: true, node: describe(element, ref: ref))
         }
         if let text = c.text {

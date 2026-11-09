@@ -21,15 +21,18 @@ struct AXElement: AccessibleElement {
         guard AXUIElementCopyMultipleAttributeValues(element, Self.attributeNames as CFArray, [], &values) == .success,
               let array = values as? [AnyObject], array.count == Self.attributeNames.count
         else { return ElementAttributes(role: "AXUnknown") }
-        let v = array.map(Self.unwrap)
+        let byName = Dictionary(uniqueKeysWithValues: zip(Self.attributeNames, array.map(Self.unwrap)))
+        func value(_ name: String) -> AnyObject? { byName[name] ?? nil }
         var frame: CGRect?
-        if let position = v[6].flatMap(Self.point), let size = v[7].flatMap(Self.size) {
+        if let position = value("AXPosition").flatMap(Self.point), let size = value("AXSize").flatMap(Self.size) {
             frame = CGRect(origin: position, size: size)
         }
         return ElementAttributes(
-            role: v[0] as? String ?? "AXUnknown", subrole: v[1] as? String, title: v[2] as? String, identifier: v[3] as? String,
-            label: v[4] as? String, value: v[5].flatMap(Self.text), frame: frame,
-            enabled: (v[8] as? Bool) ?? true, focused: (v[9] as? Bool) ?? false, selected: (v[10] as? Bool) ?? false
+            role: value("AXRole") as? String ?? "AXUnknown", subrole: value("AXSubrole") as? String,
+            title: value("AXTitle") as? String, identifier: value("AXIdentifier") as? String,
+            label: value("AXDescription") as? String, value: value("AXValue").flatMap(Self.text), frame: frame,
+            enabled: value("AXEnabled") as? Bool ?? true, focused: value("AXFocused") as? Bool ?? false,
+            selected: value("AXSelected") as? Bool ?? false
         )
     }
 
@@ -81,16 +84,15 @@ struct AXElement: AccessibleElement {
         return AXElement(found)
     }
 
+    /// This element, then its parent, and so on up to the app; at most 200, so a parent loop in a
+    /// misbehaving app's tree ends.
+    var lineage: some Sequence<AXElement> {
+        sequence(first: self, next: \.parent).prefix(200)
+    }
+
     /// Whether this is `other`, or inside it.
     func isWithin(_ other: AXElement) -> Bool {
-        var current: AXElement? = self
-        var steps = 0
-        while let element = current, steps < 200 {
-            if CFEqual(element.element, other.element) { return true }
-            current = element.parent
-            steps += 1
-        }
-        return false
+        lineage.contains { CFEqual($0.element, other.element) }
     }
 
     /// An AXValue that holds an error (an attribute the element lacks, in a batch) is nil.
