@@ -163,7 +163,7 @@ public final class Library {
     /// Builds from the New VM sheet's form, writing its recipe to a temporary directory first. A
     /// Windows ISO is hashed first, as `hobo init --os windows` does, since the recipe pins it.
     public func create(from form: NewVMForm) {
-        startBuild(form.name) { log in
+        startBuild(form.name, ownsRecipe: true) { log in
             var sha256: String?
             if form.os == .windows, let iso = form.windowsISO {
                 try WindowsInstallMedia.validate(iso)
@@ -173,7 +173,9 @@ public final class Library {
         }
     }
 
-    private func startBuild(_ name: String, recipe: @escaping @MainActor (@escaping @Sendable (String) -> Void) async throws -> URL) {
+    /// `ownsRecipe`: the recipe's directory is this build's to delete when it ends, as the New VM
+    /// sheet's temporary one is.
+    private func startBuild(_ name: String, ownsRecipe: Bool = false, recipe: @escaping @MainActor (@escaping @Sendable (String) -> Void) async throws -> URL) {
         guard build == nil || build?.finished == true else {
             failure = "\(build!.name) is being built; one build at a time."
             return
@@ -184,8 +186,11 @@ public final class Library {
             Task { @MainActor in build.log.append(line) }
         }
         Task {
+            var written: URL?
+            defer { if ownsRecipe, let written { try? FileManager.default.removeItem(at: written.deletingLastPathComponent()) } }
             do {
                 let file = try await recipe(log)
+                written = file
                 let options = VMCreator.Options(name: name, recipeFile: file)
                 _ = try await VMCreator(store: store, options: options, log: log).create()
                 build.finished = true
