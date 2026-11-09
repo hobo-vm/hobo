@@ -18,17 +18,19 @@ public struct CommandLineTool: Sendable {
     public enum State: Equatable, Sendable {
         case installed
         case missing
-        /// Something else is there: another build's link, or a copied binary.
-        case other(String)
+        /// A link to something else, such as another build's CLI.
+        case linkedElsewhere(String)
+        /// A file that isn't a link, such as a copied binary.
+        case otherFile
     }
 
     public var state: State {
         let manager = FileManager.default
         if let destination = try? manager.destinationOfSymbolicLink(atPath: link.path) {
             let resolved = URL(filePath: destination, relativeTo: link.deletingLastPathComponent()).standardizedFileURL
-            return resolved.path == target.standardizedFileURL.path ? .installed : .other(resolved.path)
+            return resolved.path == target.standardizedFileURL.path ? .installed : .linkedElsewhere(resolved.path)
         }
-        return manager.fileExists(atPath: link.path) ? .other(link.path) : .missing
+        return manager.fileExists(atPath: link.path) ? .otherFile : .missing
     }
 
     /// The shell command that makes the link, replacing whatever is there.

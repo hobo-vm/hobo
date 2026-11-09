@@ -65,9 +65,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .missing:
             alert.messageText = "Install the hobo command?"
             alert.informativeText = "This links \(tool.link.path) to this app, which needs an administrator's password."
-        case .other(let path):
+        case .linkedElsewhere(let destination):
             alert.messageText = "Replace the hobo command?"
-            alert.informativeText = "\(tool.link.path) is \(path == tool.link.path ? "another file" : "a link to \(path)"). Replacing it links it to this app, which needs an administrator's password."
+            alert.informativeText = "\(tool.link.path) is a link to \(destination). Replacing it links it to this app, which needs an administrator's password."
+        case .otherFile:
+            alert.messageText = "Replace the hobo command?"
+            alert.informativeText = "\(tool.link.path) is another file. Replacing it links it to this app, which needs an administrator's password."
         }
         alert.addButton(withTitle: "Install")
         alert.addButton(withTitle: "Cancel")

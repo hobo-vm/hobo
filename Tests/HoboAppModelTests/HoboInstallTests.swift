@@ -37,7 +37,7 @@ import Testing
         #expect(shell.terminationStatus == 0)
         #expect(tool.state == .installed)
         let other = CommandLineTool(link: link, target: URL(filePath: "/elsewhere/hobo"))
-        #expect(other.state == .other("/Applications/Hobo.app/Contents/Helpers/hobo"))
+        #expect(other.state == .linkedElsewhere("/Applications/Hobo.app/Contents/Helpers/hobo"))
     }
 
     @Test func appleScriptStringsEscapeQuotesAndBackslashes() {
