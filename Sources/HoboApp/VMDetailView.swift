@@ -55,7 +55,7 @@ struct VMDetailView: View {
             Stepper("CPUs: \(form.wrappedValue.cpus)", value: form.cpus, in: limits.cpus)
             Stepper("Memory: \(form.wrappedValue.memoryGB) GB", value: form.memoryGB, in: 1...max(1, memoryMax))
             Stepper("Disk: \(form.wrappedValue.diskGB) GB", value: form.diskGB, in: SettingsForm(config).diskGB...16384, step: 8)
-            SharesEditor(shares: form.shares)
+            SharesEditor(form: form)
         } header: {
             Text("Settings")
         } footer: {
@@ -86,27 +86,34 @@ struct VMDetailView: View {
 
 /// The shared folders: each with its guest name and read-only switch, plus Add and Remove.
 struct SharesEditor: View {
-    @Binding var shares: [VMShare]
+    @Binding var form: SettingsForm
     @State private var picking = false
+    /// Why the folder last picked wasn't added.
+    @State private var problem: String?
 
     var body: some View {
         LabeledContent("Shared folders") {
             VStack(alignment: .trailing) {
-                ForEach($shares, id: \.name) { $share in
+                ForEach($form.shares, id: \.name) { $share in
                     HStack {
                         Text(share.path).lineLimit(1).truncationMode(.middle).help(share.path)
                         Toggle("Read-only", isOn: $share.readOnly).toggleStyle(.checkbox)
-                        Button { shares.removeAll { $0.name == share.name } } label: { Image(systemName: "minus.circle") }
+                        Button { form.shares.removeAll { $0.name == share.name } } label: { Image(systemName: "minus.circle") }
                             .buttonStyle(.borderless)
                     }
                 }
                 Button("Add Folder…") { picking = true }
+                if let problem { Text(problem).font(.caption).foregroundStyle(.secondary) }
             }
         }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
-            guard case .success(let folder) = result,
-                  let share = try? VMShare.parse(folder.path, currentDirectory: URL(filePath: "/")) else { return }
-            shares.append(share)
+            guard case .success(let folder) = result else { return }
+            do {
+                try form.share(folder)
+                problem = nil
+            } catch {
+                problem = "\(error)"
+            }
         }
     }
 }

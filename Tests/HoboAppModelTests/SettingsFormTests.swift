@@ -24,6 +24,15 @@ import Testing
         ))
     }
 
+    @Test func aPickedFolderIsSharedUnlessItsNameIsTaken() throws {
+        var form = SettingsForm(Self.config)
+        try form.share(URL(filePath: "/work/notes"))
+        #expect(form.shares.last == VMShare(name: "notes", path: "/work/notes", readOnly: false))
+        // Another folder called src (in any case) would mount where /src does.
+        #expect(throws: VMShareError.self) { try form.share(URL(filePath: "/other/SRC")) }
+        #expect(form.shares.count == 3)
+    }
+
     @Test func aShareEditedInPlaceIsRemovedAndAddedAgain() {
         var form = SettingsForm(Self.config)
         form.shares[0].readOnly = true

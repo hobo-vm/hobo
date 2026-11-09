@@ -24,6 +24,14 @@ public struct SettingsForm: Equatable, Sendable {
 
     private static func wholeGigabytes(_ bytes: UInt64) -> Int { Int((bytes + gigabyte / 2) / gigabyte) }
 
+    /// Adds a share of `folder`, picked in Add Folder…. Throws, adding nothing, if its name can't
+    /// mount or another share already mounts under it, which would leave two rows of one name.
+    public mutating func share(_ folder: URL) throws {
+        let share = try VMShare.parse(folder.path(percentEncoded: false), currentDirectory: URL(filePath: "/"))
+        try VMShare.checkNames(shares + [share])
+        shares.append(share)
+    }
+
     /// The change from `config` that these edits make; empty if there is none.
     public func settings(from config: VMConfig) -> VMSettings {
         let original = SettingsForm(config)
