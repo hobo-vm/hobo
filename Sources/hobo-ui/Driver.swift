@@ -259,8 +259,7 @@ struct Driver {
             node = describe(element, ref: ref)
             return Outcome(text: "scrolled to \(AppSnapshot.line(node))", element: node)
         }
-        var area = element.parent
-        while let candidate = area, candidate.attributes().role != "AXScrollArea" { area = candidate.parent }
+        let area = element.lineage.dropFirst().first { $0.attributes().role == "AXScrollArea" }
         guard let area, let areaFrame = area.attributes().frame else {
             throw UIError.failed("\(AppSnapshot.line(node)) isn't in a scroll area")
         }
