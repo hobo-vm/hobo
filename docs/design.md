@@ -657,12 +657,16 @@ global VMs on 2026-11-01.
       image with DISM, adds the virtio-win drivers (viogpudo, NetKVM, viorng, Balloon, viofs,
       viosock),
       runs `bcdboot` and powers off, leaving its result on the media. The next boot, without the
-      media, runs specialize and OOBE, and `SetupComplete.cmd` runs `setup.ps1` as SYSTEM. OOBE then
-      restarts the machine about a minute after the first logon, clearing the auto-login settings,
-      so a startup task (`finish-setup.ps1`) restores them after that restart, registers
-      hobo-agent's startup task, enables sshd and restarts once more. The agent answering means
-      it's done. A whole `hobo create` takes about 8 minutes and about 11 GB of ASIF; a stopped VM
-      then starts in about 16 s.
+      media, runs specialize and OOBE, and `SetupComplete.cmd` runs `setup.ps1` as SYSTEM. OOBE runs
+      in a session of its own temporary user, `defaultuser0`: it restarts the machine about a minute
+      after the first logon, then logs that user on again to finish, clearing the auto-login settings.
+      A startup task (`finish-setup.ps1`) waits for that second session to end (up to 5 minutes),
+      restores them, registers hobo-agent's startup task, enables sshd and restarts once more. The
+      agent answering means it's done. Restarting without waiting raced OOBE by seconds, and when
+      OOBE lost, it finished on the VM's first boot after create, logging hobo off (hobo-2o4).
+      `OOBEInProgress` and the other Setup flags stay 0 throughout, so they can't be waited on. A
+      whole `hobo create` takes about 8 minutes and about 11 GB of ASIF; a stopped VM then starts in
+      about 16 s.
       The bypass of Setup is what makes it fast and is also why no TPM or Secure Boot is needed.
     - **Conventions.** `hobo`/`hobo` is an administrator, logged in at boot. The clock is
       `RealTimeIsUniversal`, since VZ's runs on UTC. Growing the disk restores the GPT disk GUID
