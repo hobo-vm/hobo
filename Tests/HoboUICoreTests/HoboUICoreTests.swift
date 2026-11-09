@@ -91,6 +91,18 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(store.load("com.example.Other") == RefMap())
     }
 
+    // Runs against one app at once mustn't each number their own copy, giving a ref two meanings.
+    @Test func concurrentUpdatesNeverShareANumber() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-ui-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = RefStore(directory: directory)
+        DispatchQueue.concurrentPerform(iterations: 16) { index in
+            _ = try? store.update("com.example.App") { $0.ref(for: Locator([.init(role: "AXButton", name: "\(index)", index: 0)])) }
+        }
+        let refs = store.load("com.example.App").entries.map(\.ref)
+        #expect(refs.sorted() == Array(1...16))
+    }
+
     @Test func parsesRefs() {
         #expect(RefMap.parse("e12") == 12)
         #expect(RefMap.parse("e0") == nil)

@@ -92,24 +92,23 @@ struct Driver {
 
     func snapshot(_ c: HoboUI.Snapshot) throws -> Outcome {
         let app = try app(c.target.app)
-        var refs = store.load(app.identity.storeKey)
         let builder = SnapshotBuilder(options: SnapshotOptions(all: c.all, depth: c.depth), scale: scale)
-        let elements: [SnapshotNode]
-        if let root = c.root.flatMap(RefMap.parse) {
+        let elements = try store.update(app.identity.storeKey) { refs in
+            guard let root = c.root.flatMap(RefMap.parse) else {
+                return builder.build(root: app.element, locator: Locator(), isApp: true, refs: &refs)
+            }
             let element = try element(root, in: app)
-            elements = builder.build(root: element, locator: try locator(root, in: app), isApp: false, refs: &refs)
-        } else {
-            elements = builder.build(root: app.element, locator: Locator(), isApp: true, refs: &refs)
+            return builder.build(root: element, locator: try locator(root, in: app), isApp: false, refs: &refs)
         }
-        try store.save(refs, for: app.identity.storeKey)
         let snapshot = AppSnapshot(app: app.identity, scale: scale.factor, elements: elements)
         return Outcome(text: snapshot.text, snapshot: snapshot)
     }
 
     func snapshotNow(_ app: App) -> AppSnapshot? {
-        var refs = store.load(app.identity.storeKey)
-        let elements = SnapshotBuilder(options: SnapshotOptions(), scale: scale).build(root: app.element, locator: Locator(), isApp: true, refs: &refs)
-        try? store.save(refs, for: app.identity.storeKey)
+        let builder = SnapshotBuilder(options: SnapshotOptions(), scale: scale)
+        guard let elements = try? store.update(app.identity.storeKey, { refs in
+            builder.build(root: app.element, locator: Locator(), isApp: true, refs: &refs)
+        }) else { return nil }
         return AppSnapshot(app: app.identity, scale: scale.factor, elements: elements)
     }
 
@@ -371,9 +370,7 @@ struct Driver {
         if let text = c.text {
             for (_, attributes, locator) in allElements(under: app.element, locator: Locator())
             where locator.steps.first?.role != "AXMenuBar" && attributes.contains(text) {
-                var refs = store.load(app.identity.storeKey)
-                let ref = refs.ref(for: locator)
-                try? store.save(refs, for: app.identity.storeKey)
+                let ref = try store.update(app.identity.storeKey) { $0.ref(for: locator) }
                 return Found(present: true, node: SnapshotNode(ref: ref, attributes: attributes, scale: scale))
             }
             return Found(present: false)

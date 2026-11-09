@@ -80,4 +80,20 @@ public struct RefStore: Sendable {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try JSONEncoder().encode(map).write(to: file(for: key), options: .atomic)
     }
+
+    /// Loads the app's map, lets `body` give out refs, and saves it, holding a lock throughout:
+    /// two `hobo-ui` runs against one app each adding to their own copy would otherwise give one
+    /// number to two locators, the last save winning.
+    public func update<T>(_ key: String, _ body: (inout RefMap) throws -> T) throws -> T {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let lockPath = file(for: key).path + ".lock"
+        let descriptor = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+        guard descriptor >= 0 else { throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: lockPath]) }
+        defer { close(descriptor) }
+        flock(descriptor, LOCK_EX)
+        var map = load(key)
+        let result = try body(&map)
+        try save(map, for: key)
+        return result
+    }
 }
