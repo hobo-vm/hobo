@@ -89,6 +89,20 @@ import Testing
         #expect(seen.fields == ["version": "1", "op": "exec", "command": "echo hi", "user": Conventions.username])
     }
 
+    // `hobo ui` names its tool, which the agent fetches (Agent/tool.go) by `ui-<GOOS>-<GOARCH>`.
+    @Test func execNamesTheToolItNeedsAndTheHostServesIt() async throws {
+        let seen = Seen()
+        let agent = guestAgent { request, socket in
+            seen.record(request)
+            try sendExit(0, on: socket)
+        }
+        _ = try await agent.exec(["true"], gui: true, platform: MacVMBundle.self, tool: "ui") { _, _ in }
+        #expect(seen.fields["tool"] == "ui")
+        #expect(seen.fields["desktop"] == nil)
+        #expect(AgentFetchServer.binary(for: "ui-darwin-arm64")?.isEmpty == false)
+        #expect(AgentFetchServer.binary(for: "ui-linux-arm64") == nil)
+    }
+
     @Test func anErrorFrameIsARefusal() async throws {
         let agent = guestAgent { _, socket in try socket.writeFrame(.error, Data("unknown request".utf8)) }
         await #expect(throws: AgentError.refused("unknown request")) {

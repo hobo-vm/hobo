@@ -1,5 +1,6 @@
 import ArgumentParser
 import HoboCore
+import HoboUICore
 
 /// `hobo usage`: the whole reference in one read, for an agent (or a person) learning hobo. It is
 /// every visible command's `--help`, generated from the same configurations so it can't drift,
@@ -16,8 +17,12 @@ struct Usage: ParsableCommand {
 
     static func text(columns: Int? = nil) -> String {
         let commands = visibleCommandPaths(of: HoboCommand.self).map(\.command)
+        // `hobo ui`'s own commands are parsed by hobo-ui's definitions, not as subcommands.
+        let uiCommands = HoboUI.configuration.subcommands.map { HoboUI.helpMessage(for: $0, columns: columns) }
         let sections = [HoboCommand.helpMessage(columns: columns)]
-            + commands.map { HoboCommand.helpMessage(for: $0, columns: columns) }
+            + commands.flatMap { command in
+                [HoboCommand.helpMessage(for: command, columns: columns)] + (command == UICommand.self ? uiCommands : [])
+            }
             + [conventions]
         return sections
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -44,7 +49,7 @@ struct Usage: ParsableCommand {
         var events: [String] = []
         for (path, command) in visibleCommandPaths(of: root) {
             guard let outputCommand = command as? any OutputCommand.Type else {
-                if command.configuration.subcommands.isEmpty { withoutJSON.append(path) }
+                if command.configuration.subcommands.isEmpty && !(command is any JSONPassthrough.Type) { withoutJSON.append(path) }
                 continue
             }
             if outputCommand.jsonStyle == .events { events.append(path) }

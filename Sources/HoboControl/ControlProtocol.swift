@@ -24,6 +24,9 @@ public enum ControlRequest: Codable, Equatable, Sendable {
     /// The arguments are quoted for the guest user's login shell (`VMBundle.agentCommand`); with
     /// `gui`, the command runs in that user's desktop session.
     case exec(command: [String], gui: Bool = false)
+    /// `hobo ui`: runs hobo-ui in a macOS guest's desktop session with these arguments, which the
+    /// client has checked (`HoboUI`): `output` lines, then `exited`.
+    case ui(arguments: [String])
     /// Copies between host paths and the guest: the copy's messages as `output` lines, then `exited`.
     case copy(GuestCopy)
     /// `hobo provision`: runs the `[[provision]]` steps of the recipe at this absolute host path,

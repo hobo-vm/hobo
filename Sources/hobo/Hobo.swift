@@ -35,7 +35,7 @@ struct HoboCommand: AsyncParsableCommand {
         version: Hobo.version,
         subcommands: [
             Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self, Suspend.self, Discard.self, View.self,
-            SSH.self, Exec.self, Copy.self, Screenshot.self, IP.self, SetCommand.self, Provision.self, Clone.self, SnapshotCommand.self, Rename.self, Delete.self, Claude.self, Usage.self,
+            SSH.self, Exec.self, Copy.self, Screenshot.self, UICommand.self, IP.self, SetCommand.self, Provision.self, Clone.self, SnapshotCommand.self, Rename.self, Delete.self, Claude.self, Usage.self,
         ]
     )
 }
@@ -700,7 +700,7 @@ struct Copy: OutputCommand {
 
 /// Writes a guest command's output to the matching stream of this process. With `--json`,
 /// `Output` has pointed fd 1 at stderr, so stdout carries only the JSON.
-private func writeOutput(_ stream: GuestStream, _ data: Data) throws {
+func writeOutput(_ stream: GuestStream, _ data: Data) throws {
     switch stream {
     case .stdout: try FileHandle.standardOutput.write(contentsOf: data)
     case .stderr: try FileHandle.standardError.write(contentsOf: data)

@@ -92,6 +92,12 @@ func (e exitEarly) Error() string { return e.message }
 // runExec runs the command as the request's user and streams its output. The host closing the
 // connection cancels it: nothing else is ever sent, so any read returning means the host is gone.
 func runExec(req request, conn io.Reader, frames *frameWriter) {
+	if req.Tool != "" {
+		if err := ensureTool(req.Tool, req.User); err != nil {
+			_ = frames.fail("%v", err)
+			return
+		}
+	}
 	proc, err := start(commandSpec{
 		user: req.User, line: req.Command, desktop: req.Desktop,
 		stdout: streamWriter{frames, frameStdout}, stderr: streamWriter{frames, frameStderr},

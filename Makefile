@@ -3,7 +3,7 @@ HOBO_SIGN_IDENTITY ?= -
 BIN := .build/release/hobo
 
 .DEFAULT_GOAL := help
-.PHONY: help build sign install test integration-test readme readme-check site clean
+.PHONY: help build sign install test integration-test readme readme-check site site-preview clean
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -35,6 +35,9 @@ readme-check: ## Fail if README.md is out of date with docs/features
 
 site: ## Build the hobo.gsquared.app site into site/dist
 	cd site && npm ci && npm run build
+
+site-preview: ## Serve the site with live reload from docs/, and open it in the browser
+	cd site && npm ci && npm run dev -- --open
 
 # The test runner can't hold the entitlement, so VM tests drive the signed binary. A host-wide
 # lock queues runs from different worktrees: only 2 macOS guests fit on a host.

@@ -17,7 +17,7 @@ working tree; `bd dolt push` backs it up to origin's `refs/dolt/data`, and `bd b
 - `make integration-test` holds a host-wide lock, so runs from different worktrees queue.
 - Feature docs live in `docs/features/*.md`, one file per feature; README.md's feature tour is
   generated from them (`make readme`), and `make test` fails if it's stale. Update the feature's
-  file when a change alters what a user sees. `make site` builds hobo.gsquared.app (`site/`).
+  file when a change alters what a user sees. `make site` builds hobo.gsquared.app (`site/`); `make site-preview` serves it with live reload and opens it.
 - Manual VM testing isn't locked: only one worktree boots macOS VMs by hand at a time. Issues that
   need to are labelled `slot:macos-vm`, and `todo` won't start a second one while one is in progress.
 

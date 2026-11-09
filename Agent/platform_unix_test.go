@@ -20,3 +20,10 @@ func TestExitStatusIsAShells(t *testing.T) {
 		t.Error("a start failure read as a status")
 	}
 }
+
+// Only the tools the host serves can be asked for; anything else fails before reaching the host.
+func TestEnsureToolRefusesUnknownTools(t *testing.T) {
+	if err := ensureTool("nope", "nobody"); err == nil || err.Error() != `unknown tool "nope"` {
+		t.Fatalf("ensureTool(nope) = %v", err)
+	}
+}

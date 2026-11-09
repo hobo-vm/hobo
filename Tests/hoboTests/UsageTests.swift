@@ -1,11 +1,18 @@
 import ArgumentParser
 import HoboCore
+import HoboUICore
 import Testing
 @testable import hobo
 
 struct UsageTests {
     @Test func listsEveryVisibleCommandOnce() {
-        let usageLines = Usage.text(columns: 100).split(separator: "\n").filter { $0.hasPrefix("USAGE: hobo ") }
+        let allLines = Usage.text(columns: 100).split(separator: "\n").filter { $0.hasPrefix("USAGE: hobo ") }
+        // `hobo ui`'s own commands, parsed by hobo-ui's definitions, follow its help.
+        let uiLines = allLines.filter { $0.hasPrefix("USAGE: hobo ui <vm> ") }
+        for name in HoboUI.configuration.subcommands.map({ $0._commandName }) {
+            #expect(uiLines.filter { $0.hasPrefix("USAGE: hobo ui <vm> \(name) ") }.count == 1, "\(name)")
+        }
+        let usageLines = allLines.filter { !$0.hasPrefix("USAGE: hobo ui <vm> ") }
         let paths = Usage.visibleCommandPaths(of: HoboCommand.self).map(\.path)
         #expect(paths.contains("claude install"))
         for path in paths {

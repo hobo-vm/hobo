@@ -35,6 +35,8 @@ type request struct {
 	// exec on Windows: run it in the console's desktop session (`exec --gui`). Elsewhere the
 	// host's command line gets there itself, and this is false.
 	Desktop bool `json:"desktop,omitempty"`
+	// exec: a tool (tool.go) to fetch before the command runs, which the command can then run.
+	Tool string `json:"tool,omitempty"`
 	// exec, put, get: who runs it, and whose files the copy reads or writes.
 	User string `json:"user,omitempty"`
 	// put: where the copy goes; single says the tar holds one top-level entry.
