@@ -18,7 +18,7 @@ build: ## Release build
 	swift build -c release
 
 app: build ## Assemble Hobo.app from the release build, unsigned
-	rm -rf .build/Hobo.app
+	rm -rf $(APP)
 	install -d $(APP)/Contents/MacOS $(APP)/Contents/Helpers $(APP)/Contents/Resources
 	sed 's/@VERSION@/$(VERSION)/g' App/Info.plist > $(APP)/Contents/Info.plist
 	install -m 755 $(RELEASE)/HoboApp $(APP)/Contents/MacOS/Hobo
@@ -37,7 +37,7 @@ sign: app ## Hobo.app signed with the virtualization entitlement
 # refreshes hobo's global Claude skill if one is installed, so it matches the new binary.
 SKILL := $(HOME)/.claude/skills/hobo/SKILL.md
 install: sign ## Install Hobo.app to /Applications and link /usr/local/bin/hobo to its CLI
-	rm -rf /Applications/Hobo.app
+	rm -rf $(INSTALLED)
 	ditto $(APP) $(INSTALLED)
 	@target=$(INSTALLED)/Contents/Helpers/hobo; \
 	  if [ "$$(readlink $(CLI_LINK))" != "$$target" ]; then \

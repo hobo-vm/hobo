@@ -176,8 +176,8 @@ public final class Library {
     /// `ownsRecipe`: the recipe's directory is this build's to delete when it ends, as the New VM
     /// sheet's temporary one is.
     private func startBuild(_ name: String, ownsRecipe: Bool = false, recipe: @escaping @MainActor (@escaping @Sendable (String) -> Void) async throws -> URL) {
-        guard build == nil || build?.finished == true else {
-            failure = "\(build!.name) is being built; one build at a time."
+        if let build, !build.finished {
+            failure = "\(build.name) is being built; one build at a time."
             return
         }
         let build = Build(name: name)

@@ -92,7 +92,7 @@ struct LibraryView: View {
 
     private func deleteMessage(_ name: String) -> String {
         guard let vm = model.summary(named: name) else { return "" }
-        let size = ByteCountFormatter.string(fromByteCount: Int64(vm.allocatedBytes + (vm.snapshotBytes ?? 0)), countStyle: .file)
+        let size = fileSize(vm.allocatedBytes + (vm.snapshotBytes ?? 0))
         let running = vm.state == .running ? " It is running and will be powered off." : ""
         return "Its bundle and snapshots (\(size)) are deleted.\(running) This can't be undone."
     }
