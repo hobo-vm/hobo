@@ -721,8 +721,8 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
 
     /// Hobo.app in the guest (designs/hobo-app.md), from the bundle HOBO_BIN is in, over a store seeded
     /// with two stopped VMs: its list, a settings change and a rename, checked in the bundles, and
-    /// the New VM sheet's recipe. The guest can't run VMs itself, so a build is made to fail at once,
-    /// by naming a VM that exists, after the sheet has written its recipe.
+    /// a New VM build from the sheet. The guest can't run VMs itself, so that build is made to fail at
+    /// once, by naming a VM that exists, after the sheet has written its recipe.
     private func checkApp(_ vm: String, hobo: String, work: URL, env: [String: String]) throws {
         let app = "app.gsquared.hobo"
         func ui(_ arguments: [String]) throws -> Int32 { try run(hobo, ["ui", vm] + arguments + ["--app", app], in: work, environment: env) }
@@ -776,7 +776,8 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try ui(["wait", "--text", "gamma"]) == 0)
         #expect(try guest("ls ~/Hobo") == "alpha.hobovm\ngamma.hobovm\n")
 
-        // New VM: the recipe it writes has the sheet's settings.
+        // New VM: the sheet starts a build from the recipe it writes (whose contents NewVMFormTests
+        // checks), and the build, failing, leaves no temporary recipe behind.
         #expect(try ui(["menu", "File > New VM…"]) == 0)
         #expect(try ui(["wait", "--text", "GUI testing"]) == 0)
         let sheet = try snapshot()
@@ -787,8 +788,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try ui(["click", guiTesting.ref]) == 0)
         #expect(try ui(["click", create.ref]) == 0)
         #expect(try ui(["wait", "--text", "already exists"]) == 0)
-        let recipe = try guest(#"grep -E '^(cpus|memory|disk|ipsw|enabled) ' "$(getconf DARWIN_USER_TEMP_DIR)"Hobo-*/Hobo.toml"#)
-        #expect(recipe == "cpus   = 4\nmemory = \"8GB\"\ndisk   = \"80GB\"\nipsw = \"latest\"\nenabled = true\n", "\(recipe)")
+        #expect(try guest(#"ls -d "$(getconf DARWIN_USER_TEMP_DIR)"Hobo-* 2>/dev/null | wc -l | tr -d ' '"#) == "0\n")
         #expect(try guest("osascript -e 'quit app id \"\(app)\"'; rm -rf ~/Applications/Hobo.app ~/Hobo") == "")
     }
 

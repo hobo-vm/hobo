@@ -37,7 +37,7 @@
 12. **Distribution** is separate work: Developer ID signing, notarization and GitHub Releases.
 13. **Tests.** `HoboAppModel` has unit tests. The macOS lifecycle integration test copies Hobo.app
     into its `[gui_testing]` guest, seeds two stopped bundles, and drives the app with `hobo ui`:
-    the list, a settings change and a rename (checked on disk), and the New VM sheet's recipe.
+    the list, a settings change and a rename (checked on disk), and a build from the New VM sheet.
     Start, stop and create are checked by hand on the host.
 14. Defaults chosen without a question: bundle ID `app.gsquared.hobo`; failures show as an alert
     with the core's message; delete asks first.
@@ -55,7 +55,8 @@
   number of gigabytes keeps it until the field is changed.
 - In the guest test, the settings change is memory rather than disk, because growing the disk
   resizes a disk image, which the seeded bundles don't have. The New VM build fails at once by
-  reusing an existing name, after the recipe is written, since a guest can't run VMs.
+  reusing an existing name, since a guest can't run VMs. The build deletes its temporary recipe
+  when it ends, so the test checks that it is gone; `NewVMFormTests` checks what the recipe says.
 
 ## Deferred
 
