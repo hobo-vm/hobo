@@ -229,6 +229,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     @Test(arguments: [
         ["click", "nowhere"], ["click", "1,2", "--press"], ["scroll", "e5"], ["wait"], ["wait", "--ref", "e1", "--text", "x"],
         ["key", "cmd+blah"], ["snapshot", "--depth", "0"], ["menu", " > "],
+        ["wait", "--app", "X", "--timeout", "0"], ["wait", "--app", "X", "--timeout", "nan"], ["wait", "--app", "X", "--timeout", "inf"],
     ])
     func rejectsUsageErrors(_ arguments: [String]) {
         #expect(throws: (any Error).self) { try HoboUI.parseAsRoot(arguments) }

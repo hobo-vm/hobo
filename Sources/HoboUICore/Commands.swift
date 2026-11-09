@@ -188,7 +188,8 @@ public struct HoboUI: ParsableCommand {
             if ref != nil && text != nil { throw ValidationError("give --ref or --text, not both") }
             if ref == nil && text == nil && target.app == nil { throw ValidationError("give --ref, --text or --app") }
             if let ref, RefMap.parse(ref) == nil { throw ValidationError("--ref takes a ref such as e12") }
-            if timeout <= 0 { throw ValidationError("--timeout must be more than 0") }
+            // `nan` and `inf` parse as Doubles, and would wait forever.
+            if !timeout.isFinite || timeout <= 0 { throw ValidationError("--timeout must be a number of seconds more than 0") }
         }
     }
 }
