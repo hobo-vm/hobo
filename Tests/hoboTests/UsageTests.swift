@@ -92,6 +92,12 @@ struct InitOptionTests {
         #expect(throws: (any Error).self) { try Init.parse(["--server"]) }
         _ = try Init.parse(["--os", "linux", "--server"])
     }
+
+    @Test func outputNamesTheRecipeFile() throws {
+        #expect(try Init.parse([]).recipeFile == "Hobo.toml")
+        #expect(try Init.parse(["--os", "linux", "-o", "linux.toml"]).recipeFile == "linux.toml")
+        #expect(try Init.parse(["26B123", "--output", "macos.toml"]).recipeFile == "macos.toml")
+    }
 }
 
 struct IdleTimeoutOptionTests {

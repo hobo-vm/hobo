@@ -42,7 +42,7 @@ global VMs on 2026-11-01.
    "latest" to resolve. Defaults follow the OS: 4 CPUs, 8 GB and 80 GB for macOS, 4 CPUs, 4 GB
    and 32 GB for Linux (enough for a desktop added by a step).
 4. **Commands.** VM-centric verbs:
-   `init [--os macos|linux] [--server] [<build-or-version>] [--force]`,
+   `init [--os macos|linux] [--server] [<build-or-version>] [-o recipe] [--force]`,
    `images [--os macos|linux] [<build-or-version>] [--all]`, `validate [recipe]`,
    `create <name> [recipe] [--hold-on-failure]`, `list [-v]`,
    `start [--ephemeral] [--gui] [--cold] [--share path] [--idle-timeout d]`, `stop [--force]`,

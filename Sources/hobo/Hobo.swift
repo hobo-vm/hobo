@@ -46,7 +46,7 @@ enum GuestOSOption: String, ExpressibleByArgument, CaseIterable {
 }
 
 struct Init: OutputCommand {
-    static let configuration = CommandConfiguration(abstract: "Write a starter \(Recipe.fileName) in the current directory.")
+    static let configuration = CommandConfiguration(abstract: "Write a starter recipe: \(Recipe.fileName), or the file -o names.")
 
     @Option(help: "The guest OS: macos (an IPSW), linux (an Ubuntu cloud image, with a desktop unless --server) or windows (an installer ISO you downloaded).")
     var os: GuestOSOption = .macos
@@ -64,7 +64,13 @@ struct Init: OutputCommand {
     @Flag(help: "With --os linux, leave out the desktop: the guest boots to a text console.")
     var server = false
 
-    @Flag(help: "Overwrite an existing \(Recipe.fileName).")
+    @Option(name: [.customShort("o"), .customLong("output")], help: ArgumentHelp(
+        "Recipe file to write, for keeping several recipes in one directory (e.g. linux.toml).",
+        valueName: "recipe"
+    ))
+    var recipeFile: String = Recipe.fileName
+
+    @Flag(help: "Overwrite an existing recipe file.")
     var force = false
 
     @Flag(help: "Print the recipe's path and the image it is pinned to as JSON.")
@@ -82,9 +88,9 @@ struct Init: OutputCommand {
     static let jsonStyle = Output.JSONStyle.document
 
     func execute(_ output: Output) async throws -> Reply {
-        let url = URL.currentDirectory().appending(path: Recipe.fileName)
+        let url = URL(filePath: recipeFile).absoluteURL
         if FileManager.default.fileExists(atPath: url.path) && !force {
-            throw ValidationError("\(Recipe.fileName) already exists (use --force to overwrite)")
+            throw ValidationError("\(recipeFile) already exists (use --force to overwrite)")
         }
         let image: CatalogImage?
         switch os {
@@ -118,7 +124,7 @@ struct Init: OutputCommand {
         case .windows(let iso): " pinned to \(URL(filePath: iso.path).lastPathComponent)"
         case nil: ""
         }
-        return Reply(Result(path: url.path, image: image), text: "Wrote \(Recipe.fileName)\(pinned)")
+        return Reply(Result(path: url.path, image: image), text: "Wrote \(recipeFile)\(pinned)")
     }
 }
 

@@ -31,7 +31,16 @@ hobo validate
 | `hobo init --os linux 26.04 --server` | Ubuntu 26.04 without a desktop |
 | `hobo init --os windows ~/Downloads/Win11_Arm64.iso` | Windows 11 on Arm, from an ISO you downloaded |
 
-`--force` overwrites an existing `Hobo.toml`.
+`-o` writes a different file, so one directory can hold several recipes, and `hobo create` takes
+the file to build from:
+
+```console
+$ hobo init --os linux -o linux.toml
+$ hobo init --os windows ~/Downloads/Win11_Arm64.iso -o windows.toml
+$ hobo create ubuntu linux.toml
+```
+
+`--force` overwrites an existing recipe file.
 
 ## Pick an image
 
