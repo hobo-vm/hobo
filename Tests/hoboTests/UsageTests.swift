@@ -100,6 +100,26 @@ struct InitOptionTests {
         #expect(try Init.parse(["26B123", "--output", "macos.toml"]).recipeFile == "macos.toml")
     }
 
+    /// An unpinned macOS recipe needs no catalog, so this runs offline.
+    @Test func writesTheNamedRecipeAndKeepsAnExistingOne() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let recipe = dir.appending(path: "macos.toml")
+        let output = Output(json: false, style: Init.jsonStyle)
+
+        let reply = try await Init.parse(["-o", recipe.path]).execute(output)
+        #expect(reply.text == "Wrote \(recipe.path)")
+        #expect(try String(contentsOf: recipe, encoding: .utf8) == Recipe.template)
+        #expect(!FileManager.default.fileExists(atPath: dir.appending(path: "Hobo.toml").path))
+
+        try "kept".write(to: recipe, atomically: true, encoding: .utf8)
+        await #expect(throws: (any Error).self) { try await Init.parse(["-o", recipe.path]).execute(output) }
+        #expect(try String(contentsOf: recipe, encoding: .utf8) == "kept")
+        _ = try await Init.parse(["-o", recipe.path, "--force"]).execute(output)
+        #expect(try String(contentsOf: recipe, encoding: .utf8) == Recipe.template)
+    }
+
     @Test func outputIsNotADirectory() throws {
         #expect(throws: (any Error).self) { try Init.parse(["-o", "."]) }
         #expect(throws: (any Error).self) { try Init.parse(["-o", "recipes/"]) }
