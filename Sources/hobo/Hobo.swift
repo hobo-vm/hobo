@@ -78,6 +78,11 @@ struct Init: OutputCommand {
 
     func validate() throws {
         if server && os != .linux { throw ValidationError("--server is for --os linux") }
+        var isDirectory: ObjCBool = false
+        if recipeFile.isEmpty || recipeFile.hasSuffix("/")
+            || FileManager.default.fileExists(atPath: URL(filePath: recipeFile).absoluteURL.path, isDirectory: &isDirectory) && isDirectory.boolValue {
+            throw ValidationError("-o names the recipe file to write, not a directory (e.g. \((recipeFile as NSString).appendingPathComponent(Recipe.fileName)))")
+        }
     }
 
     private struct Result: Encodable {

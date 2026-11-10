@@ -1,4 +1,5 @@
 import ArgumentParser
+import Foundation
 import HoboCore
 import HoboUICore
 import Testing
@@ -97,6 +98,13 @@ struct InitOptionTests {
         #expect(try Init.parse([]).recipeFile == "Hobo.toml")
         #expect(try Init.parse(["--os", "linux", "-o", "linux.toml"]).recipeFile == "linux.toml")
         #expect(try Init.parse(["26B123", "--output", "macos.toml"]).recipeFile == "macos.toml")
+    }
+
+    @Test func outputIsNotADirectory() throws {
+        #expect(throws: (any Error).self) { try Init.parse(["-o", "."]) }
+        #expect(throws: (any Error).self) { try Init.parse(["-o", "recipes/"]) }
+        #expect(throws: (any Error).self) { try Init.parse(["-o", ""]) }
+        #expect(throws: (any Error).self) { try Init.parse(["-o", NSTemporaryDirectory(), "--force"]) }
     }
 }
 
