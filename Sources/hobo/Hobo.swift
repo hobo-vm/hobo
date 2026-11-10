@@ -76,11 +76,14 @@ struct Init: OutputCommand {
     @Flag(help: "Print the recipe's path and the image it is pinned to as JSON.")
     var json = false
 
+    private var recipeURL: URL { URL(filePath: recipeFile).absoluteURL }
+
     func validate() throws {
         if server && os != .linux { throw ValidationError("--server is for --os linux") }
         var isDirectory: ObjCBool = false
-        if recipeFile.isEmpty || recipeFile.hasSuffix("/")
-            || FileManager.default.fileExists(atPath: URL(filePath: recipeFile).absoluteURL.path, isDirectory: &isDirectory) && isDirectory.boolValue {
+        let namesADirectory = recipeFile.isEmpty || recipeFile.hasSuffix("/")
+            || (FileManager.default.fileExists(atPath: recipeURL.path, isDirectory: &isDirectory) && isDirectory.boolValue)
+        if namesADirectory {
             throw ValidationError("-o names the recipe file to write, not a directory (e.g. \((recipeFile as NSString).appendingPathComponent(Recipe.fileName)))")
         }
     }
@@ -93,7 +96,7 @@ struct Init: OutputCommand {
     static let jsonStyle = Output.JSONStyle.document
 
     func execute(_ output: Output) async throws -> Reply {
-        let url = URL(filePath: recipeFile).absoluteURL
+        let url = recipeURL
         if FileManager.default.fileExists(atPath: url.path) && !force {
             throw ValidationError("\(recipeFile) already exists (use --force to overwrite)")
         }
