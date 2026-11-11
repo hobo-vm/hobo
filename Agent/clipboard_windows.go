@@ -87,7 +87,7 @@ func (c *windowsClipboard) read() (string, error) {
 	if end := slices.Index(units, 0); end >= 0 {
 		units = units[:end]
 	}
-	return crlfToLF(string(utf16.Decode(units))), nil
+	return string(utf16.Decode(units)), nil
 }
 
 func (c *windowsClipboard) write(text string) error {

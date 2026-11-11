@@ -527,6 +527,11 @@ global VMs on 2026-11-01.
         for the darwin build was rejected, since it would need clang and the SDK in the plugin's
         sandbox. Windows guests: user32's `CF_UNICODETEXT`, read only when
         `GetClipboardSequenceNumber` changes, with CRLF line endings in the guest and LF on the wire.
+      - Text crosses in one wire form, LF line endings (any CRs before an LF dropped, other CRs
+        kept): idempotent, and unchanged by a trip through Windows' CRLF. The agent's helper puts
+        every text in it, the host's and the guest's reads alike, before it writes, compares or
+        sends, so its echo check holds whatever the host sent; the host applies the same rule to
+        what it reads (`wireText` on each side).
       - Linux guests don't share yet (`VMBundle.sharesClipboard`): reading GNOME's clipboard on
         Wayland from outside a focused app needs the data-control protocol, which mutter may not
         have. Beads hobo-56t spikes `wl-paste --watch` from an agent-started process on

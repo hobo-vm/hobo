@@ -156,9 +156,9 @@ final class ClipboardSync {
         let pasteboard = self.pasteboard
         let request = requests
         Task { [weak self] in
-            // In LF line endings, as the agent takes it: a Windows guest reads back CRLF as LF, and a
-            // text that came back changed would be sent back over the host's own.
-            let text = await Task.detached { pasteboard.string()?.replacingOccurrences(of: "\r\n", with: "\n") }.value
+            // In wire form, so it compares equal to the same text coming back from the guest, which
+            // the agent sends in wire form.
+            let text = await Task.detached { pasteboard.string().map(Self.wireText) }.value
             guard let self else { return }
             reading = false
             // A guest copy that landed during the read is newer than what was read: it wins.
@@ -171,6 +171,20 @@ final class ClipboardSync {
             lastText = text
             toGuest.yield(text)
         }
+    }
+
+    /// A text's wire form, as the agent's `wireText` (`Agent/clipboard.go`) defines it: a line
+    /// ending of CRs then LF becomes LF alone, and a CR anywhere else stays. The agent puts
+    /// everything it is sent in this form itself, so its own echo check never depends on this
+    /// agreeing; the host's does, for a text that comes back.
+    nonisolated static func wireText(_ text: String) -> String {
+        guard text.contains("\r\n") else { return text }
+        var scalars = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            if scalar == "\n" { while scalars.last == "\r" { scalars.removeLast() } }
+            scalars.append(scalar)
+        }
+        return String(scalars)
     }
 
     /// A text the guest copied: it replaces the host's pasteboard.

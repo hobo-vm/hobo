@@ -19,8 +19,8 @@ const maxClipboardText = 16 << 20
 // How often the helper looks for a change in the guest's clipboard.
 const clipboardPoll = 500 * time.Millisecond
 
-// guestClipboard is the desktop session's clipboard, as text with LF line endings: the platform
-// converts to and from its own.
+// guestClipboard is the desktop session's clipboard. It reads the platform's text as it is, and
+// writes text in wire form (`wireText`), converting it to the platform's line endings.
 type guestClipboard interface {
 	// changed is a cheap check whether the clipboard may have changed since it was last asked;
 	// a platform with no such check always says it may have.
@@ -34,13 +34,16 @@ type guestClipboard interface {
 // on in, and sends each new text the guest's clipboard takes on out, until in ends (the host has
 // gone). What the clipboard holds when it starts isn't sent: it isn't new, and would overwrite
 // whatever the host copied since. A text is never sent back to where it came from, so the two
-// sides can't echo one another.
+// sides can't echo one another. Every text, whether from the host or read from the guest, is put in
+// wire form here, before it is written, compared or sent: that one place is what makes a text the
+// host sends compare equal to the guest's read-back of it, whatever the host did to it first.
 func runClipboard(board guestClipboard, in io.Reader, out io.Writer, poll time.Duration) error {
 	frames := &frameWriter{w: out}
 	last, err := board.read()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "reading the clipboard: %v\n", err)
 	}
+	last = wireText(last)
 	board.changed()
 	incoming := make(chan string)
 	ended := make(chan error, 1)
@@ -52,6 +55,7 @@ func runClipboard(board guestClipboard, in io.Reader, out io.Writer, poll time.D
 	for {
 		select {
 		case text := <-incoming:
+			text = wireText(text)
 			if err := board.write(text); err != nil {
 				fmt.Fprintf(os.Stderr, "setting the clipboard: %v\n", err)
 				continue
@@ -68,6 +72,7 @@ func runClipboard(board guestClipboard, in io.Reader, out io.Writer, poll time.D
 				fmt.Fprintf(os.Stderr, "reading the clipboard: %v\n", err)
 				continue
 			}
+			text = wireText(text)
 			if text == last || text == "" {
 				continue
 			}
@@ -126,7 +131,25 @@ func readClipboardTexts(in io.Reader, set func(string)) error {
 	}
 }
 
-// crlfToLF and lfToCRLF convert between the host's line endings and Windows'.
-func crlfToLF(text string) string { return strings.ReplaceAll(text, "\r\n", "\n") }
+// wireText is a text's wire form, as frameText carries it: every line ends in LF alone. A line
+// ending of CRs then LF (CRLF, or the CRCRLF some converters leave) becomes LF; a CR anywhere else
+// stays. It is idempotent, and lfToCRLF of a wire text comes back unchanged through it, so a text
+// survives a Windows guest's clipboard as it went in. ClipboardSync.wireText is the host's copy.
+func wireText(text string) string {
+	if !strings.Contains(text, "\r\n") {
+		return text
+	}
+	out := make([]byte, 0, len(text))
+	for i := 0; i < len(text); i++ {
+		if text[i] == '\n' {
+			for len(out) > 0 && out[len(out)-1] == '\r' {
+				out = out[:len(out)-1]
+			}
+		}
+		out = append(out, text[i])
+	}
+	return string(out)
+}
 
-func lfToCRLF(text string) string { return strings.ReplaceAll(crlfToLF(text), "\n", "\r\n") }
+// lfToCRLF gives a wire text Windows' line endings.
+func lfToCRLF(text string) string { return strings.ReplaceAll(text, "\n", "\r\n") }

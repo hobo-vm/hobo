@@ -156,11 +156,43 @@ func TestClipboardRefusesOtherFrames(t *testing.T) {
 	}
 }
 
-func TestWindowsLineEndings(t *testing.T) {
-	if got := lfToCRLF("a\nb\r\nc"); got != "a\r\nb\r\nc" {
-		t.Errorf("lfToCRLF = %q", got)
+func TestWireTextEndsLinesInLFAlone(t *testing.T) {
+	for in, want := range map[string]string{
+		"a\r\nb\nc": "a\nb\nc", "a\r\r\nb": "a\nb", "a\rb\r": "a\rb\r", "\r\n\r\n": "\n\n", "plain": "plain",
+	} {
+		got := wireText(in)
+		if got != want {
+			t.Errorf("wireText(%q) = %q, wanted %q", in, got, want)
+		}
+		if again := wireText(got); again != got {
+			t.Errorf("wireText isn't idempotent on %q: %q", got, again)
+		}
+		// Through a Windows clipboard and back, as the helper writes and reads it.
+		if back := wireText(lfToCRLF(got)); back != got {
+			t.Errorf("%q came back from Windows' line endings as %q", got, back)
+		}
 	}
-	if got := crlfToLF("a\r\nb\nc"); got != "a\nb\nc" {
-		t.Errorf("crlfToLF = %q", got)
+}
+
+// windowsLikeClipboard holds what it is given in Windows' line endings, as the real one does.
+type windowsLikeClipboard struct{ fakeClipboard }
+
+func (w *windowsLikeClipboard) write(text string) error { return w.fakeClipboard.write(lfToCRLF(text)) }
+
+// A text the host didn't send in wire form (CRCRLF) still isn't sent back once Windows has it.
+func TestClipboardDoesntEchoAHostTextWindowsRewrites(t *testing.T) {
+	board := &windowsLikeClipboard{}
+	hostIn, toHelper := io.Pipe()
+	var out syncBuffer
+	go func() { _ = runClipboard(board, hostIn, &out, time.Millisecond) }()
+	hostSends(t, toHelper, "a\r\r\nb")
+	eventually(t, "the host's text to be set", func() bool { return len(board.written()) == 1 })
+	time.Sleep(20 * time.Millisecond)
+	if got := board.written(); got[0] != "a\r\nb" {
+		t.Fatalf("set %q", got)
 	}
+	if got := out.texts(t); len(got) != 0 {
+		t.Fatalf("sent %q back", got)
+	}
+	toHelper.Close()
 }

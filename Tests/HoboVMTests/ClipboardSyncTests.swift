@@ -133,6 +133,14 @@ import Testing
         clipboard.stop()
     }
 
+    @Test(arguments: [
+        ("a\r\nb\nc", "a\nb\nc"), ("a\r\r\nb", "a\nb"), ("a\rb\r", "a\rb\r"), ("\r\n\r\n", "\n\n"), ("plain é", "plain é"),
+    ])
+    func wireTextIsTheAgents(text: String, wire: String) {
+        #expect(ClipboardSync.wireText(text) == wire)
+        #expect(ClipboardSync.wireText(wire) == wire)
+    }
+
     @Test func aGuestCopyDuringAHostReadWins() async throws {
         let gate = DispatchSemaphore(value: 0)
         let pasteboard = FakePasteboard(gate: gate)
