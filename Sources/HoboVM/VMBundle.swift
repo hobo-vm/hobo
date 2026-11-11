@@ -45,6 +45,9 @@ public protocol VMBundle: Sendable {
     /// Whether hobo-agent starts an `exec --gui` command in the desktop session itself (Windows,
     /// where the agent is a SYSTEM process in session 0), rather than `agentCommand`'s line.
     static var agentStartsInDesktop: Bool { get }
+    /// Whether the window shares the clipboard with the guest (`ClipboardSync`). Linux guests don't
+    /// yet: whether GNOME on Wayland lets hobo-agent read its clipboard is still to be found out.
+    static var sharesClipboard: Bool { get }
     /// Runs `resize`, which rewrites the disk's partition table, leaving whatever the guest's boot
     /// depends on as it was.
     func keepingDiskIdentity(_ resize: () throws -> Void) throws
@@ -65,6 +68,7 @@ extension VMBundle {
     public var displayPixels: CGSize { GuestDisplay.pixels }
     public var displayFollowsWindow: Bool { true }
     public static var smallestFollowedWindow: CGSize? { nil }
+    public static var sharesClipboard: Bool { false }
 
     /// macOS and Linux guests don't care what `resize` does to the table's identity.
     public func keepingDiskIdentity(_ resize: () throws -> Void) throws { try resize() }

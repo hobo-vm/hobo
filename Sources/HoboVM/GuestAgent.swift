@@ -84,6 +84,46 @@ public struct GuestAgent: GuestShell {
         (try? await perform(AgentRequest(op: "ping")) { kind, _ in throw AgentError.unexpectedFrame(kind) }) == 0
     }
 
+    // MARK: Clipboard
+
+    /// The shared clipboard's request (`ClipboardSync`): the agent runs its helper in the desktop
+    /// session, which sets the guest's clipboard to each text from `outgoing` and passes each new
+    /// text the guest copies to `onText`, on a thread of the request's own. It lasts until the task
+    /// is cancelled, which ends the helper, or the helper ends; it returns the helper's status:
+    /// `GUISession.unavailableStatus` if the guest's desktop session never came up.
+    public func clipboard(outgoing: AsyncStream<String>, onText: @escaping @Sendable (String) -> Void) async throws -> Int32 {
+        let socket = try await connect()
+        defer { socket.close() }
+        try socket.write(try JSONEncoder().encode(AgentRequest(op: "clipboard", user: user)) + Data("\n".utf8))
+        let sender = Task.detached {
+            for await text in outgoing {
+                try socket.writeFrame(.text, Data(text.utf8))
+                try socket.writeFrame(.text, Data())
+            }
+        }
+        let answer: Result<Int32, any Error>
+        do {
+            answer = .success(try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int32, Error>) in
+                    Thread.detachNewThread {
+                        let text = ClipboardTextReader(onText: onText)
+                        continuation.resume(with: Result { try Self.readAnswer(socket, onFrame: text.receive) })
+                    }
+                }
+            } onCancel: {
+                socket.shutdown()
+            })
+        } catch {
+            answer = .failure(error)
+        }
+        // The sender must be done with the socket before it is closed; shutting it down wakes a
+        // blocked write, and cancelling ends the wait for the next text.
+        socket.shutdown()
+        sender.cancel()
+        _ = await sender.result
+        return try answer.get()
+    }
+
     // MARK: Copies
 
     /// Sends the sources as a tar stream, made by the host's `tar`, for the agent to extract as `scp` would.
@@ -231,6 +271,29 @@ public struct GuestAgent: GuestShell {
     }
 }
 
+/// Puts a clipboard text back together from its text frames, up to the empty one that ends it.
+/// A text over `ClipboardSync.maxText` is dropped.
+private final class ClipboardTextReader: @unchecked Sendable {
+    // Only ever used from the one thread reading the request's answer.
+    private var text = Data()
+    private var over = false
+    private let onText: @Sendable (String) -> Void
+
+    init(onText: @escaping @Sendable (String) -> Void) { self.onText = onText }
+
+    func receive(_ kind: AgentFrame, _ payload: Data) throws {
+        guard kind == .text else { throw AgentError.unexpectedFrame(kind) }
+        if !payload.isEmpty {
+            if text.count + payload.count > ClipboardSync.maxText { over = true; text = Data() }
+            if !over { text += payload }
+            return
+        }
+        if !over, !text.isEmpty { onText(String(decoding: text, as: UTF8.self)) }
+        text = Data()
+        over = false
+    }
+}
+
 /// A request's stream to the agent, written on a thread of its own while the answer is read.
 private final class BackgroundSend: Sendable {
     private let done = DispatchSemaphore(value: 0)
@@ -269,6 +332,8 @@ enum AgentFrame: UInt8 {
     case stderr = 0x32 // "2"
     /// A chunk of a tar stream; an empty one ends it.
     case data = 0x64 // "d"
+    /// A chunk of clipboard text (UTF-8, LF line endings), either way; an empty one ends the text.
+    case text = 0x74 // "t"
     /// Ends a request with its exit status, a big-endian Int32.
     case exit = 0x78 // "x"
     /// Ends a request that couldn't run, with the reason.

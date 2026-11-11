@@ -115,6 +115,17 @@ $ hobo ssh dev
 
 Full guide → [hobo.gsquared.app/getting-inside](https://hobo.gsquared.app/getting-inside/)
 
+### Shared clipboard
+
+While a VM's window shows, its clipboard and the Mac's are one: copy text on the Mac and paste it
+in the guest, or copy in the guest and paste on the Mac. There's nothing to install or turn on.
+
+```sh
+hobo view dev     # copy and paste both ways while this window shows
+```
+
+Full guide → [hobo.gsquared.app/clipboard](https://hobo.gsquared.app/clipboard/)
+
 ### Suspend and resume
 
 `hobo suspend` saves a running VM's memory and device state to disk and stops it. `hobo start`

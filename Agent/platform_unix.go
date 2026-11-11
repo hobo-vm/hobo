@@ -91,7 +91,11 @@ func start(spec commandSpec) (process, error) {
 		return nil, err
 	}
 	var cmd *exec.Cmd
-	if spec.self != nil {
+	if spec.self != nil && spec.desktop {
+		if cmd, err = who.desktopCommand(append([]string{selfPath()}, spec.self...)); err != nil {
+			return nil, err
+		}
+	} else if spec.self != nil {
 		cmd = exec.Command(selfPath(), spec.self...)
 		who.configure(cmd)
 	} else {

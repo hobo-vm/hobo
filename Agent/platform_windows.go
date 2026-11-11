@@ -25,12 +25,6 @@ const stubLogPath = `C:\ProgramData\Hobo\hobo-agent.log`
 // on the other platforms becomes the user without one; Windows wants it for a logon of its own.
 const windowsPassword = "hobo"
 
-// As GUISession has it: how long `exec --gui` waits for the desktop, and what it exits with then.
-const (
-	desktopWaitSeconds       = 60
-	desktopUnavailableStatus = 125
-)
-
 var (
 	advapi32                    = syscall.NewLazyDLL("advapi32.dll")
 	procLogonUserW              = advapi32.NewProc("LogonUserW")
@@ -94,9 +88,7 @@ func login(name string, argv []string) error {
 // CreateProcessWithTokenW puts the process in session 0 whatever the token's session (checked
 // 2026-11-08 on 11 build 26300).
 func start(spec commandSpec) (process, error) {
-	// Until the child has its handles: CreateProcessAsUser hands it every inheritable one.
-	spawnMutex.Lock()
-	defer spawnMutex.Unlock()
+	// Before the lock: waiting for the desktop can take a minute, and mustn't hold up other starts.
 	var token syscall.Token
 	var err error
 	if spec.desktop {
@@ -108,6 +100,9 @@ func start(spec commandSpec) (process, error) {
 		return nil, err
 	}
 	defer token.Close()
+	// Until the child has its handles: CreateProcessAsUser hands it every inheritable one.
+	spawnMutex.Lock()
+	defer spawnMutex.Unlock()
 
 	var commandLine string
 	if spec.self != nil {

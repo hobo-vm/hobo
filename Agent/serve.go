@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 )
 
 // serve answers the host's requests, one per connection, until the guest shuts down.
@@ -52,6 +53,8 @@ func handle(conn io.ReadWriteCloser) {
 		runPut(req, reader, frames)
 	case "get":
 		runGet(req, reader, frames)
+	case "clipboard":
+		runClipboardRequest(req, reader, frames)
 	default:
 		_ = frames.fail("unknown request %q", req.Op)
 	}
@@ -68,18 +71,27 @@ type process interface {
 	Terminate()
 }
 
-// commandSpec is what start runs: a command line in the user's shell, or this binary's put or get.
+// commandSpec is what start runs: a command line in the user's shell, or this binary's own
+// put, get or clipboard.
 type commandSpec struct {
 	user string
 	// A command line for the user's login shell, or else this binary's arguments.
 	line string
 	self []string
-	// Windows: in the console's desktop session.
+	// In the console's desktop session: on Windows for any command, and on macOS for this
+	// binary's own (a command line gets there itself, `VMBundle.agentCommand`).
 	desktop bool
 	stdin   bool
 	stdout  io.Writer
 	stderr  io.Writer
 }
+
+// As GUISession has it: how long a start in the desktop session waits for it, and what the
+// request exits with then.
+const (
+	desktopWaitSeconds       = 60
+	desktopUnavailableStatus = 125
+)
 
 // exitEarly is a start that ends the request with a status of its own, having said why.
 type exitEarly struct {
@@ -149,6 +161,53 @@ func runGet(req request, conn io.Reader, frames *frameWriter) {
 	run(proc, conn, frames, nil, func() {
 		_ = frames.write(frameData, nil) // Ends the stream, now that Wait has passed all of it on.
 	})
+}
+
+// runClipboardRequest runs `hobo-agent clipboard` as the request's user in the desktop session, and
+// relays text frames between it and the host until either ends: the host hanging up (hiding its
+// window) closes the helper's input, which ends it. The helper's frames are read whole and
+// passed on, so its stderr's frames can't land inside one.
+func runClipboardRequest(req request, conn io.Reader, frames *frameWriter) {
+	fromHelper, helperOut := io.Pipe()
+	proc, err := start(commandSpec{
+		user: req.User, self: []string{"clipboard"}, desktop: true, stdin: true,
+		stdout: helperOut, stderr: streamWriter{frames, frameStderr},
+	})
+	if !started(err, frames) {
+		return
+	}
+	relayed := make(chan struct{})
+	go func() {
+		defer close(relayed)
+		for {
+			kind, payload, err := readFrame(fromHelper)
+			if err != nil {
+				_, _ = io.Copy(io.Discard, fromHelper)
+				return
+			}
+			_ = frames.write(kind, payload)
+		}
+	}()
+	exited := make(chan struct{})
+	go func() {
+		stdin := proc.Stdin()
+		_, _ = io.Copy(stdin, conn)
+		stdin.Close()
+		select {
+		case <-exited:
+		case <-time.After(5 * time.Second):
+			proc.Terminate()
+		}
+	}()
+	status, err := proc.Wait()
+	close(exited)
+	helperOut.Close()
+	<-relayed
+	if err != nil {
+		_ = frames.fail("%v", err)
+		return
+	}
+	_ = frames.exit(status)
 }
 
 // started reports a start that failed, and says whether the request goes on.

@@ -63,7 +63,8 @@ hobo view dev
 ```
 
 The window comes to the front with its own Dock icon, a chalk sign in a color chosen from the VM's
-name, so several VMs are easy to tell apart. The guest's display follows the window's size. Closing
+name, so several VMs are easy to tell apart. The guest's display follows the window's size, and
+macOS and Windows guests [share the clipboard](./clipboard.md) with the Mac while it shows. Closing
 the window asks whether to keep the VM running headless, suspend it, or shut it down. With the window
 showing, `hobo list` says `running (window)`.
 

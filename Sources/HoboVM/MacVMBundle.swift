@@ -10,6 +10,7 @@ public struct MacVMBundle: VMBundle {
     /// A macOS guest has no display mode smaller than 1024x640 points, so VZ's resizing stops there
     /// (seen on a macOS 27.2 guest: a 763x481 window left it at 1024x640, 2048x1280 pixels).
     public static let smallestFollowedWindow: CGSize? = CGSize(width: 1024, height: 640)
+    public static let sharesClipboard = true
 
     /// Where a macOS guest mounts the automount-tagged shares.
     static let sharesMountPoint = "/Volumes/My Shared Files"

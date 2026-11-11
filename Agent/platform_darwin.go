@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"os/user"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 func init() {
@@ -30,6 +32,31 @@ func (a account) loginCommand(argv []string) *exec.Cmd {
 	cmd.Env = a.environment()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	return cmd
+}
+
+// desktopCommand runs argv as the account in its desktop session, once there is one: the account
+// owns the console and launchd has its GUI domain, as MacVMBundle's `exec --gui` script waits for.
+// Auto-login can finish after the agent answers.
+func (a account) desktopCommand(argv []string) (*exec.Cmd, error) {
+	deadline := time.Now().Add(desktopWaitSeconds * time.Second)
+	for !a.ownsDesktop() {
+		if time.Now().After(deadline) {
+			return nil, exitEarly{desktopUnavailableStatus, fmt.Sprintf("%s's desktop session isn't up after %d seconds", a.name, desktopWaitSeconds)}
+		}
+		time.Sleep(time.Second)
+	}
+	return a.loginCommand(argv), nil
+}
+
+func (a account) ownsDesktop() bool {
+	info, err := os.Stat("/dev/console")
+	if err != nil {
+		return false
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); !ok || stat.Uid != a.uid {
+		return false
+	}
+	return exec.Command("/bin/launchctl", "print", fmt.Sprintf("gui/%d", a.uid)).Run() == nil
 }
 
 // lookupAccount asks Directory Services, which holds macOS's local users (/etc/passwd doesn't):

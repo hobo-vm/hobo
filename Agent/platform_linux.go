@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,6 +24,12 @@ func (a account) loginCommand(argv []string) *exec.Cmd {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	a.configure(cmd)
 	return cmd
+}
+
+// desktopCommand has nothing to start yet: the host's command lines reach the desktop session
+// themselves, and the only binary command that wants it, the clipboard, isn't for Linux guests.
+func (a account) desktopCommand(argv []string) (*exec.Cmd, error) {
+	return nil, errors.New("hobo-agent starts nothing of its own in a Linux guest's desktop session")
 }
 
 // lookupAccount reads /etc/passwd: os/user gives no shell, and a static build has no libc to ask.

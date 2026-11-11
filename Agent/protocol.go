@@ -29,7 +29,7 @@ const protocolVersion = 1
 // request is the one JSON line that opens every connection from the host.
 type request struct {
 	Version int    `json:"version"`
-	Op      string `json:"op"` // ping, exec, put, get
+	Op      string `json:"op"` // ping, exec, put, get, clipboard
 	// exec: a command line for User's login shell, as sshd would run it.
 	Command string `json:"command,omitempty"`
 	// exec on Windows: run it in the console's desktop session (`exec --gui`). Elsewhere the
@@ -37,7 +37,7 @@ type request struct {
 	Desktop bool `json:"desktop,omitempty"`
 	// exec: a tool (tool.go) to fetch before the command runs, which the command can then run.
 	Tool string `json:"tool,omitempty"`
-	// exec, put, get: who runs it, and whose files the copy reads or writes.
+	// exec, put, get, clipboard: who runs it, and whose files the copy reads or writes.
 	User string `json:"user,omitempty"`
 	// put: where the copy goes; single says the tar holds one top-level entry.
 	Destination string `json:"destination,omitempty"`
@@ -55,6 +55,8 @@ const (
 	frameStderr = '2'
 	// A chunk of a tar stream: put's from the host, get's to it. An empty one ends the stream.
 	frameData = 'd'
+	// A chunk of clipboard text (UTF-8, LF line endings), either way; an empty one ends the text.
+	frameText = 't'
 	// Ends a request: its exit status as a big-endian int32.
 	frameExit = 'x'
 	// Ends a request that couldn't run, with the reason as text.

@@ -281,4 +281,63 @@ import Testing
         #expect(output.text(.stderr).hasPrefix("tar: "))
         #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).isEmpty)
     }
+
+    // MARK: Clipboard
+
+    /// Every clipboard text the host sends, until it hangs up.
+    func receiveTexts(_ socket: AgentSocket, count: Int) throws -> [String] {
+        var texts: [String] = []
+        var text = Data()
+        while texts.count < count, let (kind, payload) = try socket.readFrame() {
+            guard kind == .text else { throw AgentError.unexpectedFrame(kind) }
+            if payload.isEmpty { texts.append(String(decoding: text, as: UTF8.self)); text = Data() } else { text += payload }
+        }
+        return texts
+    }
+
+    func sendText(_ text: String, on socket: AgentSocket) throws {
+        try socket.writeFrame(.text, Data(text.utf8))
+        try socket.writeFrame(.text, Data())
+    }
+
+    @Test func clipboardSendsAndReceivesTextsWholeAcrossFrames() async throws {
+        let seen = Seen()
+        let fromHost = Mutex<[String]>([])
+        let big = String(repeating: "é", count: AgentFrame.maxPayload) // Two frames' worth of UTF-8.
+        let agent = guestAgent { request, socket in
+            seen.record(request)
+            let texts = try receiveTexts(socket, count: 2)
+            fromHost.withLock { $0 = texts }
+            try sendText(big, on: socket)
+            // Over the limit: dropped whole, and the next still arrives.
+            try sendText(String(repeating: "x", count: ClipboardSync.maxText + 1), on: socket)
+            try sendText("after", on: socket)
+            try sendExit(0, on: socket)
+        }
+        let (outgoing, continuation) = AsyncStream.makeStream(of: String.self)
+        continuation.yield("one")
+        continuation.yield("two\nlines")
+        let received = Mutex<[String]>([])
+        let status = try await agent.clipboard(outgoing: outgoing) { text in received.withLock { $0.append(text) } }
+        #expect(status == 0)
+        #expect(seen.fields == ["version": "1", "op": "clipboard", "user": Conventions.username])
+        #expect(fromHost.withLock { $0 } == ["one", "two\nlines"])
+        #expect(received.withLock { $0 } == [big, "after"])
+    }
+
+    @Test func cancellingTheClipboardHangsUp() async throws {
+        let hungUp = Mutex(false)
+        let agent = guestAgent { _, socket in
+            // Waits for the host to hang up, as the agent's relay does.
+            while (try? socket.readFrame()) != nil {}
+            hungUp.withLock { $0 = true }
+        }
+        let (outgoing, _) = AsyncStream.makeStream(of: String.self)
+        let task = Task { try await agent.clipboard(outgoing: outgoing) { _ in } }
+        try await Task.sleep(for: .milliseconds(50))
+        task.cancel()
+        await #expect(throws: (any Error).self) { try await task.value }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(hungUp.withLock { $0 })
+    }
 }

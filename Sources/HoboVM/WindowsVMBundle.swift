@@ -16,6 +16,7 @@ public struct WindowsVMBundle: VMBundle {
     /// The same line either way: the agent starts it in the desktop session for `--gui`.
     public static func agentCommand(_ command: [String], gui: Bool) -> String { WindowsGuest.execCommand(command) }
     public static let agentStartsInDesktop = true
+    public static let sharesClipboard = true
 
     public var directory: URL
     /// The install media, attached as USB storage while `create` installs.

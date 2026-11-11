@@ -349,6 +349,13 @@ public final class VMRunner {
                 if case .error(let message) = await beginSuspend(reply: nil) { return message }
                 return nil
             }
+            if type(of: guest.bundle).sharesClipboard {
+                let agent = guest.agent
+                window.clipboard = ClipboardSync(
+                    open: { outgoing, onText in try await agent.clipboard(outgoing: outgoing, onText: onText) },
+                    isKey: { [weak window] in window?.isKey ?? false }, log: log
+                )
+            }
             self.window = window
         }
         window?.show()

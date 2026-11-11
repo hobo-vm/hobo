@@ -399,8 +399,9 @@ global VMs on 2026-11-01.
       host's CID (2), so a guest process can't reach a root agent over vsock loopback. There is
       no other authentication: only the VM process can reach the device, and `hobo` has
       passwordless sudo anyway. Each request is a connection, opened by the host: one line of
-      JSON (`ping`, `exec`, `put`, `get`), then frames both ways (a type byte, a 4-byte length, the
-      bytes: stdout, stderr, tar data, the exit status, or why it couldn't run). Frames rather than
+      JSON (`ping`, `exec`, `put`, `get`, `clipboard`), then frames both ways (a type byte, a 4-byte
+      length, the bytes: stdout, stderr, tar data, clipboard text, the exit status, or why it
+      couldn't run). Frames rather than
       the control socket's JSON lines, so output and copies go unencoded. Closing the connection
       cancels a request, and the agent kills the command's process group (`SIGTERM`, then
       `SIGKILL` after 5 s).
@@ -493,6 +494,43 @@ global VMs on 2026-11-01.
       window scaled it down). `[gui_testing]` may turn resizing off if that matters. Windows guests
       follow it only with `[windows] resizable_display`; otherwise the display is a fixed 1024×768
       and the window scales it (decision 20).
+    - **Shared clipboard** (decided 2026-11-11), for a person at the window; agents use `exec`
+      with `pbpaste` and the like. Text only (UTF-8, up to 16 MiB; images are Beads hobo-6od), only
+      while the window shows, always on with no setting, for macOS and Windows guests:
+      - Only while it shows, so a headless VM (every agent session, which may be running untrusted
+        code) never sees the host's clipboard, which holds passwords and tokens, and a guest's
+        copies never overwrite the host's while no one is looking. Rejected: always while running
+        (Parallels' way), and a per-VM setting or menu item, until someone asks for one.
+      - Through hobo-agent, one way for every guest, rather than VZ's SPICE agent
+        (`VZSpiceAgentPortAttachment`), which needs `spice-vdagent` in the guest: there is none for
+        macOS, and its clipboard is reported flaky on Wayland. While the window shows, `ClipboardSync`
+        holds a `clipboard` request open (reopened every 5 s if it ends, logging each new reason
+        once). The agent starts `hobo-agent clipboard` in the desktop session (on macOS, waiting
+        for the login as `exec --gui` does, then through `launchctl asuser`; on Windows, with the
+        console user's token) and relays text frames between it and the host; hiding the window
+        hangs up, which ends the helper. Rejected: a request per change with the host polling (a
+        process started in the desktop session twice a second), and a resident per-user helper
+        (decision 15 rejected a second agent).
+      - Host to guest: when the window is key and `NSPasteboard.changeCount` has moved since the
+        pasteboard last matched the guest, the VM process reads it (off the main actor) and sends
+        the text; it checks when the window becomes key and every 500 ms while it stays key. A
+        programmatic read may bring up macOS's paste privacy alert, which is accepted: the user
+        allows Hobo once. With Paste set to Deny (`accessBehavior == .alwaysDeny`) it never
+        reads, and logs why once. Rejected: reading only on a paste keystroke, which differs by
+        guest and app and never sees a right-click Paste.
+      - Guest to host: the helper polls, and sends each new non-empty text; the VM process sets
+        the host's pasteboard. The text the guest held when the helper started isn't sent, since
+        it would overwrite the host's newer copy. Each side remembers the last text it sent or was
+        given, so nothing echoes; when both change at once, the later wins.
+      - macOS guests: `pbpaste` every 500 ms and `pbcopy`, with `LANG=en_US.UTF-8` for their
+        encoding. The agent builds without cgo, so NSPasteboard is out of reach; turning cgo on
+        for the darwin build was rejected, since it would need clang and the SDK in the plugin's
+        sandbox. Windows guests: user32's `CF_UNICODETEXT`, read only when
+        `GetClipboardSequenceNumber` changes, with CRLF line endings in the guest and LF on the wire.
+      - Linux guests don't share yet (`VMBundle.sharesClipboard`): reading GNOME's clipboard on
+        Wayland from outside a focused app needs the data-control protocol, which mutter may not
+        have. Beads hobo-56t spikes `wl-paste --watch` from an agent-started process on
+        Ubuntu 26.04, with SPICE the fallback.
     Agents drive the UI **inside the guest**:
     - Commands from hobo-agent (and from SSH) are outside the GUI session's own TCC approvals, and
       TCC blocks them from Accessibility and Screen Recording, so recipe `[gui_testing]` (opt-in)

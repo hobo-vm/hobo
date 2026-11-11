@@ -22,6 +22,8 @@ final class VMWindow: NSObject, NSWindowDelegate {
     /// Set while `create` waits on the window (the recoveryOS step): closing the window, or the
     /// menu's Cancel Build, offers to cancel the build instead of Keep Running, Suspend and Shut Down.
     var onCancelBuild: (() -> Void)?
+    /// The shared clipboard, for a guest that has it: on while the window shows.
+    var clipboard: ClipboardSync?
     /// Whether the window is showing, as opposed to hidden by Keep Running or a shutdown.
     private(set) var isShown = false
     /// A hide waiting for the window to leave full screen, so it doesn't leave an empty Space.
@@ -67,6 +69,8 @@ final class VMWindow: NSObject, NSWindowDelegate {
 
     var frame: NSRect { window.frame }
 
+    var isKey: Bool { window.isKeyWindow }
+
     /// Shows the window in front and tries to take focus. A process launchd started can't always
     /// take focus from the active app (cooperative activation), so the window may need a click.
     func show() {
@@ -88,6 +92,7 @@ final class VMWindow: NSObject, NSWindowDelegate {
         NSApp.activate()
         isShown = true
         followWindowInPoints()
+        clipboard?.start()
     }
 
     /// Without HiDPI, sizes the guest display to the view in points; VZ's automatic resizing would
@@ -110,9 +115,13 @@ final class VMWindow: NSObject, NSWindowDelegate {
 
     func windowDidEndLiveResize(_ notification: Notification) { followWindowInPoints() }
 
+    /// Coming to the window is when the host's clipboard goes to the guest.
+    func windowDidBecomeKey(_ notification: Notification) { clipboard?.hostMayHaveChanged() }
+
     /// Hides the window and puts the guest display back to its configured size.
     func hide() {
         isShown = false
+        clipboard?.stop()
         if window.styleMask.contains(.fullScreen) {
             hidesAfterFullScreen = true
             window.toggleFullScreen(nil)
@@ -133,6 +142,7 @@ final class VMWindow: NSObject, NSWindowDelegate {
     /// Takes the window away for good once its guest has stopped (nothing left to resize).
     func close() {
         isShown = false
+        clipboard?.stop()
         window.orderOut(nil)
         NSApp.setActivationPolicy(.accessory)
     }
