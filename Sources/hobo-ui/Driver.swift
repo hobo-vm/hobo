@@ -307,9 +307,15 @@ struct Driver {
             Input.pause(0.1)
             node = aim.node
         }
+        if c.replace {
+            Input.key(try KeySpec.parse("cmd+a"))
+            // Typing over the selection replaces it; with nothing to type, delete it.
+            if c.text.isEmpty { Input.key(try KeySpec.parse("delete")) }
+        }
         Input.type(c.text)
         let count = c.text.count
-        return Outcome(text: "typed \(count) character\(count == 1 ? "" : "s")\(node.map { " into " + AppSnapshot.line($0) } ?? "")", element: node)
+        let typed = "typed \(count) character\(count == 1 ? "" : "s")\(c.replace ? " over what was there" : "")"
+        return Outcome(text: typed + (node.map { " into " + AppSnapshot.line($0) } ?? ""), element: node)
     }
 
     func key(_ c: HoboUI.Key) throws -> Outcome {

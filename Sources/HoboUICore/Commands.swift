@@ -137,11 +137,16 @@ public struct HoboUI: ParsableCommand {
         public static let configuration = CommandConfiguration(
             commandName: "type",
             abstract: "Type text into whatever has focus, or into an element.",
-            discussion: "The text goes as Unicode key events, whatever the keyboard layout. --into clicks the element first."
+            discussion: """
+                The text goes as Unicode key events, whatever the keyboard layout, and is added where the cursor is. \
+                --into clicks the element first. --replace selects all (cmd+a) before typing, so the text takes the \
+                place of what the field had; with "" it empties the field.
+                """
         )
         @OptionGroup public var target: AppOption
         @Argument(help: "The text.") public var text: String
         @Option(help: ArgumentHelp("Click this element first.", valueName: "ref")) public var into: String?
+        @Flag(help: "Replace what's there rather than add to it.") public var replace = false
         public init() {}
 
         public func validate() throws {

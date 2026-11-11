@@ -618,6 +618,9 @@ global VMs on 2026-11-01.
         rather than pick one, and a match inside another match is left to the outer one.
         `click --press` and `menu` use AXPress; `menu` refuses a disabled item and lists a menu's
         items with shortcuts in `key`'s syntax.
+      - `type --replace` (2026-11-11) presses Cmd-A before typing, so the text replaces a
+        field's contents (and `""` empties it): `type` alone adds at the cursor, and every edit of
+        a filled field had been click, `key cmd+a`, `type`.
       - `choose <path>` (2026-11-11) picks a file or folder in the open or save panel an app is
         showing, found by AppKit's identifiers (`open-panel`, `save-panel`, `GoToWindow`,
         `PathTextField`, `OKButton`): Cmd-Shift-G, the path typed once the sheet's field has focus,

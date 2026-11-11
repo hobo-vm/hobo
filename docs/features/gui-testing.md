@@ -74,7 +74,7 @@ $ hobo ui dev wait --text "Hello" --app TextEdit
 | `click <ref\|x,y>` | A real click at the element's centre, failing if something covers it. `--text Remove` clicks the one element showing exactly that text, and `--role menuitem` narrows it. `--right`, `--double`, `--mods cmd,shift`; `--press` uses AXPress instead |
 | `drag <from> <to>` | A real drag, pausing over the target before it drops |
 | `scroll <ref\|x,y> <direction> [lines]` | Scroll wheel events; `scroll --to e40` brings an element into view |
-| `type <text> [--into ref]` | Types text, whatever the keyboard layout |
+| `type <text> [--into ref]` | Types text where the cursor is, whatever the keyboard layout. `--replace` selects all first, so the text replaces what the field had |
 | `key <cmd+k>` | Presses a key with modifiers |
 | `menu "File > Save"` | Chooses a menu item, failing if it's disabled; `menu File` lists the items with their shortcuts |
 | `choose <path>` | Chooses a file or folder in the open or save panel an app is showing: goes to the path, then clicks Open or Save |
