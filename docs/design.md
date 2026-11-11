@@ -46,7 +46,7 @@ global VMs on 2026-11-01.
    `images [--os macos|linux] [<build-or-version>] [--all]`, `validate [recipe]`,
    `create <name> [recipe] [--hold-on-failure]`, `list [-v]`,
    `start [--ephemeral] [--gui] [--cold] [--share path] [--idle-timeout d]`, `stop [--force]`,
-   `suspend`, `discard`, `ssh <name> [--print] [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp [-r] <src>... <dst>`, `ip <name>`, `view`, `screenshot`,
+   `suspend`, `discard`, `ssh <name> [--print] [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp <src>... <dst>`, `ip <name>`, `view`, `screenshot`,
    `clone <src> <dst> [--ephemeral]`, `delete <name> [--yes] [--force]`, `rename <old> <new>`,
    `set <name> --cpus/--memory/--disk/--share/--unshare/--keep`, `snapshot save|restore [--force]|list|delete <name> <tag>`,
    `provision <name> [recipe]` (re-run steps on an existing VM), `usage`,
@@ -619,7 +619,7 @@ global VMs on 2026-11-01.
       without it succeeds with the windows left out, and that desktop could pass for an app that
       never opened. Asking the guest covers withdrawn grants and clones, which a host-side check of
       the recipe wouldn't. By default the PNG goes to a new `./<vm>-<timestamp>.png`, numbered if
-      taken, so a session's shots never replace each other; `-o -` is stdout, and it prints the path
+      taken, so a session's shots never replace each other; a path of `-` is stdout, and it prints the path
       (`--json`: `{name, path}`). Decided 2026-11-05.
     - Linux guests have their own `exec --gui` and `screenshot` (decision 21), and Windows guests
       theirs (decision 20).
