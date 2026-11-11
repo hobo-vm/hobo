@@ -34,7 +34,7 @@ public struct KeySpec: Equatable, Sendable {
         self.keyCode = keyCode
     }
 
-    /// `cmd+shift+k`, `return`, `ctrl+f2`, `cmd++` (the plus key).
+    /// `cmd+shift+k`, `return`, `ctrl+f2`, `cmd++` or `cmd+plus` (the plus key), `cmd+-` or `cmd+minus`.
     public static func parse(_ text: String) throws(ValidationError) -> KeySpec {
         var parts = text.split(separator: "+", omittingEmptySubsequences: false).map(String.init)
         // `cmd++` splits as ["cmd", "", ""]: the last key is "+".
@@ -69,6 +69,13 @@ public struct KeySpec: Equatable, Sendable {
         ]
         // Shifted on a US keyboard, but named by the key they're on.
         codes["+"] = codes["="]
+        // Punctuation by name, since `cmd+minus` is as natural a guess as `cmd+-`.
+        let names = [
+            "minus": "-", "plus": "+", "equals": "=", "equal": "=", "comma": ",", "period": ".", "dot": ".",
+            "slash": "/", "backslash": "\\", "semicolon": ";", "quote": "'", "backtick": "`", "grave": "`",
+            "leftbracket": "[", "rightbracket": "]",
+        ]
+        for (name, key) in names { codes[name] = codes[key] }
         return codes
     }()
 }
@@ -83,7 +90,7 @@ public enum KeyError: Equatable, CustomStringConvertible {
     public var description: String {
         switch self {
         case .noKey(let text): "\(text) names no key, e.g. cmd+k"
-        case .unknownKey(let key): "unknown key \(key) (letters, digits, punctuation, return, tab, space, delete, escape, arrows, home, end, pageup, pagedown, f1-f12)"
+        case .unknownKey(let key): "unknown key \(key) (letters, digits, punctuation or its name, e.g. - or minus, + or plus; return, tab, space, delete, escape, arrows, home, end, pageup, pagedown, f1-f12)"
         case .unknownModifier(let modifier): "unknown modifier \(modifier) (cmd, shift, opt, ctrl, fn)"
         }
     }

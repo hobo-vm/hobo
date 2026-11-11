@@ -297,6 +297,9 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(try KeySpec.parse("return") == KeySpec(modifiers: [], keyCode: 0x24))
         #expect(try KeySpec.parse("ctrl+F2") == KeySpec(modifiers: [.control], keyCode: 0x78))
         #expect(try KeySpec.parse("cmd++") == KeySpec(modifiers: [.command], keyCode: 0x18))
+        #expect(try KeySpec.parse("cmd+plus") == KeySpec.parse("cmd++"))
+        #expect(try KeySpec.parse("cmd+minus") == KeySpec.parse("cmd+-"))
+        #expect(try KeySpec.parse("cmd+Comma") == KeySpec.parse("cmd+,"))
     }
 
     @Test func rejectsWhatItDoesNotKnow() {
