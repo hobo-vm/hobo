@@ -43,7 +43,7 @@ type request struct {
 	Destination string `json:"destination,omitempty"`
 	Single      bool   `json:"single,omitempty"`
 	// get: what is copied.
-	Sources   []string `json:"sources,omitempty"`
+	Sources []string `json:"sources,omitempty"`
 }
 
 // Frames carry everything after the request, in both directions: a type byte, a big-endian
