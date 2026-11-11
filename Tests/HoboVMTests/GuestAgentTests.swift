@@ -261,6 +261,39 @@ import Testing
         #expect(try FileManager.default.contentsOfDirectory(atPath: host.path).sorted() == ["other.txt", "tree"])
     }
 
+    /// A guest that has nothing to send (its source is missing) fails the copy, and what `--replace`
+    /// would have removed is still there.
+    @Test func getWithReplaceKeepsTheDestinationWhenNothingArrives() async throws {
+        let dir = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir.appending(path: "tree"), withIntermediateDirectories: true)
+        try Data("stale".utf8).write(to: dir.appending(path: "tree/stale.txt"))
+        let agent = guestAgent { _, socket in
+            try socket.writeFrame(.data, Data())
+            try sendExit(1, on: socket)
+        }
+        let copy = GuestCopy(direction: .fromGuest, sources: ["tree"], destination: dir.path, replace: true)
+        #expect(try await agent.copy(copy) { _, _ in } == 1)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path) == ["tree"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.appending(path: "tree").path) == ["stale.txt"])
+    }
+
+    @Test func putAsksTheAgentToReplace() async throws {
+        let dir = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try Data("one".utf8).write(to: dir.appending(path: "one.txt"))
+        let seen = Seen()
+        let agent = guestAgent { request, socket in
+            seen.record(request)
+            _ = try receiveData(socket)
+            try sendExit(0, on: socket)
+        }
+        let copy = GuestCopy(direction: .toGuest, sources: [dir.appending(path: "one.txt").path], destination: "dest", replace: true)
+        #expect(try await agent.copy(copy) { _, _ in } == 0)
+        #expect(seen.field("replace") == "1")
+        #expect(seen.field("single") == "1")
+    }
+
     @Test func getIntoAnExistingDirectoryKeepsTheSourcesNames() async throws {
         let dir = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
