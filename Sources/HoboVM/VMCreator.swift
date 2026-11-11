@@ -238,7 +238,7 @@ public struct VMCreator {
             macAddress: machine.macAddress.string,
             guestOSVersion: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion) (\(image.buildVersion))",
             created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256,
-            sip: security.sip, amfi: security.amfi
+            sip: security.sip, amfi: security.amfi, guiTesting: recipe.guiTesting != nil
         )
     }
 

@@ -14,6 +14,15 @@ import Testing
         #expect(config.sip && config.amfi)
     }
 
+    /// Bundles from before it was recorded say they have no `[gui_testing]` grants.
+    @Test func guiTestingRoundTrips() throws {
+        let config = try VMConfig.decoder.decode(VMConfig.self, from: Data(Self.json.replacingOccurrences(of: "%@", with: "").utf8))
+        #expect(!config.guiTesting)
+        var granted = config
+        granted.guiTesting = true
+        #expect(try VMConfig.decoder.decode(VMConfig.self, from: VMConfig.encoder.encode(granted)) == granted)
+    }
+
     /// Bundles from before `hobo set --disk` have no pending grow.
     @Test func olderConfigsHaveNoPendingDiskGrow() throws {
         let config = try VMConfig.decoder.decode(VMConfig.self, from: Data(Self.json.replacingOccurrences(of: "%@", with: "").utf8))

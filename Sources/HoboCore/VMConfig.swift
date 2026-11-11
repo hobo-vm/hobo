@@ -23,6 +23,9 @@ public struct VMConfig: Codable, Equatable, Sendable {
     @MissingAsTrue public var sip: Bool
     /// AppleMobileFileIntegrity, as checked in the guest at the end of create (`[security]`).
     @MissingAsTrue public var amfi: Bool
+    /// Built from a recipe with `[gui_testing]`, so the guest has its TCC grants (Accessibility,
+    /// Screen Recording, Automation) for `ui`, `screenshot` and `exec --gui`.
+    @MissingAsFalse public var guiTesting: Bool
     /// Set by `hobo set --disk` once the image has grown: the guest's filesystem still has to
     /// grow into the new space, which the VM process does at the next boot (decision 9).
     @MissingAsFalse public var diskGrowPending: Bool
@@ -42,7 +45,7 @@ public struct VMConfig: Codable, Equatable, Sendable {
     public init(
         os: OS, cpus: Int, memory: UInt64, disk: UInt64, macAddress: String,
         guestOSVersion: String, created: Date, recipeSHA256: String, sourceSHA256: String,
-        sip: Bool = true, amfi: Bool = true, diskGrowPending: Bool = false,
+        sip: Bool = true, amfi: Bool = true, guiTesting: Bool = false, diskGrowPending: Bool = false,
         shares: [VMShare] = [], ephemeral: Bool = false, nicMatchedByDriver: Bool = false,
         resizableDisplay: Bool = false
     ) {
@@ -57,6 +60,7 @@ public struct VMConfig: Codable, Equatable, Sendable {
         self.sourceSHA256 = sourceSHA256
         self.sip = sip
         self.amfi = amfi
+        self.guiTesting = guiTesting
         self.diskGrowPending = diskGrowPending
         self.shares = shares
         self.ephemeral = ephemeral

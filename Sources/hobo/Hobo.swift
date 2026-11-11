@@ -480,7 +480,7 @@ struct Start: OutputCommand {
     )
     var idleTimeout: IdleTimeout?
 
-    @Flag(help: "Print progress and the VM's name and status (state, PID, IP address) as JSON Lines events.")
+    @Flag(help: #"Print progress as {"event":"log","message":…} lines, then {"event":"result","result":{"name":…,"outcome":…,"status":{"state":…,"pid":…,"ipAddress":…}}}. With --ephemeral, result.name is the clone's."#)
     var json = false
 
     static let jsonStyle = Output.JSONStyle.events

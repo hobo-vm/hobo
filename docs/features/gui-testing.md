@@ -104,6 +104,8 @@ $ hobo ui dev wait --text "Hello" --app TextEdit
   allow   = ["com.example.AppUITests.xctrunner"]
   ```
 
+  A VM built this way, and its clones, show `"guiTesting": true` in their config in `hobo list --json`.
+
 - **Linux:** the desktop has accessibility on for AT-SPI, with the Python bindings installed.
 - **Windows:** UI Automation, through `powershell.exe` in the desktop session.
 
