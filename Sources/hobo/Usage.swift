@@ -83,8 +83,9 @@ struct Usage: ParsableCommand {
                           need a desktop: on macOS a screenshot needs [gui_testing], and a Linux guest
                           built with `init --os linux --server` has none.
               Ephemeral   `start <vm> --ephemeral` boots a new clone of a stopped VM, named <vm>-<4 hex>
-                          (printed, and result.name in its JSON's result event). An ephemeral VM is deleted when it stops,
-                          even by crashing, but not when it is suspended. `set <name> --keep` keeps it.
+                          (printed, and result.name in the --json result event). An ephemeral VM is deleted
+                          when it stops, even by crashing, but not when it is suspended. `set <name> --keep`
+                          keeps it.
                           It also stops itself after \(IdleTimeout.standard) idle (`start --idle-timeout`, or off), shown by
                           `list`. A hobo command on it resets the clock, except `list`; raw SSH doesn't. A VM
                           not found mid-session has probably expired: start another.

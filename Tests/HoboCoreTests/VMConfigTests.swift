@@ -14,8 +14,8 @@ import Testing
         #expect(config.sip && config.amfi)
     }
 
-    /// Bundles from before it was recorded say they have no `[gui_testing]` grants.
-    @Test func guiTestingRoundTrips() throws {
+    /// Bundles from before `guiTesting` was recorded say they have no `[gui_testing]` grants.
+    @Test func olderConfigsHaveNoGUITesting() throws {
         let config = try VMConfig.decoder.decode(VMConfig.self, from: Data(Self.json.replacingOccurrences(of: "%@", with: "").utf8))
         #expect(!config.guiTesting)
         var granted = config
