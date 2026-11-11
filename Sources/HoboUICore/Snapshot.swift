@@ -23,7 +23,6 @@ public struct SnapshotNode: Codable, Equatable, Sendable {
 
     public init(ref: Int, attributes a: ElementAttributes, scale: PixelScale) {
         self.ref = RefMap.format(ref)
-        // An unnamed element is better told by its subrole: a window's close button, not a button.
         role = Self.shownRole(a)
         name = a.displayName
         identifier = a.identifier
@@ -37,7 +36,8 @@ public struct SnapshotNode: Codable, Equatable, Sendable {
         children = []
     }
 
-    /// The role a snapshot shows for an element.
+    /// The role a snapshot shows for an element. An unnamed one is better told by its subrole: a
+    /// window's close button, not a button.
     public static func shownRole(_ a: ElementAttributes) -> String {
         displayRole(a.displayName == nil && a.identifier == nil ? a.subrole ?? a.role : a.role)
     }
@@ -216,18 +216,20 @@ public func allElements<E: AccessibleElement>(under root: E, locator: Locator, l
 /// role. Of an element and one inside it that both match (a cell and its text), only the outer.
 public func elements<E: AccessibleElement>(showing text: String, role: String?, under root: E) -> [(E, ElementAttributes, Locator)] {
     var found: [(E, ElementAttributes, Locator)] = []
-    for match in allElements(under: root, locator: Locator())
-    where match.2.steps.first?.role != "AXMenuBar" && match.1.shows(text)
-        && (role == nil || SnapshotNode.shownRole(match.1).caseInsensitiveCompare(role ?? "") == .orderedSame) {
+    for (element, attributes, locator) in allElements(under: root, locator: Locator()) {
+        let inMenuBar = locator.steps.first?.role == "AXMenuBar"
+        let hasRole = role.map { SnapshotNode.shownRole(attributes).caseInsensitiveCompare($0) == .orderedSame } ?? true
+        guard !inMenuBar, hasRole, attributes.shows(text) else { continue }
         // Depth first, so an element's ancestors come before it.
-        if found.contains(where: { match.2.steps.starts(with: $0.2.steps) }) { continue }
-        found.append(match)
+        let isInsideAMatch = found.contains { locator.steps.starts(with: $0.2.steps) }
+        if !isInsideAMatch { found.append((element, attributes, locator)) }
     }
     return found
 }
 
 extension ElementAttributes {
-    /// Whether `text` is all of the element's title, value or label, … and ... being the same.
+    /// Whether `text` is the whole of the element's title, value or label, with `…` and `...`
+    /// counting as the same.
     /// A checkbox's value is its state (`checked`), not text it shows.
     public func shows(_ text: String) -> Bool {
         let wanted = MenuPath.normalized(text)
