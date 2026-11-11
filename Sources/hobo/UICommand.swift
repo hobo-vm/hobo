@@ -27,10 +27,12 @@ struct UICommand: AsyncParsableCommand, JSONPassthrough {
     }
 
     /// The command a request for help is about (`key --help`, `help key`), `HoboUI` when it names
-    /// none; nil when the arguments don't ask for help.
+    /// none; nil when the arguments don't ask for help. After `--` nothing is an option, so
+    /// `type -- --help` types that text.
     static func helpSubject(of arguments: [String]) -> (any ParsableCommand.Type)? {
         let viaHelp = arguments.first == "help"
-        guard viaHelp || arguments.contains("--help") || arguments.contains("-h") else { return nil }
+        let options = arguments.prefix { $0 != "--" }
+        guard viaHelp || options.contains("--help") || options.contains("-h") else { return nil }
         let named = viaHelp ? arguments.dropFirst().first : arguments.first
         return HoboUI.configuration.subcommands.first { $0._commandName == named } ?? HoboUI.self
     }

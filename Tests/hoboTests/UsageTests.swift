@@ -13,6 +13,8 @@ struct UsageTests {
         #expect(UICommand.helpSubject(of: ["help"]) == HoboUI.self)
         #expect(UICommand.helpSubject(of: ["--help"]) == HoboUI.self)
         #expect(UICommand.helpSubject(of: ["key", "cmd+a"]) == nil)
+        #expect(UICommand.helpSubject(of: ["type", "--", "--help"]) == nil)
+        #expect(UICommand.helpSubject(of: ["type", "--help", "--", "x"]) == HoboUI.TypeText.self)
     }
 
     @Test func listsEveryVisibleCommandOnce() {
