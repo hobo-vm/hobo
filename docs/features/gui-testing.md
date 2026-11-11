@@ -71,7 +71,7 @@ $ hobo ui dev wait --text "Hello" --app TextEdit
 | Command | Does |
 | --- | --- |
 | `snapshot` | Prints the tree. `--all` adds offscreen elements and long lists in full, `--root e12` one subtree, `--depth N` fewer levels |
-| `click <ref\|x,y>` | A real click at the element's centre, failing if something covers it. `--right`, `--double`, `--mods cmd,shift`; `--press` uses AXPress instead |
+| `click <ref\|x,y>` | A real click at the element's centre, failing if something covers it. `--text Remove` clicks the one element showing exactly that text, and `--role menuitem` narrows it. `--right`, `--double`, `--mods cmd,shift`; `--press` uses AXPress instead |
 | `drag <from> <to>` | A real drag, pausing over the target before it drops |
 | `scroll <ref\|x,y> <direction> [lines]` | Scroll wheel events; `scroll --to e40` brings an element into view |
 | `type <text> [--into ref]` | Types text, whatever the keyboard layout |

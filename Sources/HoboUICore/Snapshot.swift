@@ -24,7 +24,7 @@ public struct SnapshotNode: Codable, Equatable, Sendable {
     public init(ref: Int, attributes a: ElementAttributes, scale: PixelScale) {
         self.ref = RefMap.format(ref)
         // An unnamed element is better told by its subrole: a window's close button, not a button.
-        role = Self.displayRole(a.displayName == nil && a.identifier == nil ? a.subrole ?? a.role : a.role)
+        role = Self.shownRole(a)
         name = a.displayName
         identifier = a.identifier
         // A checkbox's value is its state, shown as `checked`.
@@ -35,6 +35,11 @@ public struct SnapshotNode: Codable, Equatable, Sendable {
         selected = a.selected ? true : nil
         checked = a.checked
         children = []
+    }
+
+    /// The role a snapshot shows for an element.
+    public static func shownRole(_ a: ElementAttributes) -> String {
+        displayRole(a.displayName == nil && a.identifier == nil ? a.subrole ?? a.role : a.role)
     }
 
     /// `AXButton` → `button`.
@@ -206,7 +211,29 @@ public func allElements<E: AccessibleElement>(under root: E, locator: Locator, l
     return found
 }
 
+/// The elements under `root` showing exactly `text`, for `click --text`: offscreen ones included,
+/// the menu bar's (which are `menu`'s) left out. `role` keeps only those a snapshot shows with that
+/// role. Of an element and one inside it that both match (a cell and its text), only the outer.
+public func elements<E: AccessibleElement>(showing text: String, role: String?, under root: E) -> [(E, ElementAttributes, Locator)] {
+    var found: [(E, ElementAttributes, Locator)] = []
+    for match in allElements(under: root, locator: Locator())
+    where match.2.steps.first?.role != "AXMenuBar" && match.1.shows(text)
+        && (role == nil || SnapshotNode.shownRole(match.1).caseInsensitiveCompare(role ?? "") == .orderedSame) {
+        // Depth first, so an element's ancestors come before it.
+        if found.contains(where: { match.2.steps.starts(with: $0.2.steps) }) { continue }
+        found.append(match)
+    }
+    return found
+}
+
 extension ElementAttributes {
+    /// Whether `text` is all of the element's title, value or label, … and ... being the same.
+    /// A checkbox's value is its state (`checked`), not text it shows.
+    public func shows(_ text: String) -> Bool {
+        let wanted = MenuPath.normalized(text)
+        return [title, checked == nil ? value : nil, label].contains { $0.map(MenuPath.normalized) == wanted }
+    }
+
     /// Whether `text` is part of what the element shows: its title, value or label.
     public func contains(_ text: String) -> Bool {
         [title, value, label].contains { $0?.contains(text) == true }

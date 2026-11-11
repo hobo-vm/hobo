@@ -83,6 +83,26 @@ struct Driver {
         return element
     }
 
+    /// The ref of the one element showing `text` (`click --text`), failing with the candidates
+    /// when there are several: picking one would be a guess.
+    func ref(showing text: String, role: String?, app spec: String?) throws -> Int {
+        let app = try app(spec)
+        let matches = elements(showing: text, role: role, under: app.element)
+        let nodes = try store.update(app.identity.storeKey) { refs in
+            matches.map { SnapshotNode(ref: refs.ref(for: $0.2), attributes: $0.1, scale: scale) }
+        }
+        let kind = role?.lowercased() ?? "element"
+        guard let first = nodes.first, let ref = RefMap.parse(first.ref) else {
+            throw UIError.failed("no \(kind) in \(app.identity.name) shows exactly \(AppSnapshot.quoted(text)); take a snapshot to see what's there")
+        }
+        guard nodes.count == 1 else {
+            let lines = nodes.prefix(10).map { "\n  " + AppSnapshot.line($0) }.joined()
+            let rest = nodes.count > 10 ? "\n  … \(nodes.count - 10) more" : ""
+            throw UIError.failed("\(nodes.count) \(kind)s in \(app.identity.name) show \(AppSnapshot.quoted(text)); click one by its ref\(role == nil ? ", or narrow with --role" : ""):\(lines)\(rest)")
+        }
+        return ref
+    }
+
     /// The element as a snapshot line, with its ref.
     func describe(_ element: AXElement, ref: Int) -> SnapshotNode {
         SnapshotNode(ref: ref, attributes: element.attributes(), scale: scale)
@@ -198,7 +218,7 @@ struct Driver {
     // MARK: click, drag, scroll
 
     func click(_ c: HoboUI.Click) throws -> Outcome {
-        let target = try UITarget(parsing: c.at)
+        let target: UITarget = try c.text.map { .ref(try ref(showing: $0, role: c.role, app: c.target.app)) } ?? UITarget(parsing: c.at ?? "")
         if c.press, case .ref(let ref) = target {
             let app = try app(c.target.app)
             let element = try element(ref, in: app)

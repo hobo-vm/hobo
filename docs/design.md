@@ -612,8 +612,12 @@ global VMs on 2026-11-01.
         the responder chain behave as for a person: an agent testing Candela found that bare-key
         shortcuts didn't fire while a collection view had focus, which AXPress would have hidden.
         A click by ref first brings the app forward through AX and hit-tests the point, failing
-        with what covers the element. `click --press` and `menu` use AXPress; `menu` refuses a
-        disabled item and lists a menu's items with shortcuts in `key`'s syntax.
+        with what covers the element. `click --text` (2026-11-11) clicks the one element whose title,
+        value or label is exactly the text, `--role` narrowing it to a role as snapshot shows it:
+        agents were grepping snapshots for a ref to click. Several matches fail with their lines
+        rather than pick one, and a match inside another match is left to the outer one.
+        `click --press` and `menu` use AXPress; `menu` refuses a disabled item and lists a menu's
+        items with shortcuts in `key`'s syntax.
       - Calls take about 0.3 s over the agent (2026-11-08, macOS 27.2), so there is no batch
         command (`run`); hobo-cg1 revisits it. No launch/quit: `exec -- open -n --env … --args …`
         does that, and `wait --app` waits for a window. MCP tools wait for `hobo mcp` (hobo-i2j).

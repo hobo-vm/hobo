@@ -239,6 +239,46 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 }
 
+@Suite struct ShowingTextTests {
+    let app = Fake("AXApplication", [
+        Fake("AXMenuBar", [Fake("AXMenuBarItem", "Remove")]),
+        Fake("AXWindow", "Main", [
+            Fake("AXButton", "Remove"),
+            Fake("AXButton", "Remove All"),
+            Fake("AXMenu", [Fake("AXMenuItem", "Remove")]),
+            Fake("AXCell", "NAS", [Fake("AXStaticText", value: "NAS")]),
+            Fake("AXButton", "Save…"),
+            Fake("AXCheckBox", "bold", value: "1"),
+            Fake("AXStaticText", value: "1"),
+        ]),
+    ])
+
+    func found(_ text: String, role: String? = nil) -> [String] {
+        elements(showing: text, role: role, under: app).map(\.2.description)
+    }
+
+    @Test func matchesTheWholeTextOutsideTheMenuBar() {
+        #expect(found("Remove") == ["AXWindow:Main[0]/AXButton:Remove[0]", "AXWindow:Main[0]/AXMenu[0]/AXMenuItem:Remove[0]"])
+        #expect(found("Remov").isEmpty)
+        #expect(found("Save...") == ["AXWindow:Main[0]/AXButton:Save…[0]"])
+    }
+
+    @Test func aCheckboxStateIsNotTextItShows() {
+        #expect(found("1") == ["AXWindow:Main[0]/AXStaticText[0]"])
+    }
+
+    @Test func aRoleNarrowsToWhatSnapshotCallsIt() {
+        #expect(found("Remove", role: "menuitem") == ["AXWindow:Main[0]/AXMenu[0]/AXMenuItem:Remove[0]"])
+        #expect(found("Remove", role: "MenuItem").count == 1)
+        #expect(found("Remove", role: "checkbox").isEmpty)
+    }
+
+    @Test func anElementInsideAnotherMatchIsLeftToTheOuterOne() {
+        #expect(found("NAS") == ["AXWindow:Main[0]/AXCell:NAS[0]"])
+        #expect(found("NAS", role: "statictext") == ["AXWindow:Main[0]/AXCell:NAS[0]/AXStaticText[0]"])
+    }
+}
+
 @Suite struct KeyTests {
     @Test func parsesModifiersAndNamedKeys() throws {
         #expect(try KeySpec.parse("cmd+shift+k") == KeySpec(modifiers: [.command, .shift], keyCode: 0x28))
@@ -258,6 +298,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
 @Suite struct CommandTests {
     @Test func parsesEachCommand() throws {
         #expect(try HoboUI.parseAsRoot(["click", "e12", "--mods", "cmd,shift"]) is HoboUI.Click)
+        #expect(try HoboUI.parseAsRoot(["click", "--text", "Remove", "--role", "menuitem", "--press"]) is HoboUI.Click)
         #expect(try HoboUI.parseAsRoot(["scroll", "e5", "down", "10"]) is HoboUI.Scroll)
         #expect(try HoboUI.parseAsRoot(["scroll", "--to", "e40"]) is HoboUI.Scroll)
         #expect(try HoboUI.parseAsRoot(["menu", "File > Save"]) is HoboUI.Menu)
@@ -266,7 +307,8 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 
     @Test(arguments: [
-        ["click", "nowhere"], ["click", "1,2", "--press"], ["scroll", "e5"], ["wait"], ["wait", "--ref", "e1", "--text", "x"],
+        ["click", "nowhere"], ["click", "1,2", "--press"], ["click"], ["click", "e1", "--text", "OK"], ["click", "e1", "--role", "button"],
+        ["click", "--text", ""], ["scroll", "e5"], ["wait"], ["wait", "--ref", "e1", "--text", "x"],
         ["key", "cmd+blah"], ["snapshot", "--depth", "0"], ["menu", " > "],
         ["wait", "--app", "X", "--timeout", "0"], ["wait", "--app", "X", "--timeout", "nan"], ["wait", "--app", "X", "--timeout", "inf"],
     ])
