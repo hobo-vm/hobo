@@ -158,7 +158,10 @@ public struct HoboUI: ParsableCommand {
         @Argument(help: ArgumentHelp("The key.", valueName: "cmd+k")) public var key: String
         public init() {}
 
-        public func validate() throws { _ = try KeySpec.parse(key) }
+        public func validate() throws {
+            // As a ValidationError, so the message comes with key's usage.
+            do { _ = try KeySpec.parse(key) } catch { throw ValidationError(String(describing: error)) }
+        }
     }
 
     public struct Menu: ParsableCommand {
