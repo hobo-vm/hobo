@@ -196,3 +196,21 @@ func TestClipboardDoesntEchoAHostTextWindowsRewrites(t *testing.T) {
 	}
 	toHelper.Close()
 }
+
+// What a Windows clipboard held at the start isn't sent for its CRLF, and a copy goes out as LF.
+func TestClipboardSendsAWindowsCopyInWireForm(t *testing.T) {
+	board := &windowsLikeClipboard{fakeClipboard{text: "there\r\nbefore"}}
+	hostIn, toHelper := io.Pipe()
+	var out syncBuffer
+	go func() { _ = runClipboard(board, hostIn, &out, time.Millisecond) }()
+	time.Sleep(20 * time.Millisecond)
+	if got := out.texts(t); len(got) != 0 {
+		t.Fatalf("sent %q", got)
+	}
+	board.copy("from\r\nthe guest")
+	eventually(t, "the guest's copy to be sent", func() bool { return len(out.texts(t)) == 1 })
+	if got := out.texts(t); got[0] != "from\nthe guest" {
+		t.Fatalf("sent %q", got)
+	}
+	toHelper.Close()
+}
