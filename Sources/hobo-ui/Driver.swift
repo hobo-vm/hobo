@@ -97,8 +97,9 @@ struct Driver {
             throw UIError.failed("no \(kind) in \(app.identity.name) shows exactly \(AppSnapshot.quoted(text)); take a snapshot to see what's there")
         }
         guard nodes.count == 1 else {
-            let lines = nodes.prefix(10).map { "\n  " + AppSnapshot.line($0) }.joined()
-            let rest = nodes.count > 10 ? "\n  … \(nodes.count - 10) more" : ""
+            let listed = 10
+            let lines = nodes.prefix(listed).map { "\n  " + AppSnapshot.line($0) }.joined()
+            let rest = nodes.count > listed ? "\n  … \(nodes.count - listed) more" : ""
             throw UIError.failed("\(nodes.count) \(kind)s in \(app.identity.name) show \(AppSnapshot.quoted(text)); click one by its ref\(role == nil ? ", or narrow with --role" : ""):\(lines)\(rest)")
         }
         return ref
@@ -222,7 +223,13 @@ struct Driver {
     // MARK: click, drag, scroll
 
     func click(_ c: HoboUI.Click) throws -> Outcome {
-        let target: UITarget = try c.text.map { .ref(try ref(showing: $0, role: c.role, app: c.target.app)) } ?? UITarget(parsing: c.at ?? "")
+        let target: UITarget
+        if let text = c.text {
+            target = .ref(try ref(showing: text, role: c.role, app: c.target.app))
+        } else {
+            // Validation leaves one of --text and the ref or point.
+            target = try UITarget(parsing: c.at ?? "")
+        }
         if c.press, case .ref(let ref) = target {
             let app = try app(c.target.app)
             let element = try element(ref, in: app)
@@ -377,6 +384,11 @@ struct Driver {
         }
     }
 
+    /// Whether `condition` came true within `seconds`.
+    func waitUntil(_ seconds: Double, _ condition: () -> Bool) -> Bool {
+        poll(seconds) { condition() ? true : nil } != nil
+    }
+
     /// Through the panel's Go to Folder sheet, which takes a whole path (a save panel puts its last
     /// part in the name field), with each step waited for: keys typed while the sheet opens are lost.
     /// The identifiers are AppKit's own for NSOpenPanel and NSSavePanel.
@@ -392,30 +404,30 @@ struct Driver {
         guard let field = poll(3, { goTo().flatMap { descendant(of: $0, identifiedBy: ["PathTextField"]) } }) else {
             throw UIError.failed("the panel's Go to Folder sheet didn't open")
         }
-        guard poll(2, { field.attributes().focused ? true : nil }) != nil else {
+        guard waitUntil(2, { field.attributes().focused }) else {
             throw UIError.failed("the Go to Folder sheet's path field didn't take focus")
         }
         Input.key(try KeySpec.parse("cmd+a"))
         Input.type(c.path)
-        guard poll(2, { field.attributes().value == c.path ? true : nil }) != nil else {
+        guard waitUntil(2, { field.attributes().value == c.path }) else {
             throw UIError.failed("the Go to Folder sheet has \(AppSnapshot.quoted(field.attributes().value ?? "")), not the path typed")
         }
         // The sheet looks the path up as it's typed; Return before it has goes nowhere.
         Input.pause(0.3)
         Input.key(try KeySpec.parse("return"))
-        guard poll(3, { goTo() == nil ? true : nil }) != nil else {
+        guard waitUntil(3, { goTo() == nil }) else {
             throw UIError.failed("the panel wouldn't go to \(c.path), and its Go to Folder sheet is still open: is the path there in the guest?")
         }
         guard let button = descendant(of: panel, identifiedBy: ["OKButton"]) else { throw UIError.failed("the panel has no Open or Save button") }
         let title = button.attributes().displayName ?? "OK"
-        guard poll(2, { button.attributes().enabled ? true : nil }) != nil else {
+        guard waitUntil(2, { button.attributes().enabled }) else {
             throw UIError.failed("the panel went to \(c.path), but its \(title) button is disabled: it may not let that be chosen")
         }
         guard let point = try? hitPoint(button, node: describe(button, ref: 0)) else {
             throw UIError.failed("the panel went to \(c.path), but something covers its \(title) button; take a snapshot to see what")
         }
         Input.click(at: point)
-        guard poll(3, { descendant(of: app.element, identifiedBy: panels) == nil ? true : nil }) != nil else {
+        guard waitUntil(3, { descendant(of: app.element, identifiedBy: panels) == nil }) else {
             throw UIError.failed("clicked \(title) with \(c.path), but the panel is still open; take a snapshot to see why")
         }
         return Outcome(text: "chose \(c.path) with the panel's \(title) button")
