@@ -163,6 +163,9 @@ func runGet(req request, conn io.Reader, frames *frameWriter) {
 	})
 }
 
+// How long the clipboard helper has to exit once the host hangs up, before it is terminated.
+const clipboardHelperGrace = 5 * time.Second
+
 // runClipboardRequest runs `hobo-agent clipboard` as the request's user in the desktop session, and
 // relays text frames between it and the host until either ends: the host hanging up (hiding its
 // window) closes the helper's input, which ends it. The helper's frames are read whole and
@@ -195,7 +198,7 @@ func runClipboardRequest(req request, conn io.Reader, frames *frameWriter) {
 		stdin.Close()
 		select {
 		case <-exited:
-		case <-time.After(5 * time.Second):
+		case <-time.After(clipboardHelperGrace):
 			proc.Terminate()
 		}
 	}()

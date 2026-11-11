@@ -45,10 +45,10 @@ final class ClipboardSync {
     /// The largest text shared either way, as the agent has it (`maxClipboardText`).
     nonisolated static let maxText = 16 << 20
 
-    typealias Open = @Sendable (AsyncStream<String>, @escaping @Sendable (String) -> Void) async throws -> Int32
+    typealias OpenRequest = @Sendable (AsyncStream<String>, @escaping @Sendable (String) -> Void) async throws -> Int32
 
     private let pasteboard: any HostPasteboard
-    private let open: Open
+    private let open: OpenRequest
     private let isKey: @MainActor () -> Bool
     private let log: (String) -> Void
     private let poll: Duration
@@ -66,6 +66,7 @@ final class ClipboardSync {
     private var matchedChangeCount: Int?
     /// The last text sent to the guest or taken from it.
     private var lastText: String?
+    /// Whether a read of the host's pasteboard is under way, so a poll doesn't start another.
     private var reading = false
     /// The last problem logged, so a guest that keeps failing the same way logs it once.
     private var lastProblem: String?
@@ -74,7 +75,7 @@ final class ClipboardSync {
     /// the window is the key window.
     init(
         pasteboard: any HostPasteboard = SystemPasteboard(), poll: Duration = .milliseconds(500), retry: Duration = .seconds(5),
-        open: @escaping Open, isKey: @escaping @MainActor () -> Bool, log: @escaping (String) -> Void
+        open: @escaping OpenRequest, isKey: @escaping @MainActor () -> Bool, log: @escaping (String) -> Void
     ) {
         self.pasteboard = pasteboard
         self.poll = poll
@@ -138,7 +139,7 @@ final class ClipboardSync {
     /// Sends the host's text to the guest if the window is key and the pasteboard has changed
     /// since it last matched. Called when the window becomes key, and on every poll.
     func hostMayHaveChanged() {
-        guard let outgoing, isKey(), !reading else { return }
+        guard let toGuest = outgoing, isKey(), !reading else { return }
         let count = pasteboard.changeCount
         guard count != matchedChangeCount else { return }
         // Looked at once per change, whatever comes of it, so a refused read isn't asked again.
@@ -160,13 +161,13 @@ final class ClipboardSync {
             reading = false
             // A guest copy that landed during the read is newer than what was read: it wins.
             guard matchedChangeCount == count else { return }
-            guard let text, !text.isEmpty, text != lastText, self.outgoing != nil, requests == request else { return }
+            guard let text, !text.isEmpty, text != lastText, outgoing != nil, requests == request else { return }
             guard text.utf8.count <= Self.maxText else {
                 log("clipboard: not sharing the host's \(text.utf8.count) bytes of text: over the \(Self.maxText)-byte limit")
                 return
             }
             lastText = text
-            outgoing.yield(text)
+            toGuest.yield(text)
         }
     }
 
