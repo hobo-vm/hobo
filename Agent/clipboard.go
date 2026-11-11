@@ -19,14 +19,14 @@ const maxClipboardText = 16 << 20
 // How often the helper looks for a change in the guest's clipboard.
 const clipboardPoll = 500 * time.Millisecond
 
-// guestClipboard is the desktop session's clipboard. It reads the platform's text as it is, and
-// writes text in wire form (`wireText`), converting it to the platform's line endings.
+// guestClipboard is the desktop session's clipboard.
 type guestClipboard interface {
 	// changed is a cheap check whether the clipboard may have changed since it was last asked;
 	// a platform with no such check always says it may have.
 	changed() bool
-	// read gives the clipboard's text, or "" if it holds none.
+	// read gives the clipboard's text as the platform holds it, or "" if it holds none.
 	read() (string, error)
+	// write takes a text in wire form (`wireText`) and stores it in the platform's line endings.
 	write(text string) error
 }
 

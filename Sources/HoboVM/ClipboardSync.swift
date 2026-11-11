@@ -174,9 +174,9 @@ final class ClipboardSync {
     }
 
     /// A text's wire form, as the agent's `wireText` (`Agent/clipboard.go`) defines it: a line
-    /// ending of CRs then LF becomes LF alone, and a CR anywhere else stays. The agent puts
-    /// everything it is sent in this form itself, so its own echo check never depends on this
-    /// agreeing; the host's does, for a text that comes back.
+    /// ending of CRs then LF becomes LF alone, and a CR anywhere else stays. The host's echo check
+    /// depends on this matching the agent's rule, since it compares what it read against what the
+    /// guest sends back; the agent's own check doesn't, as it converts whatever the host sends.
     nonisolated static func wireText(_ text: String) -> String {
         guard text.contains("\r\n") else { return text }
         var scalars = String.UnicodeScalarView()
