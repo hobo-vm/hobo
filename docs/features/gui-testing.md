@@ -77,6 +77,7 @@ $ hobo ui dev wait --text "Hello" --app TextEdit
 | `type <text> [--into ref]` | Types text, whatever the keyboard layout |
 | `key <cmd+k>` | Presses a key with modifiers |
 | `menu "File > Save"` | Chooses a menu item, failing if it's disabled; `menu File` lists the items with their shortcuts |
+| `choose <path>` | Chooses a file or folder in the open or save panel an app is showing: goes to the path, then clicks Open or Save |
 | `wait` | Waits for `--ref`, `--text` or `--app`, or with `--gone` for it to go. On a timeout it prints the snapshot |
 
 - **Refs** keep their numbers across snapshots while the element is there, so `e12` from an earlier

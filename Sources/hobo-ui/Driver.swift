@@ -24,6 +24,7 @@ struct Driver {
         case let c as HoboUI.TypeText: return try type(c)
         case let c as HoboUI.Key: return try key(c)
         case let c as HoboUI.Menu: return try menu(c)
+        case let c as HoboUI.Choose: return try choose(c)
         case let c as HoboUI.Wait: return try wait(c)
         default: throw UIError.failed("no such command")
         }
@@ -348,6 +349,67 @@ struct Driver {
         guard result == .success else { throw UIError.failed("pressing \(chosen) failed (\(result.rawValue))") }
         let state = info.checked ? " (it was checked)" : ""
         return Outcome(text: "chose \(chosen)\(state)", items: [info])
+    }
+
+    // MARK: choose
+
+    /// The first element under `root` with one of these accessibility identifiers.
+    func descendant(of root: AXElement, identifiedBy identifiers: Set<String>) -> AXElement? {
+        allElements(under: root, locator: Locator()).first { $0.1.identifier.map(identifiers.contains) == true }?.0
+    }
+
+    /// Asks every 50 ms until `body` gives a value, for up to `seconds`.
+    func poll<T>(_ seconds: Double, _ body: () -> T?) -> T? {
+        let deadline = Date().addingTimeInterval(seconds)
+        while true {
+            if let value = body() { return value }
+            if Date() >= deadline { return nil }
+            Input.pause(0.05)
+        }
+    }
+
+    /// Through the panel's Go to Folder sheet, which takes a whole path (a save panel puts its last
+    /// part in the name field), with each step waited for: keys typed while the sheet opens are lost.
+    /// The identifiers are AppKit's own for NSOpenPanel and NSSavePanel.
+    func choose(_ c: HoboUI.Choose) throws -> Outcome {
+        let app = try app(c.target.app)
+        let panels: Set<String> = ["open-panel", "save-panel"]
+        guard let panel = descendant(of: app.element, identifiedBy: panels) else {
+            throw UIError.failed("\(app.identity.name) has no open or save panel showing")
+        }
+        bringForward(app, panel)
+        func goTo() -> AXElement? { descendant(of: panel, identifiedBy: ["GoToWindow"]) }
+        if goTo() == nil { Input.key(try KeySpec.parse("cmd+shift+g")) }
+        guard let field = poll(3, { goTo().flatMap { descendant(of: $0, identifiedBy: ["PathTextField"]) } }) else {
+            throw UIError.failed("the panel's Go to Folder sheet didn't open")
+        }
+        guard poll(2, { field.attributes().focused ? true : nil }) != nil else {
+            throw UIError.failed("the Go to Folder sheet's path field didn't take focus")
+        }
+        Input.key(try KeySpec.parse("cmd+a"))
+        Input.type(c.path)
+        guard poll(2, { field.attributes().value == c.path ? true : nil }) != nil else {
+            throw UIError.failed("the Go to Folder sheet has \(AppSnapshot.quoted(field.attributes().value ?? "")), not the path typed")
+        }
+        // The sheet looks the path up as it's typed; Return before it has goes nowhere.
+        Input.pause(0.3)
+        Input.key(try KeySpec.parse("return"))
+        guard poll(3, { goTo() == nil ? true : nil }) != nil else {
+            throw UIError.failed("the panel wouldn't go to \(c.path), and its Go to Folder sheet is still open: is the path there in the guest?")
+        }
+        guard let button = descendant(of: panel, identifiedBy: ["OKButton"]) else { throw UIError.failed("the panel has no Open or Save button") }
+        let title = button.attributes().displayName ?? "OK"
+        guard poll(2, { button.attributes().enabled ? true : nil }) != nil else {
+            throw UIError.failed("the panel went to \(c.path), but its \(title) button is disabled: it may not let that be chosen")
+        }
+        guard let point = try? hitPoint(button, node: describe(button, ref: 0)) else {
+            throw UIError.failed("the panel went to \(c.path), but something covers its \(title) button; take a snapshot to see what")
+        }
+        Input.click(at: point)
+        guard poll(3, { descendant(of: app.element, identifiedBy: panels) == nil ? true : nil }) != nil else {
+            throw UIError.failed("clicked \(title) with \(c.path), but the panel is still open; take a snapshot to see why")
+        }
+        return Outcome(text: "chose \(c.path) with the panel's \(title) button")
     }
 
     // MARK: wait

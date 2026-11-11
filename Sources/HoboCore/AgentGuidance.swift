@@ -68,7 +68,9 @@ public enum AgentGuidance {
         elements as a tree, each with a ref such as `e12`; `click`, `drag`, `scroll`, `type --into` and \
         `menu "File > Save"` act on them with real input events, and `wait --text`, `--ref` or `--app` \
         waits for a condition instead of a sleep. `click --text Remove` (with `--role menuitem` to \
-        narrow it) clicks an element by what it shows, without a snapshot to find its ref. Refs keep their numbers across snapshots; a stale \
+        narrow it) clicks an element by what it shows, without a snapshot to find its ref. With an \
+        open or save panel showing, `choose <path>` picks the file or folder in it; don't type a \
+        path into a panel, which loses a character. Refs keep their numbers across snapshots; a stale \
         one fails rather than hit something else. Coordinates are screenshot pixels. Check results \
         in the app's own state where you can (its files or database through `exec`), not only in \
         screenshots.
