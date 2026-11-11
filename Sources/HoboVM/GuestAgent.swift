@@ -63,7 +63,7 @@ public struct GuestAgent: GuestShell {
     }
 
     public func upload(_ local: URL, to remote: String) async throws {
-        let copy = GuestCopy(direction: .toGuest, sources: [local.path], destination: remote, recursive: true)
+        let copy = GuestCopy(direction: .toGuest, sources: [local.path], destination: remote)
         let status = try await self.copy(copy) { _, data in FileHandle.standardError.write(data) }
         if status != 0 { throw VMError.commandFailed("copying \(local.path) → \(remote)", status) }
     }
@@ -131,12 +131,8 @@ public struct GuestAgent: GuestShell {
         var operands: [String] = []
         var failed = false
         for source in copy.sources {
-            var isDirectory: ObjCBool = false
-            if !FileManager.default.fileExists(atPath: source, isDirectory: &isDirectory) {
+            if !FileManager.default.fileExists(atPath: source) {
                 onOutput(.stderr, Data("\(source): no such file or directory\n".utf8))
-                failed = true
-            } else if isDirectory.boolValue, !copy.recursive {
-                onOutput(.stderr, Data("\(source): is a directory (cp -r copies directories)\n".utf8))
                 failed = true
             } else if URL(filePath: source).standardizedFileURL.path == "/" {
                 // It has no name to copy it under, and holds /dev, whose files never end.
@@ -190,7 +186,7 @@ public struct GuestAgent: GuestShell {
 
         let tar = HostTar(arguments: ["-x", "-f", "-", "-C", extractInto.path])
         let input = try tar.startWriting()
-        let request = AgentRequest(op: "get", user: user, sources: copy.sources, recursive: copy.recursive)
+        let request = AgentRequest(op: "get", user: user, sources: copy.sources)
         let status: Int32
         do {
             status = try await perform(request) { kind, payload in
@@ -323,7 +319,6 @@ struct AgentRequest: Encodable, Equatable {
     var destination: String?
     var single: Bool?
     var sources: [String]?
-    var recursive: Bool?
 }
 
 /// The agent's frame types: a type byte, a big-endian UInt32 length, then the payload.

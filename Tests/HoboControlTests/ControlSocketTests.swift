@@ -67,7 +67,7 @@ import Synchronization
     /// A plain look isn't use, or a polling `hobo list` would keep a forgotten VM alive; a `renew`
     /// that held the timer couldn't report the time left.
     @Test func everyRequestButStatusAndRenewHoldsTheIdleTimeout() {
-        let copy = GuestCopy(direction: .toGuest, sources: ["/a"], destination: "/tmp/", recursive: false)
+        let copy = GuestCopy(direction: .toGuest, sources: ["/a"], destination: "/tmp/")
         #expect(!ControlRequest.status.holdsIdleTimeout && !ControlRequest.renew.holdsIdleTimeout)
         let requests: [ControlRequest] = [.stop(force: false), .exec(command: ["true"]), .copy(copy), .suspend, .snapshot(tag: "a"), .view]
         for request in requests { #expect(request.holdsIdleTimeout, "\(request)") }
@@ -93,7 +93,7 @@ import Synchronization
     }
 
     @Test func streamingRequestsRoundTrip() throws {
-        let copy = GuestCopy(direction: .toGuest, sources: ["/a b"], destination: "/tmp/", recursive: true)
+        let copy = GuestCopy(direction: .toGuest, sources: ["/a b"], destination: "/tmp/")
         for request: ControlRequest in [.exec(command: ["echo", "a\nb"]), .copy(copy), .suspend] {
             let envelope = ControlEnvelope(version: ControlProtocol.version, request: request)
             #expect(try ControlSocket.decode(ControlEnvelope.self, from: ControlSocket.encode(envelope).dropLast()) == envelope)

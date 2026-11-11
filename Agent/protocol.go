@@ -44,7 +44,6 @@ type request struct {
 	Single      bool   `json:"single,omitempty"`
 	// get: what is copied.
 	Sources   []string `json:"sources,omitempty"`
-	Recursive bool     `json:"recursive,omitempty"`
 }
 
 // Frames carry everything after the request, in both directions: a type byte, a big-endian

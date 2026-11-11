@@ -22,8 +22,8 @@ $ hobo screenshot ubuntu
 
 ```sh
 hobo screenshot dev                 # a new dev-<timestamp>.png here
-hobo screenshot dev -o shot.png     # that file, replacing it
-hobo screenshot dev -o - | open -f -a Preview
+hobo screenshot dev shot.png        # that file, replacing it (or -o shot.png)
+hobo screenshot dev - | open -f -a Preview
 ```
 
 The capture runs inside the guest's desktop session, which each guest needs:
@@ -114,8 +114,8 @@ Build a VM once with everything your tests need, then run each test in an
 
 ```sh
 vm=$(hobo start ui-base --ephemeral --json | jq -r 'select(.event=="result").result.name')
-hobo cp -r ./build "$vm":/tmp/
+hobo cp ./build "$vm":/tmp/
 hobo exec "$vm" --gui -- /tmp/build/run-ui-tests
-hobo screenshot "$vm" -o failure.png
+hobo screenshot "$vm" failure.png
 hobo stop "$vm"
 ```

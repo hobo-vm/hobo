@@ -32,7 +32,7 @@ func main() {
 		if len(os.Args) < 3 {
 			os.Exit(2)
 		}
-		finishCopy(getTar(os.Stdout, os.Stderr, os.Args[3:], os.Args[2] == "1"))
+		finishCopy(getTar(os.Stdout, os.Stderr, os.Args[2:]))
 	case "clipboard":
 		board, err := newGuestClipboard()
 		if err == nil {

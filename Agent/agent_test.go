@@ -75,10 +75,10 @@ func read(t *testing.T, path string) string {
 }
 
 // copyTree is get on one side and put on the other, as a host-to-host copy through the agent's tar.
-func copyTree(t *testing.T, sources []string, destination string, recursive bool) (string, error) {
+func copyTree(t *testing.T, sources []string, destination string) (string, error) {
 	t.Helper()
 	var archive, messages bytes.Buffer
-	getErr := getTar(&archive, &messages, sources, recursive)
+	getErr := getTar(&archive, &messages, sources)
 	if err := putTar(&archive, destination, len(sources) == 1); err != nil {
 		return messages.String(), err
 	}
@@ -97,7 +97,7 @@ func TestCopyIntoExistingDirectory(t *testing.T) {
 	if err := os.Mkdir(dest, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := copyTree(t, []string{filepath.Join(dir, "src/tree"), filepath.Join(dir, "src/one.txt")}, dest, true); err != nil {
+	if _, err := copyTree(t, []string{filepath.Join(dir, "src/tree"), filepath.Join(dir, "src/one.txt")}, dest); err != nil {
 		t.Fatal(err)
 	}
 	if read(t, filepath.Join(dest, "tree/sub/b.txt")) != "b" || read(t, filepath.Join(dest, "one.txt")) != "one" {
@@ -115,13 +115,13 @@ func TestCopySingleSourceBecomesDestination(t *testing.T) {
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, "tree/a.txt"), "a")
 	write(t, filepath.Join(dir, "file"), "f")
-	if _, err := copyTree(t, []string{filepath.Join(dir, "tree")}, filepath.Join(dir, "renamed"), true); err != nil {
+	if _, err := copyTree(t, []string{filepath.Join(dir, "tree")}, filepath.Join(dir, "renamed")); err != nil {
 		t.Fatal(err)
 	}
 	if read(t, filepath.Join(dir, "renamed/a.txt")) != "a" {
 		t.Fatal("directory not renamed")
 	}
-	if _, err := copyTree(t, []string{filepath.Join(dir, "file")}, filepath.Join(dir, "copy"), false); err != nil {
+	if _, err := copyTree(t, []string{filepath.Join(dir, "file")}, filepath.Join(dir, "copy")); err != nil {
 		t.Fatal(err)
 	}
 	if read(t, filepath.Join(dir, "copy")) != "f" {
@@ -134,7 +134,7 @@ func TestCopyDotIsOneDirectory(t *testing.T) {
 	write(t, filepath.Join(dir, "home/a.txt"), "a")
 	write(t, filepath.Join(dir, "home/b.txt"), "b")
 	t.Chdir(filepath.Join(dir, "home"))
-	if _, err := copyTree(t, []string{"."}, filepath.Join(dir, "copy"), true); err != nil {
+	if _, err := copyTree(t, []string{"."}, filepath.Join(dir, "copy")); err != nil {
 		t.Fatal(err)
 	}
 	if read(t, filepath.Join(dir, "copy/a.txt")) != "a" || read(t, filepath.Join(dir, "copy/b.txt")) != "b" {
@@ -146,24 +146,20 @@ func TestCopyFailures(t *testing.T) {
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, "tree/a.txt"), "a")
 	write(t, filepath.Join(dir, "file"), "f")
-	messages, err := copyTree(t, []string{filepath.Join(dir, "tree")}, filepath.Join(dir, "out"), false)
-	if err != errCopyFailed || !strings.Contains(messages, "is a directory") {
-		t.Fatalf("directory without -r: %q %v", messages, err)
-	}
-	messages, err = copyTree(t, []string{filepath.Join(dir, "missing"), filepath.Join(dir, "file")}, dir, false)
+	messages, err := copyTree(t, []string{filepath.Join(dir, "missing"), filepath.Join(dir, "file")}, dir)
 	if err != errCopyFailed || !strings.Contains(messages, "no such file") || read(t, filepath.Join(dir, "file")) != "f" {
 		t.Fatalf("missing source: %q %v", messages, err)
 	}
-	if _, err := copyTree(t, []string{filepath.Join(dir, "file"), filepath.Join(dir, "tree")}, filepath.Join(dir, "nowhere"), true); err == nil || !strings.Contains(err.Error(), "not a directory") {
+	if _, err := copyTree(t, []string{filepath.Join(dir, "file"), filepath.Join(dir, "tree")}, filepath.Join(dir, "nowhere")); err == nil || !strings.Contains(err.Error(), "not a directory") {
 		t.Fatalf("several sources into a file: %v", err)
 	}
-	if _, err := copyTree(t, []string{filepath.Join(dir, "file")}, filepath.Join(dir, "nodir")+"/", false); err == nil {
+	if _, err := copyTree(t, []string{filepath.Join(dir, "file")}, filepath.Join(dir, "nodir")+"/"); err == nil {
 		t.Fatal("a trailing slash on a missing directory should fail")
 	}
 	if err := os.Mkdir(filepath.Join(dir, "out"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	messages, err = copyTree(t, []string{"/", filepath.Join(dir, "file")}, filepath.Join(dir, "out"), true)
+	messages, err = copyTree(t, []string{"/", filepath.Join(dir, "file")}, filepath.Join(dir, "out"))
 	if err != errCopyFailed || !strings.Contains(messages, "/: is the filesystem root") || read(t, filepath.Join(dir, "out/file")) != "f" {
 		t.Fatalf("root source: %q %v", messages, err)
 	}

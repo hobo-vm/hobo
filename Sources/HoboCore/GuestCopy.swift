@@ -13,18 +13,16 @@ public struct GuestCopy: Codable, Equatable, Sendable {
     public var sources: [String]
     /// A guest path when copying to the guest, a host path when copying from it.
     public var destination: String
-    public var recursive: Bool
 
-    public init(direction: Direction, sources: [String], destination: String, recursive: Bool) {
+    public init(direction: Direction, sources: [String], destination: String) {
         self.direction = direction
         self.sources = sources
         self.destination = destination
-        self.recursive = recursive
     }
 
     /// Parses scp-style operands, `<src>... <dst>`, where exactly one side names a guest as
     /// `<vm>:<path>`. A colon after a slash (`./a:b`) is part of a host path, as with scp.
-    public static func parse(_ operands: [String], recursive: Bool, currentDirectory: URL) throws -> (vm: String, copy: GuestCopy) {
+    public static func parse(_ operands: [String], currentDirectory: URL) throws -> (vm: String, copy: GuestCopy) {
         guard operands.count >= 2, let last = operands.last else { throw GuestCopyError.tooFewOperands }
         let sources = operands.dropLast().map(Operand.init)
         let destination = Operand(last)
@@ -37,7 +35,7 @@ public struct GuestCopy: Codable, Equatable, Sendable {
         if case .guest(let vm, let path) = destination {
             if sources.contains(where: \.isGuest) { throw GuestCopyError.guestToGuest }
             let hostPaths = sources.map { absolute($0.path) }
-            return (vm, GuestCopy(direction: .toGuest, sources: hostPaths, destination: path, recursive: recursive))
+            return (vm, GuestCopy(direction: .toGuest, sources: hostPaths, destination: path))
         }
         guard case .guest(let vm, _) = sources.first(where: \.isGuest) else { throw GuestCopyError.noGuest }
         var guestPaths: [String] = []
@@ -46,16 +44,17 @@ public struct GuestCopy: Codable, Equatable, Sendable {
             guard name == vm else { throw GuestCopyError.severalGuests }
             guestPaths.append(path)
         }
-        return (vm, GuestCopy(direction: .fromGuest, sources: guestPaths, destination: absolute(destination.path), recursive: recursive))
+        return (vm, GuestCopy(direction: .fromGuest, sources: guestPaths, destination: absolute(destination.path)))
     }
 
     /// scp's arguments (before its connection options) for a guest reached as `remote` (`user@host`).
+    /// Directories are copied whole: `hobo cp` has no non-recursive mode.
     public func scpArguments(remote: String) -> [String] {
         let operands = switch direction {
         case .toGuest: sources + ["\(remote):\(destination)"]
         case .fromGuest: sources.map { "\(remote):\($0)" } + [destination]
         }
-        return ["-q"] + (recursive ? ["-r"] : []) + ["--"] + operands
+        return ["-q", "-r", "--"] + operands
     }
 
     private enum Operand {

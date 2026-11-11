@@ -455,8 +455,10 @@ global VMs on 2026-11-01.
       hangs up (^C) cancels the request. Closing a non-TTY ssh session doesn't signal the guest
       command, so the guest shell first prints its PID (a process group leader, since sshd starts
       a new session) and execs the command; on cancel the VM process kills that group over SSH.
-    - `hobo cp` is scp-style, `[-r] <src>... <dst>`, with exactly one side naming the guest as
-      `<vm>:<path>` (a colon after a slash is a host path). The VM process runs `scp` on the
+    - `hobo cp` is scp-style, `<src>... <dst>`, with exactly one side naming the guest as
+      `<vm>:<path>` (a colon after a slash is a host path). A directory is always copied whole;
+      `-r` is accepted and does nothing, since refusing a directory without it only cost a
+      scripted caller a failed step (decided 2026-11-11). The VM process runs `scp` on the
       client's absolute host paths (same user, same machine) and streams its messages like `exec`.
 16. **Networking.** The system's shared NAT (`VZNATNetworkDeviceAttachment`): every VM is on the same
     bridge (192.168.64.0/24), so VMs reach each other and the host. Each VM's MAC is fixed at create,
@@ -611,7 +613,7 @@ global VMs on 2026-11-01.
       it waits up to 60 s for `/dev/console` and the `gui/<uid>` domain to be the user's, then exits
       125; holding `running` back instead would slow every start, and leave a VM with broken
       auto-login unreachable by plain `exec`. Decided 2026-11-05.
-    - `screenshot [-o path]` is `exec --gui` of a script, in `GuestChannel`, with no request of its
+    - `screenshot <vm> [path]` (or `-o path`) is `exec --gui` of a script, in `GuestChannel`, with no request of its
       own: `screencapture -x` to a temp file (it can't write to stdout), then `cat`. It first asks
       `CGPreflightScreenCaptureAccess` in the guest and fails without the grant, since a capture
       without it succeeds with the windows left out, and that desktop could pass for an app that

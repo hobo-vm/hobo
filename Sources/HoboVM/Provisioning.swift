@@ -56,7 +56,7 @@ public enum Provisioning {
         onOutput: @escaping @Sendable (GuestStream, Data) -> Void
     ) async throws {
         func upload(_ local: URL, to remote: String) async throws {
-            let copy = GuestCopy(direction: .toGuest, sources: [local.path], destination: remote, recursive: true)
+            let copy = GuestCopy(direction: .toGuest, sources: [local.path], destination: remote)
             let status = try await shell.copy(copy, onOutput: onOutput)
             if status != 0 { throw VMError.commandFailed("copying \(local.path) → \(remote)", status) }
         }

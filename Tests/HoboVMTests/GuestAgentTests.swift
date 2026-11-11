@@ -169,7 +169,7 @@ import Testing
             try receiveData(socket).write(to: archive)
             try sendExit(0, on: socket)
         }
-        let copy = GuestCopy(direction: .toGuest, sources: [dir.appending(path: "tree").path, dir.appending(path: "one.txt").path], destination: "dest", recursive: true)
+        let copy = GuestCopy(direction: .toGuest, sources: [dir.appending(path: "tree").path, dir.appending(path: "one.txt").path], destination: "dest")
         #expect(try await agent.copy(copy) { _, _ in } == 0)
         #expect(seen.field("op") == "put")
         #expect(seen.field("destination") == "dest")
@@ -182,35 +182,33 @@ import Testing
     @Test func putFailsForASkippedSourceEvenWhenTheAgentSucceeds() async throws {
         let dir = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
-        try FileManager.default.createDirectory(at: dir.appending(path: "tree"), withIntermediateDirectories: true)
         try Data("f".utf8).write(to: dir.appending(path: "file"))
         let agent = guestAgent { _, socket in
             _ = try receiveData(socket)
             try sendExit(0, on: socket)
         }
         let output = Output()
-        let missing = dir.appending(path: "missing").path, tree = dir.appending(path: "tree").path
-        let copy = GuestCopy(direction: .toGuest, sources: [missing, tree, dir.appending(path: "file").path], destination: "d", recursive: false)
+        let missing = dir.appending(path: "missing").path
+        let copy = GuestCopy(direction: .toGuest, sources: [missing, dir.appending(path: "file").path], destination: "d")
         #expect(try await agent.copy(copy, onOutput: output.append) == 1)
         #expect(output.text(.stderr).contains("\(missing): no such file or directory"))
-        #expect(output.text(.stderr).contains("\(tree): is a directory"))
     }
 
     @Test func putRefusesTheFilesystemRoot() async throws {
         let agent = GuestAgent(connect: { Issue.record("connected"); throw AgentError.unreachable("") })
         let output = Output()
-        let copy = GuestCopy(direction: .toGuest, sources: ["/"], destination: "d", recursive: true)
+        let copy = GuestCopy(direction: .toGuest, sources: ["/"], destination: "d")
         #expect(try await agent.copy(copy, onOutput: output.append) == 1)
         #expect(output.text(.stderr).contains("/: is the filesystem root"))
     }
 
     @Test func putWithNothingToSendNeverConnects() async throws {
         let agent = GuestAgent(connect: { Issue.record("connected"); throw AgentError.unreachable("") })
-        let copy = GuestCopy(direction: .toGuest, sources: ["/nonexistent-\(UUID().uuidString)"], destination: "d", recursive: true)
+        let copy = GuestCopy(direction: .toGuest, sources: ["/nonexistent-\(UUID().uuidString)"], destination: "d")
         #expect(try await agent.copy(copy) { _, _ in } == 1)
     }
 
-    /// `hobo cp -r vm:tree renamed`: a single source becomes the destination itself, and the
+    /// `hobo cp vm:tree renamed`: a single source becomes the destination itself, and the
     /// staging directory it was extracted into is gone.
     @Test func getOfASingleSourceBecomesTheDestination() async throws {
         let dir = try temporaryDirectory()
@@ -228,7 +226,7 @@ import Testing
             try socket.writeFrame(.data, Data())
             try sendExit(0, on: socket)
         }
-        let copy = GuestCopy(direction: .fromGuest, sources: ["tree"], destination: host.appending(path: "renamed").path, recursive: true)
+        let copy = GuestCopy(direction: .fromGuest, sources: ["tree"], destination: host.appending(path: "renamed").path)
         #expect(try await agent.copy(copy) { _, _ in } == 0)
         #expect(seen.field("op") == "get")
         #expect(try String(contentsOf: host.appending(path: "renamed/a.txt"), encoding: .utf8) == "a")
@@ -247,7 +245,7 @@ import Testing
             try socket.writeFrame(.data, Data())
             try sendExit(0, on: socket)
         }
-        let copy = GuestCopy(direction: .fromGuest, sources: ["one.txt", "two.txt"], destination: host.path, recursive: false)
+        let copy = GuestCopy(direction: .fromGuest, sources: ["one.txt", "two.txt"], destination: host.path)
         #expect(try await agent.copy(copy) { _, _ in } == 0)
         #expect(try String(contentsOf: host.appending(path: "one.txt"), encoding: .utf8) == "one")
     }
@@ -258,10 +256,10 @@ import Testing
         defer { try? FileManager.default.removeItem(at: dir) }
         let agent = GuestAgent(connect: { Issue.record("connected"); throw AgentError.unreachable("") })
         let output = Output()
-        let slashed = GuestCopy(direction: .fromGuest, sources: ["a"], destination: dir.appending(path: "missing").path + "/", recursive: false)
+        let slashed = GuestCopy(direction: .fromGuest, sources: ["a"], destination: dir.appending(path: "missing").path + "/")
         #expect(try await agent.copy(slashed, onOutput: output.append) == 1)
         #expect(output.text(.stderr).contains("no such directory"))
-        let several = GuestCopy(direction: .fromGuest, sources: ["a", "b"], destination: dir.appending(path: "file").path, recursive: false)
+        let several = GuestCopy(direction: .fromGuest, sources: ["a", "b"], destination: dir.appending(path: "file").path)
         #expect(try await agent.copy(several, onOutput: output.append) == 1)
         #expect(output.text(.stderr).contains("not a directory"))
     }
@@ -276,7 +274,7 @@ import Testing
             try sendExit(0, on: socket)
         }
         let output = Output()
-        let copy = GuestCopy(direction: .fromGuest, sources: ["a"], destination: dir.appending(path: "out").path, recursive: false)
+        let copy = GuestCopy(direction: .fromGuest, sources: ["a"], destination: dir.appending(path: "out").path)
         #expect(try await agent.copy(copy, onOutput: output.append) == 1)
         #expect(output.text(.stderr).hasPrefix("tar: "))
         #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).isEmpty)

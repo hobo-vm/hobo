@@ -691,10 +691,11 @@ struct Copy: OutputCommand {
     static let configuration = CommandConfiguration(
         commandName: "cp",
         abstract: "Copy files between the host and a running VM.",
-        discussion: "One side names the guest as <vm>:<path>, e.g. hobo cp ./app dev:/tmp/ or hobo cp dev:/var/log/system.log . (runs scp)."
+        discussion: "One side names the guest as <vm>:<path>, e.g. hobo cp ./app dev:/tmp/ or hobo cp dev:/var/log/system.log . (runs scp). A directory is copied with everything in it."
     )
 
-    @Flag(name: .shortAndLong, help: "Copy directories recursively.")
+    /// Accepted because `cp -r` and `scp -r` are habit; a directory is copied whole without it.
+    @Flag(name: .shortAndLong, help: "Has no effect: directories are always copied whole.")
     var recursive = false
 
     @Flag(help: "Print scp's exit status as JSON; its messages go to stderr.")
@@ -706,7 +707,7 @@ struct Copy: OutputCommand {
     static let jsonStyle = Output.JSONStyle.document
 
     func execute(_ output: Output) async throws -> Reply {
-        let (vm, copy) = try GuestCopy.parse(paths, recursive: recursive, currentDirectory: .currentDirectory())
+        let (vm, copy) = try GuestCopy.parse(paths, currentDirectory: .currentDirectory())
         let status = try GuestChannel().copy(vm, copy, onOutput: writeOutput)
         return Reply(GuestCommandResult(exitStatus: status), text: nil, exitStatus: status)
     }
@@ -737,8 +738,14 @@ struct Screenshot: OutputCommand {
     @Argument(help: "Name of the VM.")
     var name: String
 
-    @Option(name: .shortAndLong, help: ArgumentHelp("Where to write the PNG, replacing what's there; - for stdout.", valueName: "path"))
-    var output: String?
+    @Argument(help: ArgumentHelp("Where to write the PNG, replacing what's there; - for stdout.", valueName: "path"))
+    var path: String?
+
+    @Option(name: [.customShort("o"), .customLong("output")], help: ArgumentHelp("The same as <path>.", valueName: "path"))
+    var outputOption: String?
+
+    /// Where the PNG goes: the positional path or `--output`, whichever was given.
+    private var output: String? { path ?? outputOption }
 
     @Flag(help: "Print the VM's name and the file's path as JSON.")
     var json = false
@@ -746,7 +753,8 @@ struct Screenshot: OutputCommand {
     static let jsonStyle = Output.JSONStyle.document
 
     func validate() throws {
-        if json && output == Self.standardOutput { throw ValidationError("--json can't go with -o -: stdout has the PNG") }
+        if path != nil && outputOption != nil { throw ValidationError("give the path once: as <path> or with --output") }
+        if json && output == Self.standardOutput { throw ValidationError("--json can't go with a path of -: stdout has the PNG") }
     }
 
     func execute(_: Output) async throws -> Reply {

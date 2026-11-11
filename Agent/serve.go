@@ -147,12 +147,8 @@ func runPut(req request, conn io.Reader, frames *frameWriter) {
 
 // runGet sends a tar stream of the request's sources, read as its user.
 func runGet(req request, conn io.Reader, frames *frameWriter) {
-	recursive := "0"
-	if req.Recursive {
-		recursive = "1"
-	}
 	proc, err := start(commandSpec{
-		user: req.User, self: append([]string{"get", recursive}, req.Sources...),
+		user: req.User, self: append([]string{"get"}, req.Sources...),
 		stdout: streamWriter{frames, frameData}, stderr: streamWriter{frames, frameStderr},
 	})
 	if !started(err, frames) {

@@ -232,7 +232,7 @@ import Testing
         defer { cleanUp() }
         let server = try serve { _, _ in .error("dev is stopping") }
         defer { server.close() }
-        let copy = GuestCopy(direction: .toGuest, sources: ["/a"], destination: "/tmp/", recursive: false)
+        let copy = GuestCopy(direction: .toGuest, sources: ["/a"], destination: "/tmp/")
         #expect(throws: LifecycleError.refused("dev", "dev is stopping")) { try channel.copy("dev", copy) { _, _ in } }
     }
 }

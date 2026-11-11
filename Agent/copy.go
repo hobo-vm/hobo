@@ -101,12 +101,12 @@ func extract(header *tar.Header, reader io.Reader, target, destination string, i
 }
 
 // getTar writes a tar stream of sources to output, each under its base name. Like scp, a missing
-// source or a directory without recursive is reported and skipped, and fails the copy at the end.
-func getTar(output, messages io.Writer, sources []string, recursive bool) error {
+// source is reported and skipped, and fails the copy at the end.
+func getTar(output, messages io.Writer, sources []string) error {
 	writer := tar.NewWriter(output)
 	failed := false
 	for _, source := range sources {
-		if err := addSource(writer, source, recursive); err != nil {
+		if err := addSource(writer, source); err != nil {
 			fmt.Fprintln(messages, err)
 			failed = true
 		}
@@ -123,7 +123,7 @@ func getTar(output, messages io.Writer, sources []string, recursive bool) error 
 // errCopyFailed fails a copy whose problems have already been reported, one per source.
 var errCopyFailed = errors.New("")
 
-func addSource(writer *tar.Writer, source string, recursive bool) error {
+func addSource(writer *tar.Writer, source string) error {
 	// A source that is a symlink is copied as what it points to, as scp does.
 	info, err := os.Stat(source)
 	if err != nil {
@@ -137,9 +137,6 @@ func addSource(writer *tar.Writer, source string, recursive bool) error {
 	base := filepath.Base(absolute)
 	if !info.IsDir() {
 		return addEntry(writer, source, base, info)
-	}
-	if !recursive {
-		return fmt.Errorf("%s: is a directory (cp -r copies directories)", source)
 	}
 	// A filesystem root has no name to copy it under, and holds /dev and /proc, whose files never end.
 	if filepath.Dir(absolute) == absolute {

@@ -52,7 +52,7 @@ hobo exec win -- powershell.exe -Command 'Get-Process | Select-Object -First 5'
 ```sh
 hobo cp ./app.zip dev:/tmp/            # host to guest
 hobo cp dev:/var/log/system.log .      # guest to host
-hobo cp -r ./build dev:/Users/hobo/ # directories
+hobo cp ./build dev:/Users/hobo/       # a directory, with everything in it
 ```
 
 One side names the guest as `<vm>:<path>`. It runs `scp`.
