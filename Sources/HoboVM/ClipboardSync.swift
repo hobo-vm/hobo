@@ -158,6 +158,8 @@ final class ClipboardSync {
             let text = await Task.detached { pasteboard.string() }.value
             guard let self else { return }
             reading = false
+            // A guest copy that landed during the read is newer than what was read: it wins.
+            guard matchedChangeCount == count else { return }
             guard let text, !text.isEmpty, text != lastText, self.outgoing != nil, requests == request else { return }
             guard text.utf8.count <= Self.maxText else {
                 log("clipboard: not sharing the host's \(text.utf8.count) bytes of text: over the \(Self.maxText)-byte limit")
