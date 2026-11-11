@@ -192,8 +192,8 @@ public struct SnapshotBuilder {
     }
 }
 
-/// The element and locator of everything under `root`, depth first, for `wait --text`, which
-/// looks everywhere, offscreen included. Stops after `limit` elements.
+/// The element and locator of everything under `root`, depth first, offscreen included. Stops
+/// after `limit` elements.
 public func allElements<E: AccessibleElement>(under root: E, locator: Locator, limit: Int = 20_000) -> [(E, ElementAttributes, Locator)] {
     var found: [(E, ElementAttributes, Locator)] = []
     func visit(_ element: E, _ locator: Locator) {
@@ -210,11 +210,12 @@ public func allElements<E: AccessibleElement>(under root: E, locator: Locator, l
     return found
 }
 
-/// What `wait --text` and `click --text` look through under an app: everything `allElements`
-/// gives, offscreen included, but for the menu bar, which is `menu`'s as it is in a snapshot.
+/// What `wait --text` and `click --text` look through under an app: everything in it, offscreen
+/// included, except what a snapshot leaves out at the app's level (the menu bar, which is `menu`'s).
 public func searchableElements<E: AccessibleElement>(under app: E) -> [(E, ElementAttributes, Locator)] {
-    allElements(under: app, locator: Locator()).filter { element in
-        element.2.steps.first.map { !SnapshotBuilder.skippedAtAppLevel.contains($0.role) } ?? true
+    allElements(under: app, locator: Locator()).filter { _, _, locator in
+        guard let topLevelRole = locator.steps.first?.role else { return true }
+        return !SnapshotBuilder.skippedAtAppLevel.contains(topLevelRole)
     }
 }
 
