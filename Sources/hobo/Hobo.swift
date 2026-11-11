@@ -691,14 +691,17 @@ struct Copy: OutputCommand {
     static let configuration = CommandConfiguration(
         commandName: "cp",
         abstract: "Copy files between the host and a running VM.",
-        discussion: "One side names the guest as <vm>:<path>, e.g. hobo cp ./app dev:/tmp/ or hobo cp dev:/var/log/system.log . (runs scp). A directory is copied with everything in it."
+        discussion: "One side names the guest as <vm>:<path>, e.g. hobo cp ./app dev:/tmp/ or hobo cp dev:/var/log/system.log . . A directory is copied with everything in it, and placed as scp would: inside a destination directory that exists, under its own name, otherwise as the destination itself. Copying onto a directory that is already there merges into it; --replace removes it first."
     )
 
     /// Accepted because `cp -r` and `scp -r` are habit; a directory is copied whole without it.
     @Flag(name: .shortAndLong, help: "Has no effect: directories are always copied whole.")
     var recursive = false
 
-    @Flag(help: "Print scp's exit status as JSON; its messages go to stderr.")
+    @Flag(help: "Remove whatever a source would land on first, so a directory that is already there is replaced, not merged into.")
+    var replace = false
+
+    @Flag(help: "Print the copy's exit status as JSON; its messages go to stderr.")
     var json = false
 
     @Argument(help: ArgumentHelp("Sources, then the destination.", valueName: "path"))
@@ -707,7 +710,7 @@ struct Copy: OutputCommand {
     static let jsonStyle = Output.JSONStyle.document
 
     func execute(_ output: Output) async throws -> Reply {
-        let (vm, copy) = try GuestCopy.parse(paths, currentDirectory: .currentDirectory())
+        let (vm, copy) = try GuestCopy.parse(paths, replace: replace, currentDirectory: .currentDirectory())
         let status = try GuestChannel().copy(vm, copy, onOutput: writeOutput)
         return Reply(GuestCommandResult(exitStatus: status), text: nil, exitStatus: status)
     }

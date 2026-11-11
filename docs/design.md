@@ -458,7 +458,10 @@ global VMs on 2026-11-01.
     - `hobo cp` is scp-style, `<src>... <dst>`, with exactly one side naming the guest as
       `<vm>:<path>` (a colon after a slash is a host path). A directory is always copied whole;
       `-r` is accepted and does nothing, since refusing a directory without it only cost a
-      scripted caller a failed step (decided 2026-11-11). The VM process runs `scp` on the
+      scripted caller a failed step (decided 2026-11-11). Onto a directory that is already there
+      a copy merges, as scp's does; `--replace` removes what each source would land on first, since
+      installing a rebuilt `.app` over the last one otherwise needs an `rm -rf` in the guest
+      (decided 2026-11-11). Opt-in, so a plain copy never deletes. The VM process runs `scp` on the
       client's absolute host paths (same user, same machine) and streams its messages like `exec`.
 16. **Networking.** The system's shared NAT (`VZNATNetworkDeviceAttachment`): every VM is on the same
     bridge (192.168.64.0/24), so VMs reach each other and the host. Each VM's MAC is fixed at create,

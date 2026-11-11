@@ -174,6 +174,7 @@ import Testing
         #expect(seen.field("op") == "put")
         #expect(seen.field("destination") == "dest")
         #expect(seen.field("single") == "0")
+        #expect(seen.field("replace") == "0")
         let names = String(decoding: try tar(["-t", "-f", archive.path]), as: UTF8.self).split(separator: "\n").map(String.init)
         #expect(Set(names).isSuperset(of: ["./tree/sub/b.txt", "./one.txt"]))
     }
@@ -231,6 +232,33 @@ import Testing
         #expect(seen.field("op") == "get")
         #expect(try String(contentsOf: host.appending(path: "renamed/a.txt"), encoding: .utf8) == "a")
         #expect(try FileManager.default.contentsOfDirectory(atPath: host.path) == ["renamed"])
+    }
+
+    /// `hobo cp --replace vm:tree out/`: the tree that was in `out` goes, its neighbours stay, and
+    /// no staging directory is left.
+    @Test func getWithReplaceRemovesWhatASourceLandsOn() async throws {
+        let dir = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let guest = dir.appending(path: "guest")
+        try FileManager.default.createDirectory(at: guest.appending(path: "tree"), withIntermediateDirectories: true)
+        try Data("new".utf8).write(to: guest.appending(path: "tree/new.txt"))
+        let stream = try tar(["-c", "-f", "-", "-C", guest.path, "tree"])
+        let host = dir.appending(path: "host")
+        try FileManager.default.createDirectory(at: host.appending(path: "tree"), withIntermediateDirectories: true)
+        try Data("stale".utf8).write(to: host.appending(path: "tree/stale.txt"))
+        try Data("other".utf8).write(to: host.appending(path: "other.txt"))
+        let agent = guestAgent { _, socket in
+            try socket.writeFrame(.data, stream)
+            try socket.writeFrame(.data, Data())
+            try sendExit(0, on: socket)
+        }
+        let merge = GuestCopy(direction: .fromGuest, sources: ["tree"], destination: host.path)
+        #expect(try await agent.copy(merge) { _, _ in } == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: host.appending(path: "tree").path).sorted() == ["new.txt", "stale.txt"])
+        let replace = GuestCopy(direction: .fromGuest, sources: ["tree"], destination: host.path, replace: true)
+        #expect(try await agent.copy(replace) { _, _ in } == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: host.appending(path: "tree").path) == ["new.txt"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: host.path).sorted() == ["other.txt", "tree"])
     }
 
     @Test func getIntoAnExistingDirectoryKeepsTheSourcesNames() async throws {

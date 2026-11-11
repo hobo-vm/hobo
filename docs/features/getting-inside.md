@@ -55,7 +55,16 @@ hobo cp dev:/var/log/system.log .      # guest to host
 hobo cp ./build dev:/Users/hobo/       # a directory, with everything in it
 ```
 
-One side names the guest as `<vm>:<path>`. It runs `scp`.
+One side names the guest as `<vm>:<path>`, and paths mean what they do to `scp`: a source goes
+inside a destination directory that exists, under its own name, and otherwise becomes the
+destination itself.
+
+Copying onto a directory that is already there merges into it, so files the new copy doesn't have
+stay. `--replace` removes whatever each source would land on first:
+
+```sh
+hobo cp --replace ./build/MyApp.app dev:/Applications/    # no leftovers from the old MyApp.app
+```
 
 ## Share folders
 

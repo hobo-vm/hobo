@@ -19,6 +19,12 @@ import Testing
         #expect(copy.scpArguments(remote: "u@h") == ["-q", "-r", "--", "u@h:a", "u@h:/b c", "/work/dir"])
     }
 
+    @Test func replaceIsCarriedEitherWay() throws {
+        #expect(try GuestCopy.parse(["app", "dev:/tmp/"], replace: true, currentDirectory: cwd).copy.replace)
+        #expect(try GuestCopy.parse(["dev:a", "out"], replace: true, currentDirectory: cwd).copy.replace)
+        #expect(try GuestCopy.parse(["app", "dev:/tmp/"], currentDirectory: cwd).copy.replace == false)
+    }
+
     @Test func keepsATrailingSlashOnAHostDestination() throws {
         let (_, copy) = try GuestCopy.parse(["dev:a", "out/"], currentDirectory: cwd)
         #expect(copy.destination == "/work/dir/out/")

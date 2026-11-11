@@ -123,12 +123,14 @@ func runExec(req request, conn io.Reader, frames *frameWriter) {
 // runPut extracts the host's tar stream as the request's user, by running this binary's `put`
 // as them: the agent itself stays root.
 func runPut(req request, conn io.Reader, frames *frameWriter) {
-	single := "0"
-	if req.Single {
-		single = "1"
+	flag := func(on bool) string {
+		if on {
+			return "1"
+		}
+		return "0"
 	}
 	proc, err := start(commandSpec{
-		user: req.User, self: []string{"put", req.Destination, single}, stdin: true,
+		user: req.User, self: []string{"put", req.Destination, flag(req.Single), flag(req.Replace)}, stdin: true,
 		stdout: streamWriter{frames, frameStderr}, stderr: streamWriter{frames, frameStderr},
 	})
 	if !started(err, frames) {

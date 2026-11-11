@@ -190,4 +190,9 @@ struct CopyOptionTests {
         #expect(try Copy.parse(["--recursive", "build", "dev:/tmp/"]).paths == ["build", "dev:/tmp/"])
         #expect(try Copy.parse(["build", "dev:/tmp/"]).paths == ["build", "dev:/tmp/"])
     }
+
+    @Test func replaceIsOffUnlessAsked() throws {
+        #expect(try Copy.parse(["build", "dev:/tmp/"]).replace == false)
+        #expect(try Copy.parse(["--replace", "build", "dev:/tmp/"]).replace)
+    }
 }

@@ -146,7 +146,7 @@ public struct GuestAgent: GuestShell {
         }
         guard !operands.isEmpty else { return 1 }
         let tar = HostTar(arguments: ["-c", "-f", "-", "--no-xattrs", "--no-mac-metadata"] + operands)
-        let request = AgentRequest(op: "put", user: user, destination: copy.destination, single: copy.sources.count == 1)
+        let request = AgentRequest(op: "put", user: user, destination: copy.destination, single: copy.sources.count == 1, replace: copy.replace)
         let status = try await perform(request, send: { socket in
             try tar.run(reading: { chunk in try socket.writeFrame(.data, chunk) })
             try socket.writeFrame(.data, Data())
@@ -163,7 +163,8 @@ public struct GuestAgent: GuestShell {
     }
 
     /// Receives the sources as a tar stream and extracts it with the host's `tar`, as `scp` would:
-    /// into a directory that exists, or a single source as the destination itself.
+    /// into a directory that exists, or a single source as the destination itself. With `replace`,
+    /// what a source lands on in that directory is removed first, once the whole copy has arrived.
     private func get(_ copy: GuestCopy, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
         let destination = URL(filePath: copy.destination)
         var isDirectory: ObjCBool = false
@@ -179,10 +180,13 @@ public struct GuestAgent: GuestShell {
             }
         }
         // A single source lands in a staging directory beside the destination, then takes its name.
-        let staging = destination.deletingLastPathComponent().appending(path: ".hobo-cp-\(UUID().uuidString)")
-        let extractInto = intoDirectory ? destination : staging
-        if !intoDirectory { try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false) }
-        defer { if !intoDirectory { try? FileManager.default.removeItem(at: staging) } }
+        // Sources that replace what's in a directory are staged inside it, then moved into place.
+        let staged = !intoDirectory || copy.replace
+        let stagingParent = intoDirectory ? destination : destination.deletingLastPathComponent()
+        let staging = stagingParent.appending(path: ".hobo-cp-\(UUID().uuidString)")
+        let extractInto = staged ? staging : destination
+        if staged { try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false) }
+        defer { if staged { try? FileManager.default.removeItem(at: staging) } }
 
         let tar = HostTar(arguments: ["-x", "-f", "-", "-C", extractInto.path])
         let input = try tar.startWriting()
@@ -208,7 +212,13 @@ public struct GuestAgent: GuestShell {
             onOutput(.stderr, Data("tar: \(problem)\n".utf8))
             return 1
         }
-        if !intoDirectory, let entry = try FileManager.default.contentsOfDirectory(atPath: staging.path).first {
+        if intoDirectory {
+            for entry in staged ? try FileManager.default.contentsOfDirectory(atPath: staging.path) : [] {
+                let target = destination.appending(path: entry)
+                try? FileManager.default.removeItem(at: target)
+                try FileManager.default.moveItem(at: staging.appending(path: entry), to: target)
+            }
+        } else if let entry = try FileManager.default.contentsOfDirectory(atPath: staging.path).first {
             var destinationIsDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: destination.path, isDirectory: &destinationIsDirectory), !destinationIsDirectory.boolValue {
                 try FileManager.default.removeItem(at: destination)
@@ -318,6 +328,7 @@ struct AgentRequest: Encodable, Equatable {
     var user: String?
     var destination: String?
     var single: Bool?
+    var replace: Bool?
     var sources: [String]?
 }
 

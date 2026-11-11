@@ -24,10 +24,10 @@ func main() {
 	case "serve":
 		serve()
 	case "put":
-		if len(os.Args) != 4 {
+		if len(os.Args) != 5 {
 			os.Exit(2)
 		}
-		finishCopy(putTar(os.Stdin, os.Args[2], os.Args[3] == "1"))
+		finishCopy(putTar(os.Stdin, os.Args[2], os.Args[3] == "1", os.Args[4] == "1"))
 	case "get":
 		if len(os.Args) < 3 {
 			os.Exit(2)

@@ -39,9 +39,11 @@ type request struct {
 	Tool string `json:"tool,omitempty"`
 	// exec, put, get, clipboard: who runs it, and whose files the copy reads or writes.
 	User string `json:"user,omitempty"`
-	// put: where the copy goes; single says the tar holds one top-level entry.
+	// put: where the copy goes; single says the tar holds one top-level entry, and replace that
+	// whatever a source would land on is removed first.
 	Destination string `json:"destination,omitempty"`
 	Single      bool   `json:"single,omitempty"`
+	Replace     bool   `json:"replace,omitempty"`
 	// get: what is copied.
 	Sources []string `json:"sources,omitempty"`
 }

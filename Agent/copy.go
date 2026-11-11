@@ -18,8 +18,9 @@ import (
 
 // putTar extracts a tar stream from stdin. Its top-level entries are the sources' base names.
 // Into a directory that exists they go in under those names; otherwise a single source becomes
-// destination itself, as `scp a b` makes b.
-func putTar(input io.Reader, destination string, single bool) error {
+// destination itself, as `scp a b` makes b. Without replace a directory that is already there is
+// merged into, as scp does; with it, whatever a source would land on is removed first.
+func putTar(input io.Reader, destination string, single, replace bool) error {
 	info, err := os.Stat(destination)
 	intoDirectory := err == nil && info.IsDir()
 	if !intoDirectory {
@@ -30,6 +31,12 @@ func putTar(input io.Reader, destination string, single bool) error {
 			return fmt.Errorf("%s: not a directory", destination)
 		}
 	}
+	if replace && !intoDirectory {
+		if err := os.RemoveAll(destination); err != nil {
+			return err
+		}
+	}
+	replaced := map[string]bool{}
 	reader := tar.NewReader(input)
 	for {
 		header, err := reader.Next()
@@ -42,6 +49,12 @@ func putTar(input io.Reader, destination string, single bool) error {
 		name, err := entryName(header.Name)
 		if err != nil {
 			return err
+		}
+		if top, _, _ := strings.Cut(name, "/"); replace && intoDirectory && !replaced[top] {
+			replaced[top] = true
+			if err := os.RemoveAll(filepath.Join(destination, top)); err != nil {
+				return err
+			}
 		}
 		if err := extract(header, reader, placement(destination, name, intoDirectory), destination, intoDirectory); err != nil {
 			return err

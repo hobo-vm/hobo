@@ -77,9 +77,14 @@ func read(t *testing.T, path string) string {
 // copyTree is get on one side and put on the other, as a host-to-host copy through the agent's tar.
 func copyTree(t *testing.T, sources []string, destination string) (string, error) {
 	t.Helper()
+	return copyTreeReplacing(t, sources, destination, false)
+}
+
+func copyTreeReplacing(t *testing.T, sources []string, destination string, replace bool) (string, error) {
+	t.Helper()
 	var archive, messages bytes.Buffer
 	getErr := getTar(&archive, &messages, sources)
-	if err := putTar(&archive, destination, len(sources) == 1); err != nil {
+	if err := putTar(&archive, destination, len(sources) == 1, replace); err != nil {
 		return messages.String(), err
 	}
 	return messages.String(), getErr
@@ -126,6 +131,39 @@ func TestCopySingleSourceBecomesDestination(t *testing.T) {
 	}
 	if read(t, filepath.Join(dir, "copy")) != "f" {
 		t.Fatal("file not renamed")
+	}
+}
+
+// Without replace a copy onto a directory merges into it, as scp does; with it, what each source
+// lands on goes first, and the destination's other entries stay.
+func TestCopyReplacesWhatASourceLandsOn(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "src/App/new.txt"), "new")
+	write(t, filepath.Join(dir, "dest/App/stale.txt"), "stale")
+	write(t, filepath.Join(dir, "dest/other.txt"), "other")
+	source, dest := []string{filepath.Join(dir, "src/App")}, filepath.Join(dir, "dest")
+	if _, err := copyTree(t, source, dest); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, filepath.Join(dest, "App/stale.txt")) != "stale" {
+		t.Fatal("a plain copy should merge")
+	}
+	if _, err := copyTreeReplacing(t, source, dest, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "App/stale.txt")); !os.IsNotExist(err) {
+		t.Fatalf("stale file survived: %v", err)
+	}
+	if read(t, filepath.Join(dest, "App/new.txt")) != "new" || read(t, filepath.Join(dest, "other.txt")) != "other" {
+		t.Fatal("wrong contents")
+	}
+	// A single directory onto a file takes the file's place.
+	write(t, filepath.Join(dir, "plain"), "f")
+	if _, err := copyTreeReplacing(t, source, filepath.Join(dir, "plain"), true); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, filepath.Join(dir, "plain/new.txt")) != "new" {
+		t.Fatal("the file was not replaced")
 	}
 }
 
