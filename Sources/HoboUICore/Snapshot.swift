@@ -26,8 +26,7 @@ public struct SnapshotNode: Codable, Equatable, Sendable {
         role = Self.shownRole(a)
         name = a.displayName
         identifier = a.identifier
-        // A checkbox's value is its state, shown as `checked`.
-        value = a.checked == nil ? a.value : nil
+        value = a.shownValue
         frame = a.frame.map(scale.pixels)
         disabled = a.enabled ? nil : true
         focused = a.focused ? true : nil
@@ -211,15 +210,22 @@ public func allElements<E: AccessibleElement>(under root: E, locator: Locator, l
     return found
 }
 
-/// The elements under `root` showing exactly `text`, for `click --text`: offscreen ones included,
-/// the menu bar's (which are `menu`'s) left out. `role` keeps only those a snapshot shows with that
-/// role. Of an element and one inside it that both match (a cell and its text), only the outer.
+/// What `wait --text` and `click --text` look through under an app: everything `allElements`
+/// gives, offscreen included, but for the menu bar, which is `menu`'s as it is in a snapshot.
+public func searchableElements<E: AccessibleElement>(under app: E) -> [(E, ElementAttributes, Locator)] {
+    allElements(under: app, locator: Locator()).filter { element in
+        element.2.steps.first.map { !SnapshotBuilder.skippedAtAppLevel.contains($0.role) } ?? true
+    }
+}
+
+/// The elements under `root` (an app) showing exactly `text`, for `click --text`. `role` keeps
+/// only those a snapshot shows with that role. Of an element and one inside it that both match
+/// (a cell and its text), only the outer.
 public func elements<E: AccessibleElement>(showing text: String, role: String?, under root: E) -> [(E, ElementAttributes, Locator)] {
     var found: [(E, ElementAttributes, Locator)] = []
-    for (element, attributes, locator) in allElements(under: root, locator: Locator()) {
-        let inMenuBar = locator.steps.first?.role == "AXMenuBar"
+    for (element, attributes, locator) in searchableElements(under: root) {
         let hasRole = role.map { SnapshotNode.shownRole(attributes).caseInsensitiveCompare($0) == .orderedSame } ?? true
-        guard !inMenuBar, hasRole, attributes.shows(text) else { continue }
+        guard hasRole, attributes.shows(text) else { continue }
         // Depth first, so an element's ancestors come before it.
         let isInsideAMatch = found.contains { locator.steps.starts(with: $0.2.steps) }
         if !isInsideAMatch { found.append((element, attributes, locator)) }
@@ -228,16 +234,21 @@ public func elements<E: AccessibleElement>(showing text: String, role: String?, 
 }
 
 extension ElementAttributes {
-    /// Whether `text` is the whole of the element's title, value or label, with `…` and `...`
-    /// counting as the same.
-    /// A checkbox's value is its state (`checked`), not text it shows.
-    public func shows(_ text: String) -> Bool {
-        let wanted = MenuPath.normalized(text)
-        return [title, checked == nil ? value : nil, label].contains { $0.map(MenuPath.normalized) == wanted }
+    /// The value as a snapshot shows it: not a checkbox's, which is its state (`checked`).
+    public var shownValue: String? { checked == nil ? value : nil }
+
+    /// The text the element shows, which `click --text` and `wait --text` match against: its
+    /// title, shown value and label, with `...` as `…` so that either spelling finds the other.
+    var shownTexts: [String] {
+        [title, shownValue, label].compactMap { $0.map(MenuPath.normalized) }
     }
 
-    /// Whether `text` is part of what the element shows: its title, value or label.
+    /// Whether `text` is the whole of something the element shows.
+    public func shows(_ text: String) -> Bool { shownTexts.contains(MenuPath.normalized(text)) }
+
+    /// Whether `text` is part of something the element shows.
     public func contains(_ text: String) -> Bool {
-        [title, value, label].contains { $0?.contains(text) == true }
+        let wanted = MenuPath.normalized(text)
+        return shownTexts.contains { $0.contains(wanted) }
     }
 }

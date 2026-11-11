@@ -267,6 +267,18 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(found("1") == ["AXWindow:Main[0]/AXStaticText[0]"])
     }
 
+    /// `wait --text` (part of the text) looks where `click --text` (all of it) does, at the same text.
+    @Test func waitingForTextAgreesWithClickingIt() {
+        func waited(_ text: String) -> [String] {
+            searchableElements(under: app).filter { $0.1.contains(text) }.map(\.2.description)
+        }
+        #expect(waited("Save...") == found("Save..."))
+        #expect(waited("1") == found("1"))
+        #expect(waited("Remov") == [
+            "AXWindow:Main[0]/AXButton:Remove[0]", "AXWindow:Main[0]/AXButton:Remove All[0]", "AXWindow:Main[0]/AXMenu[0]/AXMenuItem:Remove[0]",
+        ])
+    }
+
     @Test func aRoleNarrowsToWhatSnapshotCallsIt() {
         #expect(found("Remove", role: "menuitem") == ["AXWindow:Main[0]/AXMenu[0]/AXMenuItem:Remove[0]"])
         #expect(found("Remove", role: "MenuItem").count == 1)

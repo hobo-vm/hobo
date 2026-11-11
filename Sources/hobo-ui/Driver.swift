@@ -470,8 +470,7 @@ struct Driver {
             return Found(present: true, node: describe(element, ref: ref))
         }
         if let text = c.text {
-            for (_, attributes, locator) in allElements(under: app.element, locator: Locator())
-            where locator.steps.first?.role != "AXMenuBar" && attributes.contains(text) {
+            for (_, attributes, locator) in searchableElements(under: app.element) where attributes.contains(text) {
                 let ref = try store.update(app.identity.storeKey) { $0.ref(for: locator) }
                 return Found(present: true, node: SnapshotNode(ref: ref, attributes: attributes, scale: scale))
             }
