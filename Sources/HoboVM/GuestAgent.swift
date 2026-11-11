@@ -212,18 +212,20 @@ public struct GuestAgent: GuestShell {
             onOutput(.stderr, Data("tar: \(problem)\n".utf8))
             return 1
         }
-        if intoDirectory {
-            for entry in staged ? try FileManager.default.contentsOfDirectory(atPath: staging.path) : [] {
+        if !intoDirectory {
+            if let entry = try FileManager.default.contentsOfDirectory(atPath: staging.path).first {
+                var destinationIsDirectory: ObjCBool = false
+                if FileManager.default.fileExists(atPath: destination.path, isDirectory: &destinationIsDirectory), !destinationIsDirectory.boolValue {
+                    try FileManager.default.removeItem(at: destination)
+                }
+                try FileManager.default.moveItem(at: staging.appending(path: entry), to: destination)
+            }
+        } else if copy.replace {
+            for entry in try FileManager.default.contentsOfDirectory(atPath: staging.path) {
                 let target = destination.appending(path: entry)
                 try? FileManager.default.removeItem(at: target)
                 try FileManager.default.moveItem(at: staging.appending(path: entry), to: target)
             }
-        } else if let entry = try FileManager.default.contentsOfDirectory(atPath: staging.path).first {
-            var destinationIsDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: destination.path, isDirectory: &destinationIsDirectory), !destinationIsDirectory.boolValue {
-                try FileManager.default.removeItem(at: destination)
-            }
-            try FileManager.default.moveItem(at: staging.appending(path: entry), to: destination)
         }
         return status
     }
