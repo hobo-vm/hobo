@@ -1,3 +1,5 @@
+import ArgumentParser
+
 /// A modifier key, for `key cmd+k` and `click --mods cmd,shift`.
 public enum Modifier: String, CaseIterable, Codable, Sendable {
     case command, shift, option, control, function
@@ -11,10 +13,10 @@ public enum Modifier: String, CaseIterable, Codable, Sendable {
     public static func parse(_ text: String) -> Modifier? { aliases[text.lowercased()] }
 
     /// `cmd,shift` (or `cmd+shift`).
-    public static func parseList(_ text: String) throws(KeyError) -> [Modifier] {
+    public static func parseList(_ text: String) throws(ValidationError) -> [Modifier] {
         var modifiers: [Modifier] = []
         for part in text.split(whereSeparator: { $0 == "," || $0 == "+" }) {
-            guard let modifier = parse(String(part)) else { throw KeyError.unknownModifier(String(part)) }
+            guard let modifier = parse(String(part)) else { throw KeyError.unknownModifier(String(part)).asUsage }
             modifiers.append(modifier)
         }
         return modifiers
@@ -33,20 +35,20 @@ public struct KeySpec: Equatable, Sendable {
     }
 
     /// `cmd+shift+k`, `return`, `ctrl+f2`, `cmd++` (the plus key).
-    public static func parse(_ text: String) throws(KeyError) -> KeySpec {
+    public static func parse(_ text: String) throws(ValidationError) -> KeySpec {
         var parts = text.split(separator: "+", omittingEmptySubsequences: false).map(String.init)
         // `cmd++` splits as ["cmd", "", ""]: the last key is "+".
         if text.hasSuffix("++") {
             parts.removeLast(2)
             parts.append("+")
         }
-        guard let keyName = parts.last, !keyName.isEmpty else { throw KeyError.noKey(text) }
+        guard let keyName = parts.last, !keyName.isEmpty else { throw KeyError.noKey(text).asUsage }
         var modifiers: [Modifier] = []
         for part in parts.dropLast() {
-            guard let modifier = Modifier.parse(part) else { throw KeyError.unknownModifier(part) }
+            guard let modifier = Modifier.parse(part) else { throw KeyError.unknownModifier(part).asUsage }
             if !modifiers.contains(modifier) { modifiers.append(modifier) }
         }
-        guard let code = keyCodes[keyName.lowercased()] else { throw KeyError.unknownKey(keyName) }
+        guard let code = keyCodes[keyName.lowercased()] else { throw KeyError.unknownKey(keyName).asUsage }
         return KeySpec(modifiers: modifiers, keyCode: code)
     }
 
@@ -71,7 +73,9 @@ public struct KeySpec: Equatable, Sendable {
     }()
 }
 
-public enum KeyError: Error, Equatable, CustomStringConvertible {
+/// What's wrong with a key or modifier as typed. The parsers throw it as a `ValidationError`
+/// (`asUsage`), so that wherever a command's `validate()` meets one, it prints with that command's usage.
+public enum KeyError: Equatable, CustomStringConvertible {
     case noKey(String)
     case unknownKey(String)
     case unknownModifier(String)
@@ -83,4 +87,6 @@ public enum KeyError: Error, Equatable, CustomStringConvertible {
         case .unknownModifier(let modifier): "unknown modifier \(modifier) (cmd, shift, opt, ctrl, fn)"
         }
     }
+
+    var asUsage: ValidationError { ValidationError(description) }
 }

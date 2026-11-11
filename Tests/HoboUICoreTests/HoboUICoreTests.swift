@@ -288,10 +288,14 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 
     @Test func rejectsWhatItDoesNotKnow() {
-        #expect(throws: KeyError.unknownModifier("hyper")) { try KeySpec.parse("hyper+k") }
-        #expect(throws: KeyError.unknownKey("blah")) { try KeySpec.parse("cmd+blah") }
-        #expect(throws: KeyError.noKey("cmd+")) { try KeySpec.parse("cmd+") }
-        #expect(throws: KeyError.unknownModifier("meta")) { try Modifier.parseList("cmd,meta") }
+        func message(_ parse: () throws -> Any) -> String? {
+            do { _ = try parse() } catch { return (error as? ValidationError)?.message }
+            return nil
+        }
+        #expect(message { try KeySpec.parse("hyper+k") } == KeyError.unknownModifier("hyper").description)
+        #expect(message { try KeySpec.parse("cmd+blah") } == KeyError.unknownKey("blah").description)
+        #expect(message { try KeySpec.parse("cmd+") } == KeyError.noKey("cmd+").description)
+        #expect(message { try Modifier.parseList("cmd,meta") } == KeyError.unknownModifier("meta").description)
     }
 }
 
@@ -321,6 +325,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     /// What `hobo ui` prints for a usage error: the failing command's usage, not the root's.
     @Test(arguments: [
         (["key", "cmd+blah"], "key"), (["click"], "click"), (["choose", "Pictures/a.png"], "choose"),
+        (["click", "e1", "--mods", "foo"], "click"), (["drag", "e1", "e2", "--mods", "foo"], "drag"),
     ])
     func aUsageErrorComesWithItsCommandsUsage(_ arguments: [String], _ command: String) {
         do {
