@@ -31,11 +31,7 @@ func putTar(input io.Reader, destination string, single, replace bool) error {
 			return fmt.Errorf("%s: not a directory", destination)
 		}
 	}
-	if replace && !intoDirectory {
-		if err := os.RemoveAll(destination); err != nil {
-			return err
-		}
-	}
+	// Removed as each source's first entry arrives, so a copy that brings nothing removes nothing.
 	replaced := map[string]bool{}
 	reader := tar.NewReader(input)
 	for {
@@ -50,9 +46,9 @@ func putTar(input io.Reader, destination string, single, replace bool) error {
 		if err != nil {
 			return err
 		}
-		if top, _, _ := strings.Cut(name, "/"); replace && intoDirectory && !replaced[top] {
+		if top, _, _ := strings.Cut(name, "/"); replace && !replaced[top] {
 			replaced[top] = true
-			if err := os.RemoveAll(filepath.Join(destination, top)); err != nil {
+			if err := os.RemoveAll(placement(destination, top, intoDirectory)); err != nil {
 				return err
 			}
 		}

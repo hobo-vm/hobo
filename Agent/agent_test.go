@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/tar"
 	"bufio"
 	"bytes"
 	"io"
@@ -164,6 +165,22 @@ func TestCopyReplacesWhatASourceLandsOn(t *testing.T) {
 	}
 	if read(t, filepath.Join(dir, "plain/new.txt")) != "new" {
 		t.Fatal("the file was not replaced")
+	}
+}
+
+// The host's tar sends an empty archive when it can't read its source: the destination stays.
+func TestCopyReplaceKeepsTheDestinationWhenNothingArrives(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "kept"), "kept")
+	var archive bytes.Buffer
+	if err := tar.NewWriter(&archive).Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := putTar(&archive, filepath.Join(dir, "kept"), true, true); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, filepath.Join(dir, "kept")) != "kept" {
+		t.Fatal("the destination was removed")
 	}
 }
 
