@@ -9,7 +9,7 @@ import HoboUICore
 struct UICommand: AsyncParsableCommand, JSONPassthrough {
     static let configuration = CommandConfiguration(
         commandName: "ui",
-        abstract: "Drive a macOS guest's apps: snapshot, click, drag, scroll, type, key, menu, wait.",
+        abstract: "Drive a macOS guest's apps: snapshot, click, drag, scroll, type, key, menu, choose, wait.",
         discussion: HoboUI.configuration.discussion + " " + """
             Needs a VM built from a recipe with [gui_testing]. Commands: \(Self.commandList). \
             hobo ui <vm> <command> --help describes one. With --json a command prints JSON, failures included.
@@ -26,18 +26,30 @@ struct UICommand: AsyncParsableCommand, JSONPassthrough {
         HoboUI.configuration.subcommands.map { $0._commandName }.joined(separator: ", ")
     }
 
+    /// The command a request for help is about (`key --help`, `help key`), `HoboUI` when it names
+    /// none; nil when the arguments don't ask for help. After `--` nothing is an option, so
+    /// `type -- --help` types that text.
+    static func helpSubject(of arguments: [String]) -> (any ParsableCommand.Type)? {
+        let viaHelp = arguments.first == "help"
+        let options = arguments.prefix { $0 != "--" }
+        guard viaHelp || options.contains("--help") || options.contains("-h") else { return nil }
+        let named = viaHelp ? arguments.dropFirst().first : arguments.first
+        return HoboUI.configuration.subcommands.first { $0._commandName == named } ?? HoboUI.self
+    }
+
     func validate() throws {
         guard !arguments.isEmpty else { throw ValidationError("give a command: \(Self.commandList)") }
         // Help is the host's to print: hobo-ui would print the same.
-        if arguments.contains("--help") || arguments.contains("-h") || arguments.first == "help" {
-            let subcommand = HoboUI.configuration.subcommands.first { $0._commandName == arguments.first }
-            print(HoboUI.helpMessage(for: subcommand ?? HoboUI.self))
+        if let subject = Self.helpSubject(of: arguments) {
+            print(HoboUI.helpMessage(for: subject))
             throw ExitCode.success
         }
         do {
             _ = try HoboUI.parseAsRoot(arguments)
         } catch {
-            throw ValidationError(HoboUI.message(for: error))
+            // With the usage of the command that failed (`hobo ui <vm> key <cmd+k>`), not of `hobo ui`.
+            FileHandle.standardError.write(Data((HoboUI.fullMessage(for: error) + "\n").utf8))
+            throw ExitCode.validationFailure
         }
     }
 

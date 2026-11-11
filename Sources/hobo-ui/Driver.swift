@@ -24,6 +24,7 @@ struct Driver {
         case let c as HoboUI.TypeText: return try type(c)
         case let c as HoboUI.Key: return try key(c)
         case let c as HoboUI.Menu: return try menu(c)
+        case let c as HoboUI.Choose: return try choose(c)
         case let c as HoboUI.Wait: return try wait(c)
         default: throw UIError.failed("no such command")
         }
@@ -81,6 +82,28 @@ struct Driver {
             throw UIError.failed("stale ref \(RefMap.format(ref)): it isn't where it was; take a new snapshot")
         }
         return element
+    }
+
+    /// The ref of the one element showing `text` (`click --text`), failing with the candidates
+    /// when there are several: picking one would be a guess.
+    func ref(showing text: String, role: String?, app spec: String?) throws -> Int {
+        let app = try app(spec)
+        let matches = elements(showing: text, role: role, under: app.element)
+        let nodes = try store.update(app.identity.storeKey) { refs in
+            matches.map { SnapshotNode(ref: refs.ref(for: $0.2), attributes: $0.1, scale: scale) }
+        }
+        // "checkbox elements": a role with an s on the end isn't always its plural.
+        let kind = role.map { "\($0.lowercased()) element" } ?? "element"
+        guard let first = nodes.first, let ref = RefMap.parse(first.ref) else {
+            throw UIError.failed("no \(kind) in \(app.identity.name) shows exactly \(AppSnapshot.quoted(text)); take a snapshot to see what's there")
+        }
+        guard nodes.count == 1 else {
+            let listed = 10
+            let lines = nodes.prefix(listed).map { "\n  " + AppSnapshot.line($0) }.joined()
+            let rest = nodes.count > listed ? "\n  … \(nodes.count - listed) more" : ""
+            throw UIError.failed("\(nodes.count) \(kind)s in \(app.identity.name) show \(AppSnapshot.quoted(text)); click one by its ref\(role == nil ? ", or narrow with --role" : ""):\(lines)\(rest)")
+        }
+        return ref
     }
 
     /// The element as a snapshot line, with its ref.
@@ -192,13 +215,22 @@ struct Driver {
     func after(_ element: AXElement, ref: Int, before: SnapshotNode) -> SnapshotNode {
         Input.pause(0.15)
         let attributes = element.attributes()
-        return attributes.role == "AXUnknown" ? before : SnapshotNode(ref: ref, attributes: attributes, scale: scale)
+        // An element on its way out (a button that dismissed its own sheet) can still answer, with
+        // no size at the screen's corner: (0,1200 0×0) says nothing about what was clicked.
+        let lostItsFrame = attributes.frame?.isEmpty == true && before.frame.map { $0.width > 0 && $0.height > 0 } == true
+        return attributes.role == "AXUnknown" || lostItsFrame ? before : SnapshotNode(ref: ref, attributes: attributes, scale: scale)
     }
 
     // MARK: click, drag, scroll
 
     func click(_ c: HoboUI.Click) throws -> Outcome {
-        let target = try UITarget(parsing: c.at)
+        let target: UITarget
+        if let text = c.text {
+            target = .ref(try ref(showing: text, role: c.role, app: c.target.app))
+        } else {
+            // Validation leaves one of --text and the ref or point.
+            target = try UITarget(parsing: c.at ?? "")
+        }
         if c.press, case .ref(let ref) = target {
             let app = try app(c.target.app)
             let element = try element(ref, in: app)
@@ -286,9 +318,15 @@ struct Driver {
             Input.pause(0.1)
             node = aim.node
         }
+        if c.replace {
+            Input.key(try KeySpec.parse("cmd+a"))
+            // Typing over the selection replaces it; with nothing to type, delete it.
+            if c.text.isEmpty { Input.key(try KeySpec.parse("delete")) }
+        }
         Input.type(c.text)
         let count = c.text.count
-        return Outcome(text: "typed \(count) character\(count == 1 ? "" : "s")\(node.map { " into " + AppSnapshot.line($0) } ?? "")", element: node)
+        let typed = "typed \(count) character\(count == 1 ? "" : "s")\(c.replace ? " over what was there" : "")"
+        return Outcome(text: typed + (node.map { " into " + AppSnapshot.line($0) } ?? ""), element: node)
     }
 
     func key(_ c: HoboUI.Key) throws -> Outcome {
@@ -330,6 +368,72 @@ struct Driver {
         return Outcome(text: "chose \(chosen)\(state)", items: [info])
     }
 
+    // MARK: choose
+
+    /// The first element under `root` with one of these accessibility identifiers.
+    func descendant(of root: AXElement, identifiedBy identifiers: Set<String>) -> AXElement? {
+        allElements(under: root, locator: Locator()).first { $0.1.identifier.map(identifiers.contains) == true }?.0
+    }
+
+    /// Asks every 50 ms until `body` gives a value, for up to `seconds`.
+    func poll<T>(_ seconds: Double, _ body: () -> T?) -> T? {
+        let deadline = Date().addingTimeInterval(seconds)
+        while true {
+            if let value = body() { return value }
+            if Date() >= deadline { return nil }
+            Input.pause(0.05)
+        }
+    }
+
+    /// Whether `condition` came true within `seconds`.
+    func waitUntil(_ seconds: Double, _ condition: () -> Bool) -> Bool {
+        poll(seconds) { condition() ? true : nil } != nil
+    }
+
+    /// Through the panel's Go to Folder sheet, which takes a whole path (a save panel puts its last
+    /// part in the name field), with each step waited for: keys typed while the sheet opens are lost.
+    /// The identifiers are AppKit's own for NSOpenPanel and NSSavePanel.
+    func choose(_ c: HoboUI.Choose) throws -> Outcome {
+        let app = try app(c.target.app)
+        let panels: Set<String> = ["open-panel", "save-panel"]
+        guard let panel = descendant(of: app.element, identifiedBy: panels) else {
+            throw UIError.failed("\(app.identity.name) has no open or save panel showing")
+        }
+        bringForward(app, panel)
+        func goTo() -> AXElement? { descendant(of: panel, identifiedBy: ["GoToWindow"]) }
+        if goTo() == nil { Input.key(try KeySpec.parse("cmd+shift+g")) }
+        guard let field = poll(3, { goTo().flatMap { descendant(of: $0, identifiedBy: ["PathTextField"]) } }) else {
+            throw UIError.failed("the panel's Go to Folder sheet didn't open")
+        }
+        guard waitUntil(2, { field.attributes().focused }) else {
+            throw UIError.failed("the Go to Folder sheet's path field didn't take focus")
+        }
+        Input.key(try KeySpec.parse("cmd+a"))
+        Input.type(c.path)
+        guard waitUntil(2, { field.attributes().value == c.path }) else {
+            throw UIError.failed("the Go to Folder sheet has \(AppSnapshot.quoted(field.attributes().value ?? "")), not the path typed")
+        }
+        // The sheet looks the path up as it's typed; Return before it has goes nowhere.
+        Input.pause(0.3)
+        Input.key(try KeySpec.parse("return"))
+        guard waitUntil(3, { goTo() == nil }) else {
+            throw UIError.failed("the panel wouldn't go to \(c.path), and its Go to Folder sheet is still open: is the path there in the guest?")
+        }
+        guard let button = descendant(of: panel, identifiedBy: ["OKButton"]) else { throw UIError.failed("the panel has no Open or Save button") }
+        let title = button.attributes().displayName ?? "OK"
+        guard waitUntil(2, { button.attributes().enabled }) else {
+            throw UIError.failed("the panel went to \(c.path), but its \(title) button is disabled: it may not let that be chosen")
+        }
+        guard let point = try? hitPoint(button, node: describe(button, ref: 0)) else {
+            throw UIError.failed("the panel went to \(c.path), but something covers its \(title) button; take a snapshot to see what")
+        }
+        Input.click(at: point)
+        guard waitUntil(3, { descendant(of: app.element, identifiedBy: panels) == nil }) else {
+            throw UIError.failed("clicked \(title) with \(c.path), but the panel is still open; take a snapshot to see why")
+        }
+        return Outcome(text: "chose \(c.path) with the panel's \(title) button")
+    }
+
     // MARK: wait
 
     func wait(_ c: HoboUI.Wait) throws -> Outcome {
@@ -366,8 +470,7 @@ struct Driver {
             return Found(present: true, node: describe(element, ref: ref))
         }
         if let text = c.text {
-            for (_, attributes, locator) in allElements(under: app.element, locator: Locator())
-            where locator.steps.first?.role != "AXMenuBar" && attributes.contains(text) {
+            for (_, attributes, locator) in searchableElements(under: app.element) where attributes.contains(text) {
                 let ref = try store.update(app.identity.storeKey) { $0.ref(for: locator) }
                 return Found(present: true, node: SnapshotNode(ref: ref, attributes: attributes, scale: scale))
             }

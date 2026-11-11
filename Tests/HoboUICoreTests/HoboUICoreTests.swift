@@ -239,6 +239,58 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 }
 
+@Suite struct ShowingTextTests {
+    let app = Fake("AXApplication", [
+        Fake("AXMenuBar", [Fake("AXMenuBarItem", "Remove")]),
+        Fake("AXWindow", "Main", [
+            Fake("AXButton", "Remove"),
+            Fake("AXButton", "Remove All"),
+            Fake("AXMenu", [Fake("AXMenuItem", "Remove")]),
+            Fake("AXCell", "NAS", [Fake("AXStaticText", value: "NAS")]),
+            Fake("AXButton", "Save…"),
+            Fake("AXCheckBox", "bold", value: "1"),
+            Fake("AXStaticText", value: "1"),
+        ]),
+    ])
+
+    func found(_ text: String, role: String? = nil) -> [String] {
+        elements(showing: text, role: role, under: app).map(\.2.description)
+    }
+
+    @Test func matchesTheWholeTextOutsideTheMenuBar() {
+        #expect(found("Remove") == ["AXWindow:Main[0]/AXButton:Remove[0]", "AXWindow:Main[0]/AXMenu[0]/AXMenuItem:Remove[0]"])
+        #expect(found("Remov").isEmpty)
+        #expect(found("Save...") == ["AXWindow:Main[0]/AXButton:Save…[0]"])
+    }
+
+    @Test func aCheckboxStateIsNotTextItShows() {
+        #expect(found("1") == ["AXWindow:Main[0]/AXStaticText[0]"])
+    }
+
+    /// `wait --text` (part of the text) looks where `click --text` (all of it) does, at the same text.
+    @Test func waitingForTextAgreesWithClickingIt() {
+        func waited(_ text: String) -> [String] {
+            searchableElements(under: app).filter { $0.1.contains(text) }.map(\.2.description)
+        }
+        #expect(waited("Save...") == found("Save..."))
+        #expect(waited("1") == found("1"))
+        #expect(waited("Remov") == [
+            "AXWindow:Main[0]/AXButton:Remove[0]", "AXWindow:Main[0]/AXButton:Remove All[0]", "AXWindow:Main[0]/AXMenu[0]/AXMenuItem:Remove[0]",
+        ])
+    }
+
+    @Test func aRoleNarrowsToWhatSnapshotCallsIt() {
+        #expect(found("Remove", role: "menuitem") == ["AXWindow:Main[0]/AXMenu[0]/AXMenuItem:Remove[0]"])
+        #expect(found("Remove", role: "MenuItem").count == 1)
+        #expect(found("Remove", role: "checkbox").isEmpty)
+    }
+
+    @Test func anElementInsideAnotherMatchIsLeftToTheOuterOne() {
+        #expect(found("NAS") == ["AXWindow:Main[0]/AXCell:NAS[0]"])
+        #expect(found("NAS", role: "statictext") == ["AXWindow:Main[0]/AXCell:NAS[0]/AXStaticText[0]"])
+    }
+}
+
 @Suite struct KeyTests {
     @Test func parsesModifiersAndNamedKeys() throws {
         #expect(try KeySpec.parse("cmd+shift+k") == KeySpec(modifiers: [.command, .shift], keyCode: 0x28))
@@ -248,30 +300,53 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 
     @Test func rejectsWhatItDoesNotKnow() {
-        #expect(throws: KeyError.unknownModifier("hyper")) { try KeySpec.parse("hyper+k") }
-        #expect(throws: KeyError.unknownKey("blah")) { try KeySpec.parse("cmd+blah") }
-        #expect(throws: KeyError.noKey("cmd+")) { try KeySpec.parse("cmd+") }
-        #expect(throws: KeyError.unknownModifier("meta")) { try Modifier.parseList("cmd,meta") }
+        func message(_ parse: () throws -> Any) -> String? {
+            do { _ = try parse() } catch { return (error as? ValidationError)?.message }
+            return nil
+        }
+        #expect(message { try KeySpec.parse("hyper+k") } == KeyError.unknownModifier("hyper").description)
+        #expect(message { try KeySpec.parse("cmd+blah") } == KeyError.unknownKey("blah").description)
+        #expect(message { try KeySpec.parse("cmd+") } == KeyError.noKey("cmd+").description)
+        #expect(message { try Modifier.parseList("cmd,meta") } == KeyError.unknownModifier("meta").description)
     }
 }
 
 @Suite struct CommandTests {
     @Test func parsesEachCommand() throws {
         #expect(try HoboUI.parseAsRoot(["click", "e12", "--mods", "cmd,shift"]) is HoboUI.Click)
+        #expect(try HoboUI.parseAsRoot(["click", "--text", "Remove", "--role", "menuitem", "--press"]) is HoboUI.Click)
         #expect(try HoboUI.parseAsRoot(["scroll", "e5", "down", "10"]) is HoboUI.Scroll)
         #expect(try HoboUI.parseAsRoot(["scroll", "--to", "e40"]) is HoboUI.Scroll)
         #expect(try HoboUI.parseAsRoot(["menu", "File > Save"]) is HoboUI.Menu)
         #expect(try HoboUI.parseAsRoot(["wait", "--app", "TextEdit"]) is HoboUI.Wait)
+        #expect(try HoboUI.parseAsRoot(["choose", "~/Pictures", "--app", "Candela"]) is HoboUI.Choose)
         #expect(try HoboUI.parseAsRoot(["type", "hello", "--into", "e3"]) is HoboUI.TypeText)
+        #expect((try HoboUI.parseAsRoot(["type", "", "--into", "e3", "--replace"]) as? HoboUI.TypeText)?.replace == true)
     }
 
     @Test(arguments: [
-        ["click", "nowhere"], ["click", "1,2", "--press"], ["scroll", "e5"], ["wait"], ["wait", "--ref", "e1", "--text", "x"],
-        ["key", "cmd+blah"], ["snapshot", "--depth", "0"], ["menu", " > "],
+        ["click", "nowhere"], ["click", "1,2", "--press"], ["click"], ["click", "e1", "--text", "OK"], ["click", "e1", "--role", "button"],
+        ["click", "--text", ""], ["wait", "--text", ""], ["scroll", "e5"], ["wait"], ["wait", "--ref", "e1", "--text", "x"],
+        ["key", "cmd+blah"], ["choose", "Pictures/a.png"], ["snapshot", "--depth", "0"], ["menu", " > "],
         ["wait", "--app", "X", "--timeout", "0"], ["wait", "--app", "X", "--timeout", "nan"], ["wait", "--app", "X", "--timeout", "inf"],
     ])
     func rejectsUsageErrors(_ arguments: [String]) {
         #expect(throws: (any Error).self) { try HoboUI.parseAsRoot(arguments) }
+    }
+
+    /// What `hobo ui` prints for a usage error: the failing command's usage, not the root's.
+    @Test(arguments: [
+        (["key", "cmd+blah"], "key"), (["click"], "click"), (["choose", "Pictures/a.png"], "choose"),
+        (["click", "e1", "--mods", "foo"], "click"), (["drag", "e1", "e2", "--mods", "foo"], "drag"),
+    ])
+    func aUsageErrorComesWithItsCommandsUsage(_ arguments: [String], _ command: String) {
+        do {
+            _ = try HoboUI.parseAsRoot(arguments)
+            Issue.record("parsed \(arguments)")
+        } catch {
+            let message = HoboUI.fullMessage(for: error)
+            #expect(message.contains("Usage:") && message.contains(" \(command) "), "\(message)")
+        }
     }
 
     @Test func targetsAreRefsOrPoints() throws {

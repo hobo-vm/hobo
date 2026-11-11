@@ -6,6 +6,17 @@ import Testing
 @testable import hobo
 
 struct UsageTests {
+    @Test func uiHelpIsAboutTheCommandNamed() {
+        #expect(UICommand.helpSubject(of: ["key", "--help"]) == HoboUI.Key.self)
+        #expect(UICommand.helpSubject(of: ["help", "key"]) == HoboUI.Key.self)
+        #expect(UICommand.helpSubject(of: ["click", "e1", "-h"]) == HoboUI.Click.self)
+        #expect(UICommand.helpSubject(of: ["help"]) == HoboUI.self)
+        #expect(UICommand.helpSubject(of: ["--help"]) == HoboUI.self)
+        #expect(UICommand.helpSubject(of: ["key", "cmd+a"]) == nil)
+        #expect(UICommand.helpSubject(of: ["type", "--", "--help"]) == nil)
+        #expect(UICommand.helpSubject(of: ["type", "--help", "--", "x"]) == HoboUI.TypeText.self)
+    }
+
     @Test func listsEveryVisibleCommandOnce() {
         let allLines = Usage.text(columns: 100).split(separator: "\n").filter { $0.hasPrefix("USAGE: hobo ") }
         // `hobo ui`'s own commands, parsed by hobo-ui's definitions, follow its help.

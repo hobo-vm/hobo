@@ -15,7 +15,7 @@ public struct HoboUI: ParsableCommand {
             Clicks, drags, scrolls and keys are real input events, as a person's would be. \
             --app takes a bundle ID, a name or pid:<n>, and defaults to the frontmost app.
             """,
-        subcommands: [Snapshot.self, Click.self, Drag.self, Scroll.self, TypeText.self, Key.self, Menu.self, Wait.self]
+        subcommands: [Snapshot.self, Click.self, Drag.self, Scroll.self, TypeText.self, Key.self, Menu.self, Choose.self, Wait.self]
     )
 
     public init() {}
@@ -56,11 +56,14 @@ public struct HoboUI: ParsableCommand {
             discussion: """
                 Brings the element's app to the front and clicks the centre of it with a real mouse event, \
                 failing if something else is at that point (a sheet over it, or the element scrolled away). \
-                --press performs the element's AXPress action instead, with no mouse.
+                --text clicks the one element showing exactly that text, e.g. click --text Remove --role menuitem, \
+                and fails listing them if several do. --press performs the element's AXPress action instead, with no mouse.
                 """
         )
         @OptionGroup public var target: AppOption
-        @Argument(help: ArgumentHelp("A ref (e12) or a point in pixels (840,412).", valueName: "ref|x,y")) public var at: String
+        @Argument(help: ArgumentHelp("A ref (e12) or a point in pixels (840,412).", valueName: "ref|x,y")) public var at: String?
+        @Option(help: ArgumentHelp("Click the element whose title, value or label is exactly this, instead of a ref.", valueName: "text")) public var text: String?
+        @Option(help: ArgumentHelp("With --text, only elements of this role as snapshot shows it, e.g. button.", valueName: "role")) public var role: String?
         @Option(help: ArgumentHelp("Modifiers held down: cmd, shift, opt, ctrl.", valueName: "cmd,shift")) public var mods: String?
         @Flag(help: "Right-click.") public var right = false
         @Flag(help: "Double-click.") public var double = false
@@ -68,8 +71,16 @@ public struct HoboUI: ParsableCommand {
         public init() {}
 
         public func validate() throws {
-            let point = try parsePoint(at)
-            if press && point != nil { throw ValidationError("--press needs a ref, not a point") }
+            switch (at, text) {
+            case (nil, nil): throw ValidationError("give a ref, a point or --text")
+            case (.some, .some): throw ValidationError("give a ref or point, or --text, not both")
+            case (nil, let text?):
+                if text.isEmpty { throw ValidationError("--text needs some text") }
+            case (let at?, nil):
+                if role != nil { throw ValidationError("--role goes with --text") }
+                let point = try parsePoint(at)
+                if press && point != nil { throw ValidationError("--press needs a ref or --text, not a point") }
+            }
             if press && (right || double || mods != nil) { throw ValidationError("--press takes no --right, --double or --mods") }
             if right && double { throw ValidationError("--right and --double can't go together") }
             if let mods { _ = try Modifier.parseList(mods) }
@@ -126,11 +137,16 @@ public struct HoboUI: ParsableCommand {
         public static let configuration = CommandConfiguration(
             commandName: "type",
             abstract: "Type text into whatever has focus, or into an element.",
-            discussion: "The text goes as Unicode key events, whatever the keyboard layout. --into clicks the element first."
+            discussion: """
+                The text goes as Unicode key events, whatever the keyboard layout, and is added where the cursor is. \
+                --into clicks the element first. --replace selects all (cmd+a) before typing, so the text takes the \
+                place of what the field had; with "" it empties the field.
+                """
         )
         @OptionGroup public var target: AppOption
         @Argument(help: "The text.") public var text: String
         @Option(help: ArgumentHelp("Click this element first.", valueName: "ref")) public var into: String?
+        @Flag(help: "Replace what's there rather than add to it.") public var replace = false
         public init() {}
 
         public func validate() throws {
@@ -169,6 +185,24 @@ public struct HoboUI: ParsableCommand {
         }
     }
 
+    public struct Choose: ParsableCommand {
+        public static let configuration = CommandConfiguration(
+            abstract: "Choose a file or folder in an app's open or save panel.",
+            discussion: """
+                With the panel showing, goes to the path through its Go to Folder sheet, then clicks its Open or Save \
+                button, failing if the panel is still there afterwards. In a save panel the path is the file to save. \
+                (A path typed into a panel loses the character after its first /, while that sheet opens.)
+                """
+        )
+        @OptionGroup public var target: AppOption
+        @Argument(help: ArgumentHelp("The file or folder in the guest, from / or ~.", valueName: "path")) public var path: String
+        public init() {}
+
+        public func validate() throws {
+            if !path.hasPrefix("/") && !path.hasPrefix("~") { throw ValidationError("give a path in the guest from / or ~, not \(path)") }
+        }
+    }
+
     public struct Wait: ParsableCommand {
         public static let configuration = CommandConfiguration(
             abstract: "Wait until an element or text is there, or gone.",
@@ -188,6 +222,8 @@ public struct HoboUI: ParsableCommand {
             if ref != nil && text != nil { throw ValidationError("give --ref or --text, not both") }
             if ref == nil && text == nil && target.app == nil { throw ValidationError("give --ref, --text or --app") }
             if let ref, RefMap.parse(ref) == nil { throw ValidationError("--ref takes a ref such as e12") }
+            // Empty text is part of everything an element shows, so the wait would say nothing.
+            if text?.isEmpty == true { throw ValidationError("--text needs some text") }
             // `nan` and `inf` parse as Doubles, and would wait forever.
             if !timeout.isFinite || timeout <= 0 { throw ValidationError("--timeout must be a number of seconds more than 0") }
         }

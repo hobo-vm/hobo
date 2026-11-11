@@ -655,8 +655,22 @@ global VMs on 2026-11-01.
         the responder chain behave as for a person: an agent testing Candela found that bare-key
         shortcuts didn't fire while a collection view had focus, which AXPress would have hidden.
         A click by ref first brings the app forward through AX and hit-tests the point, failing
-        with what covers the element. `click --press` and `menu` use AXPress; `menu` refuses a
-        disabled item and lists a menu's items with shortcuts in `key`'s syntax.
+        with what covers the element. `click --text` (2026-11-11) clicks the one element whose title,
+        value or label is exactly the text, `--role` narrowing it to a role as snapshot shows it:
+        agents were grepping snapshots for a ref to click. Several matches fail with their lines
+        rather than pick one, and a match inside another match is left to the outer one.
+        `click --press` and `menu` use AXPress; `menu` refuses a disabled item and lists a menu's
+        items with shortcuts in `key`'s syntax.
+      - `type --replace` (2026-11-11) presses Cmd-A before typing, so the text replaces a
+        field's contents (and `""` empties it): `type` alone adds at the cursor, and every edit of
+        a filled field had been click, `key cmd+a`, `type`.
+      - `choose <path>` (2026-11-11) picks a file or folder in the open or save panel an app is
+        showing, found by AppKit's identifiers (`open-panel`, `save-panel`, `GoToWindow`,
+        `PathTextField`, `OKButton`): Cmd-Shift-G, the path typed once the sheet's field has focus,
+        Return, then a click on the panel's default button, each step waited for and the panel
+        gone at the end, or it fails saying which step. A path typed straight into a panel lost
+        the character after its first `/`, which opens that sheet. A save panel's Go to Folder
+        takes a whole path, putting the last part in the name field, so one flow serves both.
       - Calls take about 0.3 s over the agent (2026-11-08, macOS 27.2), so there is no batch
         command (`run`); hobo-cg1 revisits it. No launch/quit: `exec -- open -n --env … --args …`
         does that, and `wait --app` waits for a window. MCP tools wait for `hobo mcp` (hobo-i2j).
