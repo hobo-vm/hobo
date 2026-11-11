@@ -170,5 +170,24 @@ struct ScreenshotOptionTests {
         _ = try Screenshot.parse(["dev", "--json"])
         _ = try Screenshot.parse(["dev", "--json", "-o", "shot.png"])
         _ = try Screenshot.parse(["dev", "-o", "-"])
+        #expect(throws: (any Error).self) { try Screenshot.parse(["dev", "-", "--json"]) }
+        _ = try Screenshot.parse(["dev", "shot.png", "--json"])
+        _ = try Screenshot.parse(["dev", "-"])
+    }
+
+    @Test func thePathIsTheSecondArgumentOrAnOption() throws {
+        #expect(try Screenshot.parse(["dev", "shot.png"]).path == "shot.png")
+        #expect(try Screenshot.parse(["dev", "-o", "shot.png"]).outputOption == "shot.png")
+        #expect(try Screenshot.parse(["dev", "--output", "shot.png"]).outputOption == "shot.png")
+        #expect(throws: (any Error).self) { try Screenshot.parse(["dev", "a.png", "-o", "b.png"]) }
+    }
+}
+
+struct CopyOptionTests {
+    /// `cp -r` is habit, so the flag still parses though directories no longer need it.
+    @Test func recursiveIsStillAccepted() throws {
+        #expect(try Copy.parse(["-r", "build", "dev:/tmp/"]).paths == ["build", "dev:/tmp/"])
+        #expect(try Copy.parse(["--recursive", "build", "dev:/tmp/"]).paths == ["build", "dev:/tmp/"])
+        #expect(try Copy.parse(["build", "dev:/tmp/"]).paths == ["build", "dev:/tmp/"])
     }
 }
