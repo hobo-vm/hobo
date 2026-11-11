@@ -46,7 +46,8 @@ public enum AgentGuidance {
 
         1. `list` shows the VMs. Pick a stopped one to start from (cloning needs it stopped).
         2. `start <vm> --ephemeral` clones it to a new, auto-named VM and boots that. Use the name it \
-        reports for everything after.
+        reports for everything after; to script it, `--json` ends with a result event whose \
+        `result.name` is the clone's name.
         3. Work with as many `exec`, `cp` and `screenshot` calls as you need. There is no one-shot \
         `run`: a session is start, work, stop.
         4. `stop <clone>` when done, which deletes it. A clone you forget stops and deletes itself \
