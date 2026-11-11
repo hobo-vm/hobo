@@ -156,7 +156,9 @@ final class ClipboardSync {
         let pasteboard = self.pasteboard
         let request = requests
         Task { [weak self] in
-            let text = await Task.detached { pasteboard.string() }.value
+            // In LF line endings, as the agent takes it: a Windows guest reads back CRLF as LF, and a
+            // text that came back changed would be sent back over the host's own.
+            let text = await Task.detached { pasteboard.string()?.replacingOccurrences(of: "\r\n", with: "\n") }.value
             guard let self else { return }
             reading = false
             // A guest copy that landed during the read is newer than what was read: it wins.

@@ -112,6 +112,20 @@ import Testing
         clipboard.stop()
     }
 
+    @Test func theHostsCRLFGoesAsLF() async throws {
+        let pasteboard = FakePasteboard()
+        pasteboard.copy("one\r\ntwo\r\n")
+        let request = FakeRequest()
+        let clipboard = sync(pasteboard, request, key: Key())
+        clipboard.start()
+        try await eventually("the host's text to go") { request.texts == ["one\ntwo\n"] }
+        // The guest's clipboard then holds the LF text, which isn't new to the host.
+        request.guestCopies("one\ntwo\n")
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(pasteboard.text == "one\r\ntwo\r\n")
+        clipboard.stop()
+    }
+
     @Test func nothingIsSharedOnceStopped() async throws {
         let pasteboard = FakePasteboard()
         let request = FakeRequest()
