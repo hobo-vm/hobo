@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"syscall"
 	"time"
 	"unicode/utf16"
@@ -83,11 +84,8 @@ func (c *windowsClipboard) read() (string, error) {
 		// Copied rather than viewed in place: the memory is the clipboard's, not Go's.
 		procRtlMoveMemory.Call(uintptr(unsafe.Pointer(&units[0])), pointer, uintptr(len(units)*2))
 	}
-	for i, unit := range units {
-		if unit == 0 {
-			units = units[:i]
-			break
-		}
+	if end := slices.Index(units, 0); end >= 0 {
+		units = units[:end]
 	}
 	return crlfToLF(string(utf16.Decode(units))), nil
 }

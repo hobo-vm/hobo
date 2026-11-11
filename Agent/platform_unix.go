@@ -84,22 +84,24 @@ func (a account) configure(cmd *exec.Cmd) {
 	}
 }
 
-// start runs spec as its user: a command line in their login shell, or this binary's put or get.
+// start runs spec as its user: a command line in their login shell, or this binary's own put, get
+// or clipboard.
 func start(spec commandSpec) (process, error) {
 	who, err := lookupAccount(spec.user)
 	if err != nil {
 		return nil, err
 	}
 	var cmd *exec.Cmd
-	if spec.self != nil && spec.desktop {
+	switch {
+	case spec.self == nil:
+		cmd = who.command(spec.line)
+	case spec.desktop:
 		if cmd, err = who.desktopCommand(append([]string{selfPath()}, spec.self...)); err != nil {
 			return nil, err
 		}
-	} else if spec.self != nil {
+	default:
 		cmd = exec.Command(selfPath(), spec.self...)
 		who.configure(cmd)
-	} else {
-		cmd = who.command(spec.line)
 	}
 	cmd.Stdout = spec.stdout
 	cmd.Stderr = spec.stderr
