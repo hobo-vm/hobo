@@ -92,7 +92,8 @@ struct Driver {
         let nodes = try store.update(app.identity.storeKey) { refs in
             matches.map { SnapshotNode(ref: refs.ref(for: $0.2), attributes: $0.1, scale: scale) }
         }
-        let kind = role?.lowercased() ?? "element"
+        // "checkbox elements": a role with an s on the end isn't always its plural.
+        let kind = role.map { "\($0.lowercased()) element" } ?? "element"
         guard let first = nodes.first, let ref = RefMap.parse(first.ref) else {
             throw UIError.failed("no \(kind) in \(app.identity.name) shows exactly \(AppSnapshot.quoted(text)); take a snapshot to see what's there")
         }
