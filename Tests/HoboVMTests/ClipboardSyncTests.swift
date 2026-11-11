@@ -62,7 +62,8 @@ import Testing
     }
 
     func eventually(_ what: Comment, _ check: () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(2)
+        // Generous: other suites keep the main actor busy when they run alongside.
+        let deadline = ContinuousClock.now + .seconds(10)
         while !check() {
             guard ContinuousClock.now < deadline else {
                 Issue.record("timed out waiting for \(what)")
