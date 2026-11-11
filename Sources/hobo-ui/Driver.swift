@@ -213,7 +213,10 @@ struct Driver {
     func after(_ element: AXElement, ref: Int, before: SnapshotNode) -> SnapshotNode {
         Input.pause(0.15)
         let attributes = element.attributes()
-        return attributes.role == "AXUnknown" ? before : SnapshotNode(ref: ref, attributes: attributes, scale: scale)
+        // An element on its way out (a button that dismissed its own sheet) can still answer, with
+        // no size at the screen's corner: (0,1200 0×0) says nothing about what was clicked.
+        let lostItsFrame = attributes.frame?.isEmpty == true && before.frame.map { $0.width > 0 && $0.height > 0 } == true
+        return attributes.role == "AXUnknown" || lostItsFrame ? before : SnapshotNode(ref: ref, attributes: attributes, scale: scale)
     }
 
     // MARK: click, drag, scroll
