@@ -10,8 +10,13 @@ import Testing
     final class FakePasteboard: HostPasteboard {
         private let state = Mutex<(count: Int, text: String?, reads: Int)>((0, nil, 0))
         let refuses: Bool
+        /// When set, each read waits for a signal on it: a read the paste privacy alert holds up.
+        let gate: DispatchSemaphore?
 
-        init(refuses: Bool = false) { self.refuses = refuses }
+        init(refuses: Bool = false, gate: DispatchSemaphore? = nil) {
+            self.refuses = refuses
+            self.gate = gate
+        }
 
         var changeCount: Int { state.withLock { $0.count } }
         var refusesReads: Bool { refuses }
@@ -19,7 +24,9 @@ import Testing
         var text: String? { state.withLock { $0.text } }
 
         func string() -> String? {
-            state.withLock { $0.reads += 1; return $0.text }
+            let text = state.withLock { $0.reads += 1; return $0.text }
+            gate?.wait()
+            return text
         }
 
         func setString(_ text: String) -> Int {
@@ -124,6 +131,37 @@ import Testing
         try await Task.sleep(for: .milliseconds(30))
         #expect(pasteboard.text == "one\r\ntwo\r\n")
         clipboard.stop()
+    }
+
+    @Test func aGuestCopyDuringAHostReadWins() async throws {
+        let gate = DispatchSemaphore(value: 0)
+        let pasteboard = FakePasteboard(gate: gate)
+        pasteboard.copy("older, on the host")
+        let request = FakeRequest()
+        let clipboard = sync(pasteboard, request, key: Key())
+        clipboard.start()
+        try await eventually("the read to start") { pasteboard.reads == 1 && request.toHost.withLock { $0 } != nil }
+        request.guestCopies("newer, from the guest")
+        try await eventually("the host's pasteboard to change") { pasteboard.text == "newer, from the guest" }
+        gate.signal()
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(request.texts.isEmpty)
+        #expect(pasteboard.text == "newer, from the guest")
+        clipboard.stop()
+    }
+
+    @Test func theHostsTextOverTheLimitIsLoggedAndNotSent() async throws {
+        let pasteboard = FakePasteboard()
+        pasteboard.copy(String(repeating: "x", count: ClipboardSync.maxText + 1))
+        let request = FakeRequest()
+        let logged = Mutex<[String]>([])
+        let clipboard = sync(pasteboard, request, key: Key()) { line in logged.withLock { $0.append(line) } }
+        clipboard.start()
+        try await eventually("the skip to be logged") { !logged.withLock { $0 }.isEmpty }
+        pasteboard.copy("small")
+        try await eventually("the next text to go") { request.texts == ["small"] }
+        clipboard.stop()
+        #expect(logged.withLock { $0 }.first?.contains("over the \(ClipboardSync.maxText)-byte limit") == true)
     }
 
     @Test func nothingIsSharedOnceStopped() async throws {
