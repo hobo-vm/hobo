@@ -723,7 +723,7 @@ func writeOutput(_ stream: GuestStream, _ data: Data) throws {
 }
 
 struct Screenshot: OutputCommand {
-    /// The `--output` that means this process's stdout.
+    /// The path that means this process's stdout.
     private static let standardOutput = "-"
 
     static let configuration = CommandConfiguration(
