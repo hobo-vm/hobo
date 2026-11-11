@@ -318,6 +318,20 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(throws: (any Error).self) { try HoboUI.parseAsRoot(arguments) }
     }
 
+    /// What `hobo ui` prints for a usage error: the failing command's usage, not the root's.
+    @Test(arguments: [
+        (["key", "cmd+blah"], "key"), (["click"], "click"), (["choose", "Pictures/a.png"], "choose"),
+    ])
+    func aUsageErrorComesWithItsCommandsUsage(_ arguments: [String], _ command: String) {
+        do {
+            _ = try HoboUI.parseAsRoot(arguments)
+            Issue.record("parsed \(arguments)")
+        } catch {
+            let message = HoboUI.fullMessage(for: error)
+            #expect(message.contains("Usage:") && message.contains(" \(command) "), "\(message)")
+        }
+    }
+
     @Test func targetsAreRefsOrPoints() throws {
         #expect(try UITarget(parsing: "e3") == .ref(3))
         #expect(try UITarget(parsing: "840,412") == .point(PixelPoint(x: 840, y: 412)))
