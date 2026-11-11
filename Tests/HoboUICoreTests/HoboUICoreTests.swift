@@ -326,7 +326,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
 
     @Test(arguments: [
         ["click", "nowhere"], ["click", "1,2", "--press"], ["click"], ["click", "e1", "--text", "OK"], ["click", "e1", "--role", "button"],
-        ["click", "--text", ""], ["scroll", "e5"], ["wait"], ["wait", "--ref", "e1", "--text", "x"],
+        ["click", "--text", ""], ["wait", "--text", ""], ["scroll", "e5"], ["wait"], ["wait", "--ref", "e1", "--text", "x"],
         ["key", "cmd+blah"], ["choose", "Pictures/a.png"], ["snapshot", "--depth", "0"], ["menu", " > "],
         ["wait", "--app", "X", "--timeout", "0"], ["wait", "--app", "X", "--timeout", "nan"], ["wait", "--app", "X", "--timeout", "inf"],
     ])
