@@ -217,7 +217,9 @@ struct Driver {
         // Hit-testing can land on something inside the element (a cell's text), or on a container of
         // it that doesn't hit-test its children; either way the click reaches it.
         if hit.isWithin(element) || element.isWithin(hit) { return centre }
-        if ScrollVisibility.obstruction(of: centre, areas: scrollAreas(around: element)) != nil { throw UIError.failed("\(AppSnapshot.line(node)) is scrolled out of view; scroll --to \(node.ref) first") }
+        if ScrollVisibility.obstruction(of: centre, areas: scrollAreas(around: element)) != nil {
+            throw UIError.failed("\(AppSnapshot.line(node)) is scrolled out of view; scroll --to \(node.ref) first")
+        }
         // Within the element's own window, hit-testing isn't to be trusted: SwiftUI answers with the
         // scroll area under a bar laid over it (safeAreaInset), not the bar's button. Only another
         // window, sheet, popover or menu over it keeps a click from it.
@@ -353,7 +355,8 @@ struct Driver {
         }
         for _ in 0..<60 {
             guard let frame = element.attributes().frame else { break }
-            guard let obstruction = ScrollVisibility.obstruction(of: CGPoint(x: frame.midX, y: frame.midY), areas: scrollAreas(around: element)) else {
+            let centre = CGPoint(x: frame.midX, y: frame.midY)
+            guard let obstruction = ScrollVisibility.obstruction(of: centre, areas: scrollAreas(around: element)) else {
                 node = describe(element, ref: ref)
                 return Outcome(text: "scrolled to \(AppSnapshot.line(node))", element: node)
             }
