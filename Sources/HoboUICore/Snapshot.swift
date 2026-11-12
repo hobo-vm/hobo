@@ -221,7 +221,8 @@ public func searchableElements<E: AccessibleElement>(under app: E) -> [(E, Eleme
 
 /// The elements under `root` (an app) showing exactly `text`, for `click --text`. `role` keeps
 /// only those a snapshot shows with that role. Of an element and one inside it that both match
-/// (a cell and its text), only the outer.
+/// (a cell and its text), only the outer; of matches with the same role in the same frame (a menu
+/// item AppKit reports twice), only the first, since a click there reaches either.
 public func elements<E: AccessibleElement>(showing text: String, role: String?, under root: E) -> [(E, ElementAttributes, Locator)] {
     var found: [(E, ElementAttributes, Locator)] = []
     for (element, attributes, locator) in searchableElements(under: root) {
@@ -229,7 +230,10 @@ public func elements<E: AccessibleElement>(showing text: String, role: String?, 
         guard hasRole, attributes.shows(text) else { continue }
         // Depth first, so an element's ancestors come before it.
         let isInsideAMatch = found.contains { locator.steps.starts(with: $0.2.steps) }
-        if !isInsideAMatch { found.append((element, attributes, locator)) }
+        let isAMatchAgain = attributes.frame.map { frame in
+            !frame.isEmpty && found.contains { $0.1.role == attributes.role && $0.1.frame == frame }
+        } ?? false
+        if !isInsideAMatch && !isAMatchAgain { found.append((element, attributes, locator)) }
     }
     return found
 }

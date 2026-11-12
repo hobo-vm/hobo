@@ -663,7 +663,11 @@ global VMs on 2026-11-01.
         with what covers the element. `click --text` (2026-11-11) clicks the one element whose title,
         value or label is exactly the text, `--role` narrowing it to a role as snapshot shows it:
         agents were grepping snapshots for a ref to click. Several matches fail with their lines
-        rather than pick one, and a match inside another match is left to the outer one.
+        rather than pick one, and a match inside another match is left to the outer one, as is a
+        second match of the same role in the same frame: AppKit can report one menu item twice,
+        and an agent's `--role menuitem` failed on the pair. A click made while a pop-up menu is
+        open elsewhere on screen (a window at the pop-up menu level not covering the point) still
+        happens, but its message says the menu likely swallowed it.
         `click --press` and `menu` use AXPress; `menu` refuses a disabled item and lists a menu's
         items with shortcuts in `key`'s syntax.
       - `type --replace` (2026-11-11) presses Cmd-A before typing, so the text replaces a

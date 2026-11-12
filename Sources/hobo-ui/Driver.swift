@@ -242,9 +242,26 @@ struct Driver {
         }
         let aim = try aim(target, app: c.target.app)
         let modifiers = try c.mods.map(Modifier.parseList) ?? []
+        let menu = openMenu(notAt: aim.point)
         Input.click(at: aim.point, right: c.right, count: c.double ? 2 : 1, modifiers: modifiers)
         let (what, node) = outcomeTarget(aim)
-        return Outcome(text: "\(c.right ? "right-clicked" : c.double ? "double-clicked" : "clicked") \(what)", element: node)
+        let clicked = "\(c.right ? "right-clicked" : c.double ? "double-clicked" : "clicked") \(what)"
+        guard let menu else { return Outcome(text: clicked, element: node) }
+        return Outcome(text: "\(clicked), but \(menu) was open elsewhere, so the click likely just closed it; check before going on", element: node)
+    }
+
+    /// An open menu (a pop-up, context or toolbar menu) that doesn't cover `point`, described for a
+    /// warning: a click outside a menu goes to dismissing it, not to what's under the point.
+    func openMenu(notAt point: CGPoint) -> String? {
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        for window in windows where window[kCGWindowLayer as String] as? Int == Int(CGWindowLevelForKey(.popUpMenuWindow)) {
+            guard let bounds = window[kCGWindowBounds as String] as? NSDictionary,
+                  let frame = CGRect(dictionaryRepresentation: bounds), !frame.isEmpty, !frame.contains(point) else { continue }
+            let owner = window[kCGWindowOwnerName as String] as? String
+            let pixels = scale.pixels(frame)
+            return "a menu\(owner.map { " of \($0)" } ?? "") (\(pixels.x),\(pixels.y) \(pixels.width)×\(pixels.height))"
+        }
+        return nil
     }
 
     func drag(_ c: HoboUI.Drag) throws -> Outcome {

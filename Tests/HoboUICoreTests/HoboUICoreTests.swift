@@ -289,6 +289,21 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(found("NAS") == ["AXWindow:Main[0]/AXCell:NAS[0]"])
         #expect(found("NAS", role: "statictext") == ["AXWindow:Main[0]/AXCell:NAS[0]/AXStaticText[0]"])
     }
+
+    @Test func matchesInOneFrameAreOneMatch() {
+        let item = rect(10, 40, 120, 22)
+        let menu = Fake("AXApplication", [Fake("AXWindow", "Main", [
+            Fake("AXMenu", [Fake("AXMenuItem", "All Photos", frame: item)]),
+            Fake("AXMenu", [Fake("AXMenuItem", "All Photos", frame: item), Fake("AXMenuItem", "All Photos", frame: rect(10, 62, 120, 22))]),
+            Fake("AXButton", "All Photos", frame: item),
+        ])])
+        let found = elements(showing: "All Photos", role: nil, under: menu).map(\.2.description)
+        #expect(found == [
+            "AXWindow:Main[0]/AXMenu[0]/AXMenuItem:All Photos[0]",
+            "AXWindow:Main[0]/AXMenu[1]/AXMenuItem:All Photos[1]",
+            "AXWindow:Main[0]/AXButton:All Photos[0]",
+        ])
+    }
 }
 
 @Suite struct KeyTests {
