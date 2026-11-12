@@ -399,6 +399,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(hint(["scroll", "e99", "--down", "600"]) == "scroll e99 down 600")
         #expect(hint(["scroll", "--app", "Candela", "e99", "--down=6"]) == "scroll e99 down 6")
         #expect(hint(["scroll", "840,412", "--left"]) == "scroll 840,412 left")
+        #expect(hint(["scroll", "--up", "3"]) == "scroll <ref|x,y> up 3")
         #expect(HoboUI.scrollHint(for: ["scroll", "e99", "sideways"]) == nil)
         #expect(HoboUI.scrollHint(for: ["click", "--down"]) == nil)
     }
