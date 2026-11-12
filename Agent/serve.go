@@ -105,7 +105,7 @@ func (e exitEarly) Error() string { return e.message }
 // connection cancels it: nothing else is ever sent, so any read returning means the host is gone.
 func runExec(req request, conn io.Reader, frames *frameWriter) {
 	if req.Tool != "" {
-		if err := ensureTool(req.Tool, req.User); err != nil {
+		if err := ensureTool(req.Tool, req.ToolDigest, req.User); err != nil {
 			_ = frames.fail("%v", err)
 			return
 		}

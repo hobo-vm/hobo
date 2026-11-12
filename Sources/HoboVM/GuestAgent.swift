@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import HoboControl
 import HoboCore
@@ -33,14 +34,15 @@ public struct GuestAgent: GuestShell {
 
     /// `hobo exec`: runs `command` (an argv) for `platform`'s guest, in its desktop session if `gui`.
     /// Cancelling the task ends the command in the guest too.
-    /// With `tool`, the agent fetches that tool from the host first, if it hasn't this boot
-    /// (`Agent/tool.go`), for the command to run.
+    /// With `tool`, the agent fetches that tool from the host first, if it hasn't this boot or
+    /// what it has isn't what this hobo serves (`Agent/tool.go`), for the command to run.
     public func exec(
         _ command: [String], gui: Bool, platform: any VMBundle.Type, tool: String? = nil,
         onOutput: @escaping @Sendable (GuestStream, Data) -> Void
     ) async throws -> Int32 {
         var request = AgentRequest(op: "exec", command: platform.agentCommand(command, gui: gui), user: user)
         request.tool = tool
+        request.toolDigest = try tool.flatMap(AgentFetchServer.digest)
         if gui && platform.agentStartsInDesktop { request.desktop = true }
         return try await stream(request, onOutput: onOutput)
     }
@@ -327,6 +329,7 @@ struct AgentRequest: Encodable, Equatable {
     var command: String?
     var desktop: Bool?
     var tool: String?
+    var toolDigest: String?
     var user: String?
     var destination: String?
     var single: Bool?
@@ -564,6 +567,12 @@ final class AgentFetchServer: NSObject, @MainActor VZVirtioSocketListenerDelegat
         case "ui-darwin-arm64": try Payloads.hoboUI()
         default: nil
         }
+    }
+
+    /// The SHA-256 (hex) of the tool an agent would fetch now, which it compares with the one it
+    /// has: hobo may have been updated since it fetched it. Tools are macOS guests' alone.
+    nonisolated static func digest(_ tool: String) throws -> String? {
+        try binary(for: "\(tool)-darwin-arm64").map { SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined() }
     }
 
     func listener(

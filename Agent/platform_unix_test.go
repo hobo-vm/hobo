@@ -3,8 +3,12 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 )
 
@@ -23,7 +27,26 @@ func TestExitStatusIsAShells(t *testing.T) {
 
 // Only the tools the host serves can be asked for; anything else fails before reaching the host.
 func TestEnsureToolRefusesUnknownTools(t *testing.T) {
-	if err := ensureTool("nope", "nobody"); err == nil || err.Error() != `unknown tool "nope"` {
+	if err := ensureTool("nope", "", "nobody"); err == nil || err.Error() != `unknown tool "nope"` {
 		t.Fatalf("ensureTool(nope) = %v", err)
+	}
+}
+
+// A tool fetched before hobo was updated is fetched again: the host's digest no longer matches.
+func TestHasToolChecksTheHostsDigest(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hobo-ui")
+	if hasTool(path, "") {
+		t.Error("a missing tool counted as there")
+	}
+	if err := os.WriteFile(path, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte("old"))
+	if !hasTool(path, "") || !hasTool(path, hex.EncodeToString(sum[:])) {
+		t.Error("the tool that's there, unchecked or matching, didn't count")
+	}
+	newer := sha256.Sum256([]byte("new"))
+	if hasTool(path, hex.EncodeToString(newer[:])) {
+		t.Error("a tool with another digest counted as the host's")
 	}
 }

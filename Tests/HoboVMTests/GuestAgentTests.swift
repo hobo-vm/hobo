@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import HoboControl
 import HoboCore
@@ -98,6 +99,9 @@ import Testing
         }
         _ = try await agent.exec(["true"], gui: true, platform: MacVMBundle.self, tool: "ui") { _, _ in }
         #expect(seen.fields["tool"] == "ui")
+        // So an agent that fetched hobo-ui before hobo was updated fetches it again.
+        let served = try #require(try AgentFetchServer.binary(for: "ui-darwin-arm64"))
+        #expect(seen.fields["toolDigest"] == SHA256.hash(data: served).map { String(format: "%02x", $0) }.joined())
         #expect(seen.fields["desktop"] == nil)
         #expect(try AgentFetchServer.binary(for: "ui-darwin-arm64")?.isEmpty == false)
         #expect(try AgentFetchServer.binary(for: "ui-linux-arm64") == nil)

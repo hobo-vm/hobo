@@ -37,6 +37,9 @@ type request struct {
 	Desktop bool `json:"desktop,omitempty"`
 	// exec: a tool (tool.go) to fetch before the command runs, which the command can then run.
 	Tool string `json:"tool,omitempty"`
+	// exec: the SHA-256 (hex) of the tool the host serves now. One fetched earlier this boot that
+	// differs, from before hobo was updated, is fetched again.
+	ToolDigest string `json:"toolDigest,omitempty"`
 	// exec, put, get, clipboard: who runs it, and whose files the copy reads or writes.
 	User string `json:"user,omitempty"`
 	// put: where the copy goes; single says the tar holds one top-level entry, and replace that

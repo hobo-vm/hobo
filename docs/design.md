@@ -639,7 +639,10 @@ global VMs on 2026-11-01.
       - Delivery: a `ui` control request runs `exec --gui` of `hobo-ui` with a `tool` field, and the
         agent fetches the tool on first use each boot (`Agent/tool.go`), over the stub's fetch port
         by a name no stub sends (`ui-darwin-arm64`), into its run directory, root's, which a boot
-        clears. So it always matches the hobo running the VM, clones and snapshots included, and
+        clears. The request carries the SHA-256 of the `hobo-ui` the VM process would serve, which
+        it reads from the installed app at each fetch, and the agent fetches again when its copy
+        differs (2026-11-11): `make install` under a running VM had left its guest on the old one
+        until a reboot. So it matches the installed hobo, clones and snapshots included, and
         costs nothing on VMs that never use it. TCC counts it as the agent's stub, which
         `[gui_testing]` grants; without them it fails saying so. macOS only: Linux (AT-SPI) and
         Windows (UIA) backends would take the same commands.
