@@ -666,8 +666,9 @@ global VMs on 2026-11-01.
         rather than pick one, and a match inside another match is left to the outer one, as is a
         second match of the same role in the same frame: AppKit can report one menu item twice,
         and an agent's `--role menuitem` failed on the pair. A click made while a pop-up menu is
-        open elsewhere on screen (a window at the pop-up menu level not covering the point) still
-        happens, but its message says the menu likely swallowed it.
+        open (a window at the pop-up menu level, not at alpha 0, which a closing menu fades
+        through) at a point no menu is under (by AX hit-testing: a menu window's bounds take in
+        about 75 px of shadow) still happens, but its message says the menu likely swallowed it.
         `click --press` and `menu` use AXPress; `menu` refuses a disabled item and lists a menu's
         items with shortcuts in `key`'s syntax.
       - `type --replace` (2026-11-11) presses Cmd-A before typing, so the text replaces a

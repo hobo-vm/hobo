@@ -250,20 +250,26 @@ struct Driver {
         return Outcome(text: "\(clicked), but \(menu) was open elsewhere, so the click likely just closed it; check before going on", element: node)
     }
 
-    /// An open menu (a pop-up, context or toolbar menu), described for a warning, when none covers
-    /// `point`: a click outside every open menu goes to dismissing them, not to what's under the
-    /// point. A click in a submenu is inside one, though its parent menu is elsewhere.
+    /// An open menu (a pop-up, context or toolbar menu), described for a warning, when `point`
+    /// isn't in one: a click outside every open menu goes to dismissing them, not to what's under
+    /// the point. A click in a submenu is in a menu, though its parent menu is elsewhere.
     func openMenu(notAt point: CGPoint) -> String? {
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-        let menus = windows.compactMap { window -> (CGRect, String?)? in
-            guard window[kCGWindowLayer as String] as? Int == Int(CGWindowLevelForKey(.popUpMenuWindow)),
-                  let bounds = window[kCGWindowBounds as String] as? NSDictionary,
-                  let frame = CGRect(dictionaryRepresentation: bounds), !frame.isEmpty else { return nil }
-            return (frame, window[kCGWindowOwnerName as String] as? String)
+        // A closing menu stays listed while it fades out, at alpha 0.
+        let menus = windows.filter {
+            $0[kCGWindowLayer as String] as? Int == Int(CGWindowLevelForKey(.popUpMenuWindow)) && ($0[kCGWindowAlpha as String] as? Double ?? 1) > 0
         }
-        guard let (frame, owner) = menus.first, !menus.contains(where: { $0.0.contains(point) }) else { return nil }
-        let pixels = scale.pixels(frame)
-        return "a menu\(owner.map { " of \($0)" } ?? "") (\(pixels.x),\(pixels.y) \(pixels.width)×\(pixels.height))"
+        guard let menu = menus.first else { return nil }
+        // A menu window's bounds take in its shadow, so ask what's at the point; only if nothing
+        // answers, fall back on the bounds.
+        if let hit = AXElement.at(point) {
+            if hit.lineage.contains(where: { $0.attributes().role == "AXMenu" }) { return nil }
+        } else if menus.contains(where: { window in
+            (window[kCGWindowBounds as String] as? NSDictionary).flatMap { CGRect(dictionaryRepresentation: $0) }?.contains(point) == true
+        }) {
+            return nil
+        }
+        return "a menu\((menu[kCGWindowOwnerName as String] as? String).map { " of \($0)" } ?? "")"
     }
 
     func drag(_ c: HoboUI.Drag) throws -> Outcome {
