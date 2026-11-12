@@ -659,7 +659,9 @@ struct Exec: OutputCommand {
             Its arguments are quoted for the guest's shell, so use sh -c '<script>' (on Windows, powershell.exe -Command '<script>') \
             for pipes and the like. \
             With --gui it waits up to a minute for the desktop session, and exits 125 if it never comes up \
-            (at once on a Linux guest with no desktop).
+            (at once on a Linux guest with no desktop). \
+            On macOS, privacy prompts for what it runs (Photos, Automation and the like) name hobo-agent as the app \
+            asking, not the command, since macOS holds the agent responsible for it; the grants given go to hobo-agent too.
             """
     )
 

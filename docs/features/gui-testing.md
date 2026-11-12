@@ -45,6 +45,11 @@ A plain `hobo exec` runs in a background session that can't see the desktop. `--
 command in `hobo`'s desktop session instead, waiting up to a minute for it to come up, and exits
 with status 125 if it never does.
 
+On macOS, a privacy prompt raised by what `--gui` runs (Photos, Automation and the like) names
+`hobo-agent` as the app asking, not the command: macOS holds the agent responsible for what it
+starts, so the prompt can't show the program's own usage text, and what the prompt
+grants goes to `hobo-agent`.
+
 ## Drive a macOS app with hobo ui
 
 `hobo ui` drives a macOS guest's apps through accessibility, from the host, with nothing to
