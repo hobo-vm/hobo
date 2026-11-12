@@ -217,11 +217,11 @@ struct Driver {
         // Hit-testing can land on something inside the element (a cell's text), or on a container of
         // it that doesn't hit-test its children; either way the click reaches it.
         if hit.isWithin(element) || element.isWithin(hit) { return centre }
-        let clipped = element.lineage.dropFirst().contains {
+        let scrolledOutOfView = element.lineage.dropFirst().contains {
             let attributes = $0.attributes()
             return attributes.role == "AXScrollArea" && attributes.frame.map { !$0.contains(centre) } == true
         }
-        if clipped { throw UIError.failed("\(AppSnapshot.line(node)) is scrolled out of view; scroll --to \(node.ref) first") }
+        if scrolledOutOfView { throw UIError.failed("\(AppSnapshot.line(node)) is scrolled out of view; scroll --to \(node.ref) first") }
         // Within the element's own window, hit-testing isn't to be trusted: SwiftUI answers with the
         // scroll area under a bar laid over it (safeAreaInset), not the bar's button. Only another
         // window, sheet, popover or menu over it keeps a click from it.

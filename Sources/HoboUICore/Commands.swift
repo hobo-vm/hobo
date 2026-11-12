@@ -156,14 +156,24 @@ public struct HoboUI: ParsableCommand {
     public static func scrollHint(for arguments: [String]) -> String? {
         guard arguments.first == "scroll" else { return nil }
         let rest = Array(arguments.dropFirst())
-        // --down 10, or --down=10.
-        let options = rest.map { $0.hasPrefix("--") ? $0.dropFirst(2).split(separator: "=", maxSplits: 1).map(String.init) : [] }
-        guard let index = options.firstIndex(where: { $0.first.flatMap(ScrollDirection.init) != nil }) else { return nil }
-        let direction = options[index][0]
-        let lines = options[index].count > 1 ? options[index][1] : rest.dropFirst(index + 1).first.flatMap { Int($0) }.map(String.init)
-        let at = rest.indices.first { !rest[$0].hasPrefix("-") && Int(rest[$0]) == nil && ($0 == 0 || rest[$0 - 1] != "--app") }.map { rest[$0] } ?? "<ref|x,y>"
-        let example = (["scroll", at, direction] + (lines.map { [$0] } ?? [])).joined(separator: " ")
+        guard let index = rest.firstIndex(where: { directionOption($0) != nil }),
+              let (direction, attachedLines) = directionOption(rest[index]) else { return nil }
+        // --down=10 carries its lines; --down 10 has them in the next argument.
+        let lines = attachedLines ?? rest.dropFirst(index + 1).first.flatMap { Int($0) }.map(String.init)
+        // The ref or point: the first argument that isn't an option, --app's value, or a number.
+        let target = rest.indices.first { i in
+            !rest[i].hasPrefix("-") && Int(rest[i]) == nil && (i == 0 || rest[i - 1] != "--app")
+        }.map { rest[$0] } ?? "<ref|x,y>"
+        let example = (["scroll", target, direction] + [lines].compactMap { $0 }).joined(separator: " ")
         return "the direction and line count are arguments after the ref or point, not options: \(example)"
+    }
+
+    /// The direction and any `=lines` of an argument like `--down` or `--down=10`.
+    private static func directionOption(_ argument: String) -> (direction: String, lines: String?)? {
+        guard argument.hasPrefix("--") else { return nil }
+        let parts = argument.dropFirst(2).split(separator: "=", maxSplits: 1).map(String.init)
+        guard let name = parts.first, ScrollDirection(rawValue: name) != nil else { return nil }
+        return (name, parts.count > 1 ? parts[1] : nil)
     }
 
     public struct TypeText: ParsableCommand {
