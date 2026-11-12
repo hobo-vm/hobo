@@ -487,6 +487,9 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     // A collapsed area shows nothing, though its centre is inside the area around it.
     @Test func aPointInAnEmptyAreaIsntInView() {
         let collapsed = CGRect(x: 0, y: 100, width: 400, height: 0)
-        #expect(ScrollVisibility.obstruction(of: CGPoint(x: 50, y: 100), areas: [outer, collapsed])?.area == 1)
+        let obstruction = ScrollVisibility.obstruction(of: CGPoint(x: 50, y: 100), areas: [outer, collapsed])
+        #expect(obstruction?.area == 1)
+        // Nothing of it on show for a wheel to reach, which scroll --to refuses rather than scroll the outer area.
+        #expect(obstruction?.visible.isEmpty == true)
     }
 }

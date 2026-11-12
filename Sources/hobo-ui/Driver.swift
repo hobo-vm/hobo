@@ -360,6 +360,11 @@ struct Driver {
                 node = describe(element, ref: ref)
                 return Outcome(text: "scrolled to \(AppSnapshot.line(node))", element: node)
             }
+            // A collapsed area shows nothing for the wheel to reach; scrolling where it sits would
+            // scroll the area around it instead.
+            if obstruction.visible.isEmpty {
+                throw UIError.failed("\(AppSnapshot.line(node)) is in a scroll area that shows nothing, so it can't be scrolled into view")
+            }
             Input.scroll(at: CGPoint(x: obstruction.visible.midX, y: obstruction.visible.midY), obstruction.direction, lines: 3)
         }
         throw UIError.failed("couldn't scroll \(AppSnapshot.line(node)) into view")
