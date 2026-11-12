@@ -393,6 +393,16 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(throws: (any Error).self) { try HoboUI.parseAsRoot(arguments) }
     }
 
+    // A direction given as an option is put right with the positional form.
+    @Test func hintsAtAScrollDirectionGivenAsAnOption() {
+        let hint = { HoboUI.scrollHint(for: $0)?.components(separatedBy: ": ").last }
+        #expect(hint(["scroll", "e99", "--down", "600"]) == "scroll e99 down 600")
+        #expect(hint(["scroll", "--app", "Candela", "e99", "--down=6"]) == "scroll e99 down 6")
+        #expect(hint(["scroll", "840,412", "--left"]) == "scroll 840,412 left")
+        #expect(HoboUI.scrollHint(for: ["scroll", "e99", "sideways"]) == nil)
+        #expect(HoboUI.scrollHint(for: ["click", "--down"]) == nil)
+    }
+
     @Test(arguments: [["click", "840", "412"], ["drag", "840", "412", "e2"]])
     func aPointSplitAtASpaceIsToldToUseAComma(_ arguments: [String]) {
         do {

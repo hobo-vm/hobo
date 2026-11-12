@@ -48,7 +48,11 @@ struct UICommand: AsyncParsableCommand, JSONPassthrough {
             _ = try HoboUI.parseAsRoot(arguments)
         } catch {
             // With the usage of the command that failed (`hobo ui <vm> key <cmd+k>`), not of `hobo ui`.
-            FileHandle.standardError.write(Data((HoboUI.fullMessage(for: error) + "\n").utf8))
+            var message = HoboUI.fullMessage(for: error)
+            if let hint = HoboUI.scrollHint(for: arguments), let usage = message.range(of: "Usage:") {
+                message = "Error: \(hint)\n" + message[usage.lowerBound...]
+            }
+            FileHandle.standardError.write(Data((message + "\n").utf8))
             throw ExitCode.validationFailure
         }
     }

@@ -216,17 +216,30 @@ struct Driver {
         }
         // Hit-testing can land on something inside the element (a cell's text), or on a container of
         // it that doesn't hit-test its children; either way the click reaches it.
-        guard hit.isWithin(element) || element.isWithin(hit) else {
-            throw UIError.failed("\(AppSnapshot.line(node)) is covered at its centre by \(covering(hit)); scroll --to \(node.ref), or close what's over it")
+        if hit.isWithin(element) || element.isWithin(hit) { return centre }
+        let clipped = element.lineage.dropFirst().contains {
+            let attributes = $0.attributes()
+            return attributes.role == "AXScrollArea" && attributes.frame.map { !$0.contains(centre) } == true
         }
-        return centre
+        if clipped { throw UIError.failed("\(AppSnapshot.line(node)) is scrolled out of view; scroll --to \(node.ref) first") }
+        // Within the element's own window, hit-testing isn't to be trusted: SwiftUI answers with the
+        // scroll area under a bar laid over it (safeAreaInset), not the bar's button. Only another
+        // window, sheet, popover or menu over it keeps a click from it.
+        if let mine = container(of: element), let theirs = container(of: hit), CFEqual(mine.element, theirs.element) { return centre }
+        throw UIError.failed("\(AppSnapshot.line(node)) is covered at its centre by \(covering(hit)); close what's over it")
+    }
+
+    static let containerRoles: Set<String> = ["AXSheet", "AXWindow", "AXPopover", "AXMenu", "AXDialog"]
+
+    /// The sheet, window, popover or menu an element is part of.
+    func container(of element: AXElement) -> AXElement? {
+        element.lineage.first { Self.containerRoles.contains($0.attributes().role) }
     }
 
     /// What's in the way, by the sheet, window, popover or menu it's part of.
     func covering(_ hit: AXElement) -> String {
         let owner = NSRunningApplication(processIdentifier: hit.pid)?.localizedName ?? "pid \(hit.pid)"
-        let containers: Set<String> = ["AXSheet", "AXWindow", "AXPopover", "AXMenu", "AXDialog"]
-        for attributes in hit.lineage.lazy.map({ $0.attributes() }) where containers.contains(attributes.role) {
+        for attributes in hit.lineage.lazy.map({ $0.attributes() }) where Self.containerRoles.contains(attributes.role) {
             let name = (attributes.displayName ?? attributes.identifier).map { " \"\($0)\"" } ?? ""
             return "\(SnapshotNode.displayRole(attributes.role))\(name) of \(owner)"
         }

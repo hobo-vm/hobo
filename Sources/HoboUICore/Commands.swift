@@ -73,7 +73,7 @@ public struct HoboUI: ParsableCommand {
             abstract: "Click an element or a point.",
             discussion: """
                 Brings the element's app to the front and clicks the centre of it with a real mouse event, \
-                failing if something else is at that point (a sheet over it, or the element scrolled away). \
+                failing if another window, sheet, popover or menu is over that point, or the element is scrolled out of its scroll area. \
                 --text clicks the one element showing exactly that text, e.g. click --text Remove --role menuitem, \
                 and fails listing them if several do. --press performs the element's AXPress action instead, with no mouse.
                 """
@@ -149,6 +149,21 @@ public struct HoboUI: ParsableCommand {
 
     public enum ScrollDirection: String, ExpressibleByArgument, Codable, Sendable {
         case up, down, left, right
+    }
+
+    /// What a scroll that fails to parse got wrong, when it's a direction given as an option
+    /// (`scroll e5 --down 10`): the direction and line count are positional.
+    public static func scrollHint(for arguments: [String]) -> String? {
+        guard arguments.first == "scroll" else { return nil }
+        let rest = Array(arguments.dropFirst())
+        // --down 10, or --down=10.
+        let options = rest.map { $0.hasPrefix("--") ? $0.dropFirst(2).split(separator: "=", maxSplits: 1).map(String.init) : [] }
+        guard let index = options.firstIndex(where: { $0.first.flatMap(ScrollDirection.init) != nil }) else { return nil }
+        let direction = options[index][0]
+        let lines = options[index].count > 1 ? options[index][1] : rest.dropFirst(index + 1).first.flatMap { Int($0) }.map(String.init)
+        let at = rest.indices.first { !rest[$0].hasPrefix("-") && Int(rest[$0]) == nil && ($0 == 0 || rest[$0 - 1] != "--app") }.map { rest[$0] } ?? "<ref|x,y>"
+        let example = (["scroll", at, direction] + (lines.map { [$0] } ?? [])).joined(separator: " ")
+        return "the direction and line count are arguments after the ref or point, not options: \(example)"
     }
 
     public struct TypeText: ParsableCommand {
