@@ -337,6 +337,17 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(throws: (any Error).self) { try HoboUI.parseAsRoot(arguments) }
     }
 
+    @Test(arguments: [["click", "840", "412"], ["drag", "840", "412", "e2"]])
+    func aPointSplitAtASpaceIsToldToUseAComma(_ arguments: [String]) {
+        do {
+            _ = try HoboUI.parseAsRoot(arguments)
+            Issue.record("parsed \(arguments)")
+        } catch {
+            let message = HoboUI.fullMessage(for: error)
+            #expect(message.contains("x,y with a comma: 840,<y>"), "\(message)")
+        }
+    }
+
     /// What `hobo ui` prints for a usage error: the failing command's usage, not the root's.
     @Test(arguments: [
         (["key", "cmd+blah"], "key"), (["click"], "click"), (["choose", "Pictures/a.png"], "choose"),

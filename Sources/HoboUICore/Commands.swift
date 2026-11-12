@@ -251,6 +251,8 @@ func parsePoint(_ text: String) throws(ValidationError) -> PixelPoint? {
     if RefMap.parse(text) != nil { return nil }
     let parts = text.split(separator: ",", omittingEmptySubsequences: false)
     guard parts.count == 2, let x = Int(parts[0].trimmingPrefix(" ")), let y = Int(parts[1].trimmingPrefix(" ")) else {
+        // `click 840 412`: the point split in two at a space.
+        if Int(text) != nil { throw ValidationError("a point is one argument, x,y with a comma: \(text),<y>, not \(text) <y>") }
         throw ValidationError("expected a ref such as e12 or a point such as 840,412, not \(text)")
     }
     return PixelPoint(x: x, y: y)
