@@ -229,7 +229,7 @@ struct Driver {
         throw UIError.failed("\(AppSnapshot.line(node)) is covered at its centre by \(covering(hit)); close what's over it")
     }
 
-    static let containerRoles: Set<String> = ["AXSheet", "AXWindow", "AXPopover", "AXMenu", "AXDialog"]
+    private static let containerRoles: Set<String> = ["AXSheet", "AXWindow", "AXPopover", "AXMenu", "AXDialog"]
 
     /// The sheet, window, popover or menu an element is part of.
     func container(of element: AXElement) -> AXElement? {
@@ -239,11 +239,11 @@ struct Driver {
     /// What's in the way, by the sheet, window, popover or menu it's part of.
     func covering(_ hit: AXElement) -> String {
         let owner = NSRunningApplication(processIdentifier: hit.pid)?.localizedName ?? "pid \(hit.pid)"
-        for attributes in hit.lineage.lazy.map({ $0.attributes() }) where Self.containerRoles.contains(attributes.role) {
-            let name = (attributes.displayName ?? attributes.identifier).map { " \"\($0)\"" } ?? ""
-            return "\(SnapshotNode.displayRole(attributes.role))\(name) of \(owner)"
+        guard let attributes = container(of: hit)?.attributes() else {
+            return "\(SnapshotNode.displayRole(hit.attributes().role)) of \(owner)"
         }
-        return "\(SnapshotNode.displayRole(hit.attributes().role)) of \(owner)"
+        let name = (attributes.displayName ?? attributes.identifier).map { " \"\($0)\"" } ?? ""
+        return "\(SnapshotNode.displayRole(attributes.role))\(name) of \(owner)"
     }
 
     /// The element as it is after an action, or as it was if the action took it away.
