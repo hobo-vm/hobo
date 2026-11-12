@@ -442,3 +442,45 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 }
 
+
+@Suite struct ScrollVisibilityTests {
+    let outer = CGRect(x: 0, y: 0, width: 400, height: 300)
+
+    @Test func aPointInsideEveryAreaIsInView() {
+        #expect(ScrollVisibility.obstruction(of: CGPoint(x: 50, y: 50), areas: []) == nil)
+        #expect(ScrollVisibility.obstruction(of: CGPoint(x: 50, y: 50), areas: [outer, CGRect(x: 0, y: 0, width: 200, height: 100)]) == nil)
+    }
+
+    @Test func pointsOutsideAnAreaScrollTowardThem() {
+        let below = ScrollVisibility.obstruction(of: CGPoint(x: 50, y: 350), areas: [outer])
+        #expect(below == .init(area: 0, visible: outer, direction: .down))
+        #expect(ScrollVisibility.obstruction(of: CGPoint(x: 50, y: -10), areas: [outer])?.direction == .up)
+        #expect(ScrollVisibility.obstruction(of: CGPoint(x: 450, y: 50), areas: [outer])?.direction == .right)
+        #expect(ScrollVisibility.obstruction(of: CGPoint(x: -10, y: 50), areas: [outer])?.direction == .left)
+    }
+
+    // A horizontal list in a vertical scroll view, the list's row far down: the point is inside
+    // the list's own frame, but the scroll view around it has to bring it in.
+    @Test func anOuterAreaComesFirst() {
+        let list = CGRect(x: 0, y: 500, width: 2000, height: 100)
+        let obstruction = ScrollVisibility.obstruction(of: CGPoint(x: 50, y: 550), areas: [outer, list])
+        #expect(obstruction?.area == 0)
+        #expect(obstruction?.direction == .down)
+    }
+
+    // Once the list shows, a cell scrolled off its right is the list's to bring in, though it's
+    // past the scroll view's edge too, with the wheel over the part of the list the view shows.
+    @Test func anInnerAreaScrollsWithinWhatTheOuterShows() {
+        let list = CGRect(x: 0, y: 250, width: 400, height: 100)
+        let obstruction = ScrollVisibility.obstruction(of: CGPoint(x: 600, y: 270), areas: [outer, list])
+        #expect(obstruction == .init(area: 1, visible: CGRect(x: 0, y: 250, width: 400, height: 50), direction: .right))
+    }
+
+    // A cell off the list's right while the list is below the scroll view's: the view brings the
+    // list in first.
+    @Test func anInnerAreaOutOfViewIsTheOutersToBringIn() {
+        let list = CGRect(x: 0, y: 400, width: 400, height: 100)
+        let obstruction = ScrollVisibility.obstruction(of: CGPoint(x: 600, y: 450), areas: [outer, list])
+        #expect(obstruction == .init(area: 0, visible: outer, direction: .down))
+    }
+}

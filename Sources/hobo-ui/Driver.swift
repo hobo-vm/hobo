@@ -217,11 +217,7 @@ struct Driver {
         // Hit-testing can land on something inside the element (a cell's text), or on a container of
         // it that doesn't hit-test its children; either way the click reaches it.
         if hit.isWithin(element) || element.isWithin(hit) { return centre }
-        let scrolledOutOfView = element.lineage.dropFirst().contains {
-            let attributes = $0.attributes()
-            return attributes.role == "AXScrollArea" && attributes.frame.map { !$0.contains(centre) } == true
-        }
-        if scrolledOutOfView { throw UIError.failed("\(AppSnapshot.line(node)) is scrolled out of view; scroll --to \(node.ref) first") }
+        if ScrollVisibility.obstruction(of: centre, areas: scrollAreas(around: element)) != nil { throw UIError.failed("\(AppSnapshot.line(node)) is scrolled out of view; scroll --to \(node.ref) first") }
         // Within the element's own window, hit-testing isn't to be trusted: SwiftUI answers with the
         // scroll area under a bar laid over it (safeAreaInset), not the bar's button. Only another
         // window, sheet, popover or menu over it keeps a click from it.
@@ -342,33 +338,36 @@ struct Driver {
         return Outcome(text: "scrolled \(direction.rawValue) \(c.lines) at \(node.map(AppSnapshot.line) ?? pixelText(point))", element: node)
     }
 
-    /// AXScrollToVisible where the element has it; otherwise wheel events on its scroll area
-    /// until its frame is inside the area's.
+    /// AXScrollToVisible where the element has it, then wheel events on the scroll areas around
+    /// it, outermost first, until its centre is in view: the test a click makes (`hitPoint`).
     func scrollIntoView(_ ref: Int, app spec: String?) throws -> Outcome {
         let app = try app(spec)
         let element = try element(ref, in: app)
         var node = describe(element, ref: ref)
         bringForward(app, element)
-        if element.actions().contains("AXScrollToVisible"), element.perform("AXScrollToVisible") == .success {
-            Input.pause(0.2)
-            node = describe(element, ref: ref)
-            return Outcome(text: "scrolled to \(AppSnapshot.line(node))", element: node)
-        }
-        let area = element.lineage.dropFirst().first { $0.attributes().role == "AXScrollArea" }
-        guard let area, let areaFrame = area.attributes().frame else {
+        // It can leave the element short of view in an area around the one it scrolled.
+        let scrolledItself = element.actions().contains("AXScrollToVisible") && element.perform("AXScrollToVisible") == .success
+        if scrolledItself { Input.pause(0.2) }
+        if !scrolledItself && scrollAreas(around: element).isEmpty {
             throw UIError.failed("\(AppSnapshot.line(node)) isn't in a scroll area")
         }
         for _ in 0..<60 {
             guard let frame = element.attributes().frame else { break }
-            if areaFrame.contains(frame) || (frame.height > areaFrame.height && frame.intersects(areaFrame)) {
+            guard let obstruction = ScrollVisibility.obstruction(of: CGPoint(x: frame.midX, y: frame.midY), areas: scrollAreas(around: element)) else {
                 node = describe(element, ref: ref)
                 return Outcome(text: "scrolled to \(AppSnapshot.line(node))", element: node)
             }
-            let direction: HoboUI.ScrollDirection =
-                frame.minY < areaFrame.minY ? .up : frame.maxY > areaFrame.maxY ? .down : frame.minX < areaFrame.minX ? .left : .right
-            Input.scroll(at: CGPoint(x: areaFrame.midX, y: areaFrame.midY), direction, lines: 3)
+            Input.scroll(at: CGPoint(x: obstruction.visible.midX, y: obstruction.visible.midY), obstruction.direction, lines: 3)
         }
         throw UIError.failed("couldn't scroll \(AppSnapshot.line(node)) into view")
+    }
+
+    /// The frames of the scroll areas an element is in, outermost first.
+    func scrollAreas(around element: AXElement) -> [CGRect] {
+        element.lineage.dropFirst().compactMap {
+            let attributes = $0.attributes()
+            return attributes.role == "AXScrollArea" ? attributes.frame : nil
+        }.reversed()
     }
 
     // MARK: Keyboard
