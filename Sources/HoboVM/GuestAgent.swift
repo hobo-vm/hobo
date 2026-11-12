@@ -465,8 +465,9 @@ final class HostTar: Sendable {
     private let errors = Mutex(Data())
     /// Signalled once `startWriting`'s tar has closed its stderr; `finish` waits for it.
     private let finishing = Mutex<DispatchSemaphore?>(nil)
-    /// Signalled when tar exits. `waitUntilExit` can miss the exit when called from a Swift
-    /// concurrency thread and block forever in its run loop, so the exit is awaited through this.
+    /// Signalled when tar exits. `get` launches tar, awaits the copy, then waits for tar on
+    /// whatever thread it resumed on, and `waitUntilExit` on a thread other than the launching one
+    /// can miss the exit and block in its run loop for good. So the exit is awaited through this.
     private let exited = DispatchSemaphore(value: 0)
 
     init(arguments: [String]) {
