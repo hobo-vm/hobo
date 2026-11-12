@@ -206,10 +206,12 @@ struct Driver {
         Input.pause(0.1)
     }
 
-    /// The element's centre, if a click there would reach it, once the windows over its own have
-    /// settled.
+    /// The element's centre, if a click there would reach it, once the windows over the element's
+    /// window have stopped animating.
     func hitPoint(_ element: AXElement, node: SnapshotNode) throws -> CGPoint {
-        if let area = (element.element("AXWindow") ?? element).attributes().frame { settleWindows(over: area) }
+        // The whole window, not just the element: a sheet opening or closing covers all of it.
+        let window = element.element("AXWindow") ?? element
+        if let area = window.attributes().frame { settleWindows(over: area) }
         guard let frame = element.attributes().frame, !frame.isEmpty else {
             throw UIError.failed("\(AppSnapshot.line(node)) has no frame on screen to click; try --press")
         }
