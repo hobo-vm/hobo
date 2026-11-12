@@ -17,10 +17,12 @@ public enum ScrollVisibility {
         guard let index = areas.lastIndex(where: { !$0.contains(point) }) else { return nil }
         let frame = areas[index]
         let visible = areas[..<index].reduce(frame) { $0.intersection($1) }
+        let own = Obstruction(area: index, visible: visible, direction: direction(toward: point, from: frame))
         if visible.isNull || visible.isEmpty {
-            return obstruction(of: CGPoint(x: frame.midX, y: frame.midY), areas: Array(areas[..<index]))
+            // An empty area's centre can sit inside every area around it while nothing in it shows.
+            return obstruction(of: CGPoint(x: frame.midX, y: frame.midY), areas: Array(areas[..<index])) ?? own
         }
-        return Obstruction(area: index, visible: visible, direction: direction(toward: point, from: frame))
+        return own
     }
 
     /// Which way to scroll an area to bring `point`, outside its frame, into it.
