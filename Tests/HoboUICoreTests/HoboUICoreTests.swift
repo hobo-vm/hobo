@@ -442,13 +442,12 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 }
 
-
 @Suite struct ScrollVisibilityTests {
-    let outer = CGRect(x: 0, y: 0, width: 400, height: 300)
+    let outer = rect(0, 0, 400, 300)
 
     @Test func aPointInsideEveryAreaIsInView() {
         #expect(ScrollVisibility.obstruction(of: CGPoint(x: 50, y: 50), areas: []) == nil)
-        #expect(ScrollVisibility.obstruction(of: CGPoint(x: 50, y: 50), areas: [outer, CGRect(x: 0, y: 0, width: 200, height: 100)]) == nil)
+        #expect(ScrollVisibility.obstruction(of: CGPoint(x: 50, y: 50), areas: [outer, rect(0, 0, 200, 100)]) == nil)
     }
 
     @Test func pointsOutsideAnAreaScrollTowardThem() {
@@ -462,7 +461,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     // A horizontal list in a vertical scroll view, the list's row far down: the point is inside
     // the list's own frame, but the scroll view around it has to bring it in.
     @Test func anOuterAreaComesFirst() {
-        let list = CGRect(x: 0, y: 500, width: 2000, height: 100)
+        let list = rect(0, 500, 2000, 100)
         let obstruction = ScrollVisibility.obstruction(of: CGPoint(x: 50, y: 550), areas: [outer, list])
         #expect(obstruction?.area == 0)
         #expect(obstruction?.direction == .down)
@@ -471,15 +470,15 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     // Once the list shows, a cell scrolled off its right is the list's to bring in, though it's
     // past the scroll view's edge too, with the wheel over the part of the list the view shows.
     @Test func anInnerAreaScrollsWithinWhatTheOuterShows() {
-        let list = CGRect(x: 0, y: 250, width: 400, height: 100)
+        let list = rect(0, 250, 400, 100)
         let obstruction = ScrollVisibility.obstruction(of: CGPoint(x: 600, y: 270), areas: [outer, list])
-        #expect(obstruction == .init(area: 1, visible: CGRect(x: 0, y: 250, width: 400, height: 50), direction: .right))
+        #expect(obstruction == .init(area: 1, visible: rect(0, 250, 400, 50), direction: .right))
     }
 
     // A cell off the list's right while the list is below the scroll view's: the view brings the
     // list in first.
     @Test func anInnerAreaOutOfViewIsTheOutersToBringIn() {
-        let list = CGRect(x: 0, y: 400, width: 400, height: 100)
+        let list = rect(0, 400, 400, 100)
         let obstruction = ScrollVisibility.obstruction(of: CGPoint(x: 600, y: 450), areas: [outer, list])
         #expect(obstruction == .init(area: 0, visible: outer, direction: .down))
     }
@@ -487,15 +486,15 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     // Three deep: a list below the part of a panel the scroll view shows, the panel partly in
     // view. The panel, not the outermost view, brings the list in, with the wheel over its shown part.
     @Test func theAreaThatBringsAnOutOfViewAreaInIsTheInnermostThatCan() {
-        let panel = CGRect(x: 0, y: 200, width: 400, height: 400)
-        let list = CGRect(x: 0, y: 700, width: 400, height: 100)
+        let panel = rect(0, 200, 400, 400)
+        let list = rect(0, 700, 400, 100)
         let obstruction = ScrollVisibility.obstruction(of: CGPoint(x: 600, y: 750), areas: [outer, panel, list])
-        #expect(obstruction == .init(area: 1, visible: CGRect(x: 0, y: 200, width: 400, height: 100), direction: .down))
+        #expect(obstruction == .init(area: 1, visible: rect(0, 200, 400, 100), direction: .down))
     }
 
     // A collapsed area shows nothing, though its centre is inside the area around it.
     @Test func aPointInAnEmptyAreaIsntInView() {
-        let collapsed = CGRect(x: 0, y: 100, width: 400, height: 0)
+        let collapsed = rect(0, 100, 400, 0)
         let obstruction = ScrollVisibility.obstruction(of: CGPoint(x: 50, y: 100), areas: [outer, collapsed])
         #expect(obstruction?.area == 1)
         // Nothing of it on show for a wheel to reach, which scroll --to refuses rather than scroll the outer area.
