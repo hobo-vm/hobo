@@ -74,6 +74,8 @@ public struct HoboUI: ParsableCommand {
             discussion: """
                 Brings the element's app to the front and clicks the centre of it with a real mouse event, \
                 failing if another window, sheet, popover or menu is over that point, or the element is scrolled out of its scroll area. \
+                It first waits, for up to 2 s, for windows over it to finish animating in or out: a prompt or sheet \
+                can be there to accessibility before it's there to click, and gone from it before it stops taking clicks. \
                 --text clicks the one element showing exactly that text, e.g. click --text Remove --role menuitem, \
                 and fails listing them if several do; with --contains, the one showing it as part of its text, \
                 for a label that carries more, such as a photo cell's capture time. --press performs the element's AXPress action instead, with no mouse.

@@ -166,7 +166,9 @@ struct Driver {
     func aim(_ target: UITarget, app spec: String?) throws -> Aim {
         switch target {
         case .point(let pixels):
-            return Aim(point: scale.points(pixels))
+            let point = scale.points(pixels)
+            settleWindows(over: CGRect(origin: point, size: CGSize(width: 1, height: 1)))
+            return Aim(point: point)
         case .ref(let ref):
             let app = try app(spec)
             let element = try element(ref, in: app)
@@ -204,8 +206,10 @@ struct Driver {
         Input.pause(0.1)
     }
 
-    /// The element's centre, if a click there would reach it.
+    /// The element's centre, if a click there would reach it, once the windows over its own have
+    /// settled.
     func hitPoint(_ element: AXElement, node: SnapshotNode) throws -> CGPoint {
+        if let area = (element.element("AXWindow") ?? element).attributes().frame { settleWindows(over: area) }
         guard let frame = element.attributes().frame, !frame.isEmpty else {
             throw UIError.failed("\(AppSnapshot.line(node)) has no frame on screen to click; try --press")
         }
@@ -229,6 +233,38 @@ struct Driver {
         // window, sheet, popover or menu over it keeps a click from it.
         if let mine = container(of: element), let theirs = container(of: hit), CFEqual(mine.element, theirs.element) { return centre }
         throw UIError.failed("\(AppSnapshot.line(node)) is covered at its centre by \(covering(hit)); close what's over it")
+    }
+
+    /// Waits, for up to 2 s, until the on-screen windows over `area` stop moving and fading.
+    /// Accessibility gives a window its final frame, and takes a sheet's elements away, while the
+    /// window server is still animating it: a prompt grows and fades in over 400 ms, during which a
+    /// click at its button goes to what's behind it, and a closing sheet's window fades over its
+    /// parent for 100 ms after its elements have gone.
+    func settleWindows(over area: CGRect) {
+        struct Window: Equatable {
+            var number: Int
+            var bounds: CGRect
+            var alpha: Double
+        }
+        func windows() -> [Window] {
+            let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+            return list.compactMap { info in
+                guard let number = info[kCGWindowNumber as String] as? Int,
+                      let bounds = (info[kCGWindowBounds as String] as? NSDictionary).flatMap({ CGRect(dictionaryRepresentation: $0) }),
+                      bounds.intersects(area)
+                else { return nil }
+                return Window(number: number, bounds: bounds, alpha: info[kCGWindowAlpha as String] as? Double ?? 1)
+            }
+        }
+        // Two reads three frames apart that agree: an animation changes something every frame.
+        var last = windows()
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline {
+            Input.pause(0.05)
+            let now = windows()
+            if now == last { return }
+            last = now
+        }
     }
 
     private static let containerRoles: Set<String> = ["AXSheet", "AXWindow", "AXPopover", "AXMenu", "AXDialog"]
