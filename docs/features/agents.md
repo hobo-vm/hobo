@@ -47,7 +47,8 @@ $ hobo exec dev --json -- true
 - Quick commands print one JSON document.
 - Long ones (`create`, `start`, `stop`, `suspend`, `provision`, `snapshot save` and `restore`) print
   JSON Lines: `{"event":"log","message":…}` as they go, then `{"event":"result","result":…}`.
-- A failure is `{"error":…}` (or an `error` event) on stdout, with exit status 1.
+- A failure is `{"error":…}` (or an `error` event) on stdout, with exit status 1. The message goes
+  to stderr too, so piping stdout into `jq` doesn't hide it.
 - Sizes are bytes and dates ISO 8601.
 - `exec` and `cp` send the guest's output to stderr, print `{"exitStatus":…}`, and exit with that
   status.

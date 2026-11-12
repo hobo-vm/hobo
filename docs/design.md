@@ -56,7 +56,7 @@ global VMs on 2026-11-01.
    quickly prints one JSON document; `create`, `start` and `stop`, which take minutes, print JSON
    Lines instead, `{"event":"log","message":…}` as they go and a final `{"event":"result","result":…}`,
    so an agent sees progress. A failure is JSON on stdout too (`{"error":…}`, or an `error` event)
-   with exit status 1; usage errors stay text on stderr. Sizes are bytes, dates ISO 8601, and the
+   with exit status 1, and also `Error: …` on stderr so a pipe into jq doesn't swallow it; usage errors stay text on stderr. Sizes are bytes, dates ISO 8601, and the
    shapes (`VMSummary`, `RecipeSummary`, the lifecycle results) live in the core so `hobo mcp` returns
    the same ones. A CLI command gets all of this by conforming to `OutputCommand`, returning its
    result rather than printing it. `delete --json` needs `--yes` or `--force`, since it can't prompt. `ip --json`

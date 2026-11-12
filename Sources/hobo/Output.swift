@@ -49,7 +49,8 @@ struct Reply {
 /// Where a command's output goes. Text is for people. With `--json`, a command that finishes
 /// quickly prints one JSON document, and one with progress (`jsonStyle` `.events`) prints
 /// JSON Lines: `{"event":"log","message":…}` as it goes, then `{"event":"result","result":…}`.
-/// A failure is JSON on stdout too, `{"error":…}` or `{"event":"error","error":…}`, with exit status 1.
+/// A failure is JSON on stdout too, `{"error":…}` or `{"event":"error","error":…}`, with exit status 1,
+/// and `Error: …` on stderr, so a script that pipes stdout into a JSON tool still shows it.
 struct Output: Sendable {
     enum JSONStyle: Sendable { case document, events }
     enum Format: Sendable { case text, document, events }
@@ -110,10 +111,11 @@ struct Output: Sendable {
     /// Reports a failure the way the format calls for. In text mode it is left to ArgumentParser.
     private func fail(_ message: String) {
         switch format {
-        case .text: break
+        case .text: return
         case .document: write(Self.encoded { try HoboJSON.document(["error": message]) })
         case .events: writeLine(ErrorEvent(error: message))
         }
+        FileHandle.standardError.write(Data("Error: \(message)\n".utf8))
     }
 
     /// Runs a command's body, reporting what it throws as JSON in JSON mode.

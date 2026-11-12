@@ -75,8 +75,8 @@ struct Usage: ParsableCommand {
                           {"event":"log","message":…} as they go, then {"event":"result","result":…}:
                           \(codeList(json.events)).
                           Sizes are bytes, dates ISO 8601.
-              Errors      A failure prints {"error":…} (or an error event) on stdout under --json, and hobo
-                          exits 1. Usage errors are text on stderr.
+              Errors      A failure prints {"error":…} (or an error event) on stdout under --json, the same
+                          message on stderr, and hobo exits 1. Usage errors are text on stderr.
               exec, cp    hobo exits with the guest command's (or scp's) status. With --json their output
                           goes to stderr and stdout gets {"exitStatus":…}.
               screenshot  Prints where the PNG went; --json gives {"name":…,"path":…}. It and exec --gui

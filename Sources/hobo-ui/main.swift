@@ -34,6 +34,8 @@ do {
     if case UIError.timedOut(_, let taken) = error { snapshot = taken }
     if json {
         emit(Failure(error: String(describing: error), snapshot: snapshot))
+        // On stderr too, as the host's hobo does, so a pipe into jq doesn't hide it.
+        FileHandle.standardError.write(Data("Error: \(error)\n".utf8))
     } else {
         FileHandle.standardError.write(Data("hobo-ui: \(error)\n".utf8))
         if let snapshot { print(snapshot.text) }

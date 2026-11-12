@@ -60,8 +60,10 @@ struct UICommand: AsyncParsableCommand, JSONPassthrough {
             if status != 0 { throw ExitCode(status) }
         } catch let error where json && !(error is ExitCode) {
             // hobo-ui prints its own failures as JSON; this is for the host's (a VM not running).
-            let data = (try? HoboJSON.document(["error": String(describing: error)])) ?? Data()
+            let message = String(describing: error)
+            let data = (try? HoboJSON.document(["error": message])) ?? Data()
             FileHandle.standardOutput.write(data + Data("\n".utf8))
+            FileHandle.standardError.write(Data("Error: \(message)\n".utf8))
             throw ExitCode.failure
         }
     }
