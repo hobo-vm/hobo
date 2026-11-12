@@ -250,18 +250,20 @@ struct Driver {
         return Outcome(text: "\(clicked), but \(menu) was open elsewhere, so the click likely just closed it; check before going on", element: node)
     }
 
-    /// An open menu (a pop-up, context or toolbar menu) that doesn't cover `point`, described for a
-    /// warning: a click outside a menu goes to dismissing it, not to what's under the point.
+    /// An open menu (a pop-up, context or toolbar menu), described for a warning, when none covers
+    /// `point`: a click outside every open menu goes to dismissing them, not to what's under the
+    /// point. A click in a submenu is inside one, though its parent menu is elsewhere.
     func openMenu(notAt point: CGPoint) -> String? {
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-        for window in windows where window[kCGWindowLayer as String] as? Int == Int(CGWindowLevelForKey(.popUpMenuWindow)) {
-            guard let bounds = window[kCGWindowBounds as String] as? NSDictionary,
-                  let frame = CGRect(dictionaryRepresentation: bounds), !frame.isEmpty, !frame.contains(point) else { continue }
-            let owner = window[kCGWindowOwnerName as String] as? String
-            let pixels = scale.pixels(frame)
-            return "a menu\(owner.map { " of \($0)" } ?? "") (\(pixels.x),\(pixels.y) \(pixels.width)×\(pixels.height))"
+        let menus = windows.compactMap { window -> (CGRect, String?)? in
+            guard window[kCGWindowLayer as String] as? Int == Int(CGWindowLevelForKey(.popUpMenuWindow)),
+                  let bounds = window[kCGWindowBounds as String] as? NSDictionary,
+                  let frame = CGRect(dictionaryRepresentation: bounds), !frame.isEmpty else { return nil }
+            return (frame, window[kCGWindowOwnerName as String] as? String)
         }
-        return nil
+        guard let (frame, owner) = menus.first, !menus.contains(where: { $0.0.contains(point) }) else { return nil }
+        let pixels = scale.pixels(frame)
+        return "a menu\(owner.map { " of \($0)" } ?? "") (\(pixels.x),\(pixels.y) \(pixels.width)×\(pixels.height))"
     }
 
     func drag(_ c: HoboUI.Drag) throws -> Outcome {
