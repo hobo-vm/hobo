@@ -31,4 +31,7 @@ working tree; `bd dolt push` backs it up to origin's `refs/dolt/data`, and `bd b
   `HoboControl` over a Unix socket. On-disk state is the source of truth; no central daemon.
 - VM processes never take focus (`.accessory` activation policy). Agents test inside guests via
   SSH, never by driving the host UI.
+- Never `await` between a `Process`'s `run()` and `waitUntilExit()`: `waitUntilExit` on a thread
+  other than the launching one can block for good. Wait on a `terminationHandler` instead
+  (`spikes/waituntilexit`).
 - Target platform is macOS 27 (`Package.swift` minimum); no availability gating needed for 27 APIs.
