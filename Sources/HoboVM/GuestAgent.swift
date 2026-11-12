@@ -465,6 +465,9 @@ final class HostTar: Sendable {
     private let errors = Mutex(Data())
     /// Signalled once `startWriting`'s tar has closed its stderr; `finish` waits for it.
     private let finishing = Mutex<DispatchSemaphore?>(nil)
+    /// Signalled when tar exits. `waitUntilExit` can miss the exit when called from a Swift
+    /// concurrency thread and block forever in its run loop, so the exit is awaited through this.
+    private let exited = DispatchSemaphore(value: 0)
 
     init(arguments: [String]) {
         process.withLock { process in
@@ -473,6 +476,7 @@ final class HostTar: Sendable {
             var environment = ProcessInfo.processInfo.environment
             environment["COPYFILE_DISABLE"] = "1"
             process.environment = environment
+            process.terminationHandler = { [exited] _ in exited.signal() }
         }
     }
 
@@ -495,7 +499,7 @@ final class HostTar: Sendable {
         let collectErrors = collect(errorPipe)
         defer {
             collectErrors.wait()
-            process.withLock { $0.waitUntilExit() }
+            exited.wait()
         }
         let handle = output.fileHandleForReading
         while case let data = handle.readData(ofLength: 256 << 10), !data.isEmpty {
@@ -523,9 +527,11 @@ final class HostTar: Sendable {
         return input.fileHandleForWriting
     }
 
+    /// Waits for `startWriting`'s tar to exit. Call it once.
     func finish() {
-        finishing.withLock { $0 }?.wait()
-        process.withLock { $0.waitUntilExit() }
+        guard let finishing = finishing.withLock({ $0 }) else { return }
+        finishing.wait()
+        exited.wait()
     }
 
     private func collect(_ pipe: Pipe) -> DispatchSemaphore {
