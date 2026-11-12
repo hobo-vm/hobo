@@ -219,15 +219,18 @@ public func searchableElements<E: AccessibleElement>(under app: E) -> [(E, Eleme
     }
 }
 
-/// The elements under `root` (an app) showing exactly `text`, for `click --text`. `role` keeps
-/// only those a snapshot shows with that role. Of an element and one inside it that both match
+/// The elements under `root` (an app) showing exactly `text`, for `click --text`, or with
+/// `partial` showing it as part of their text (`click --text --contains`). `role` keeps only
+/// those a snapshot shows with that role. Of an element and one inside it that both match
 /// (a cell and its text), only the outer; of matches with the same role in the same frame (a menu
 /// item AppKit reports twice), only the first, since a click there reaches either.
-public func elements<E: AccessibleElement>(showing text: String, role: String?, under root: E) -> [(E, ElementAttributes, Locator)] {
+public func elements<E: AccessibleElement>(
+    showing text: String, partial: Bool = false, role: String?, under root: E
+) -> [(E, ElementAttributes, Locator)] {
     var found: [(E, ElementAttributes, Locator)] = []
     for (element, attributes, locator) in searchableElements(under: root) {
         let hasRole = role.map { SnapshotNode.shownRole(attributes).caseInsensitiveCompare($0) == .orderedSame } ?? true
-        guard hasRole, attributes.shows(text) else { continue }
+        guard hasRole, partial ? attributes.contains(text) : attributes.shows(text) else { continue }
         // Depth first, so an element's ancestors come before it.
         let isInsideAMatch = found.contains { locator.steps.starts(with: $0.2.steps) }
         let isAMatchAgain = attributes.frame.map { frame in

@@ -263,6 +263,15 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(found("Save...") == ["AXWindow:Main[0]/AXButton:Save…[0]"])
     }
 
+    @Test func containsMatchesPartOfTheTextOnlyOncePerElement() {
+        func partly(_ text: String) -> [String] { elements(showing: text, partial: true, role: nil, under: app).map(\.2.description) }
+        #expect(partly("Remove A") == ["AXWindow:Main[0]/AXButton:Remove All[0]"])
+        #expect(partly("Remov").count == 3)
+        // The cell, not its text as well.
+        #expect(partly("NA") == ["AXWindow:Main[0]/AXCell:NAS[0]"])
+        #expect(elements(showing: "Remov", partial: true, role: "button", under: app).count == 2)
+    }
+
     @Test func aCheckboxStateIsNotTextItShows() {
         #expect(found("1") == ["AXWindow:Main[0]/AXStaticText[0]"])
     }
@@ -373,6 +382,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     @Test func parsesEachCommand() throws {
         #expect(try HoboUI.parseAsRoot(["click", "e12", "--mods", "cmd,shift"]) is HoboUI.Click)
         #expect(try HoboUI.parseAsRoot(["click", "--text", "Remove", "--role", "menuitem", "--press"]) is HoboUI.Click)
+        #expect(try HoboUI.parseAsRoot(["click", "--text", "IMG_0001", "--contains"]) is HoboUI.Click)
         #expect(try HoboUI.parseAsRoot(["scroll", "e5", "down", "10"]) is HoboUI.Scroll)
         #expect(try HoboUI.parseAsRoot(["scroll", "--to", "e40"]) is HoboUI.Scroll)
         #expect(try HoboUI.parseAsRoot(["menu", "File > Save"]) is HoboUI.Menu)
@@ -384,7 +394,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 
     @Test(arguments: [
-        ["click", "nowhere"], ["click", "1,2", "--press"], ["at", "e12"], ["at"], ["click"], ["click", "e1", "--text", "OK"], ["click", "e1", "--role", "button"],
+        ["click", "nowhere"], ["click", "1,2", "--press"], ["at", "e12"], ["at"], ["click"], ["click", "e1", "--text", "OK"], ["click", "e1", "--role", "button"], ["click", "e1", "--contains"],
         ["click", "--text", ""], ["wait", "--text", ""], ["scroll", "e5"], ["wait"], ["wait", "--ref", "e1", "--text", "x"],
         ["key", "cmd+blah"], ["choose", "Pictures/a.png"], ["snapshot", "--depth", "0"], ["menu", " > "],
         ["wait", "--app", "X", "--timeout", "0"], ["wait", "--app", "X", "--timeout", "nan"], ["wait", "--app", "X", "--timeout", "inf"],

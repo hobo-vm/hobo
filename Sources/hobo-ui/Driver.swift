@@ -87,16 +87,18 @@ struct Driver {
 
     /// The ref of the one element showing `text` (`click --text`), failing with the candidates
     /// when there are several: picking one would be a guess.
-    func ref(showing text: String, role: String?, app spec: String?) throws -> Int {
+    func ref(showing text: String, partial: Bool, role: String?, app spec: String?) throws -> Int {
         let app = try app(spec)
-        let matches = elements(showing: text, role: role, under: app.element)
+        let matches = elements(showing: text, partial: partial, role: role, under: app.element)
         let nodes = try store.update(app.identity.storeKey) { refs in
             matches.map { SnapshotNode(ref: refs.ref(for: $0.2), attributes: $0.1, scale: scale) }
         }
         // "checkbox elements": a role with an s on the end isn't always its plural.
         let kind = role.map { "\($0.lowercased()) element" } ?? "element"
         guard let first = nodes.first, let ref = RefMap.parse(first.ref) else {
-            throw UIError.failed("no \(kind) in \(app.identity.name) shows exactly \(AppSnapshot.quoted(text)); take a snapshot to see what's there")
+            let how = partial ? "shows" : "shows exactly"
+            let hint = partial ? "" : ", or --contains to match part of its text"
+            throw UIError.failed("no \(kind) in \(app.identity.name) \(how) \(AppSnapshot.quoted(text)); take a snapshot to see what's there\(hint)")
         }
         guard nodes.count == 1 else {
             let listed = 10
@@ -261,7 +263,7 @@ struct Driver {
     func click(_ c: HoboUI.Click) throws -> Outcome {
         let target: UITarget
         if let text = c.text {
-            target = .ref(try ref(showing: text, role: c.role, app: c.target.app))
+            target = .ref(try ref(showing: text, partial: c.contains, role: c.role, app: c.target.app))
         } else {
             // Validation leaves one of --text and the ref or point.
             target = try UITarget(parsing: c.at ?? "")

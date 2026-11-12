@@ -75,13 +75,15 @@ public struct HoboUI: ParsableCommand {
                 Brings the element's app to the front and clicks the centre of it with a real mouse event, \
                 failing if another window, sheet, popover or menu is over that point, or the element is scrolled out of its scroll area. \
                 --text clicks the one element showing exactly that text, e.g. click --text Remove --role menuitem, \
-                and fails listing them if several do. --press performs the element's AXPress action instead, with no mouse.
+                and fails listing them if several do; with --contains, the one showing it as part of its text, \
+                for a label that carries more, such as a photo cell's capture time. --press performs the element's AXPress action instead, with no mouse.
                 """
         )
         @OptionGroup public var target: AppOption
         @Argument(help: ArgumentHelp("A ref (e12) or a point in pixels (840,412).", valueName: "ref|x,y")) public var at: String?
         @Option(help: ArgumentHelp("Click the element whose title, value or label is exactly this, instead of a ref.", valueName: "text")) public var text: String?
         @Option(help: ArgumentHelp("With --text, only elements of this role as snapshot shows it, e.g. button.", valueName: "role")) public var role: String?
+        @Flag(help: "With --text, match elements showing it as part of their text, not all of it.") public var contains = false
         @Option(help: ArgumentHelp("Modifiers held down: cmd, shift, opt, ctrl.", valueName: "cmd,shift")) public var mods: String?
         @Flag(help: "Right-click.") public var right = false
         @Flag(help: "Double-click.") public var double = false
@@ -96,6 +98,7 @@ public struct HoboUI: ParsableCommand {
                 if text.isEmpty { throw ValidationError("--text needs some text") }
             case (let at?, nil):
                 if role != nil { throw ValidationError("--role goes with --text") }
+                if contains { throw ValidationError("--contains goes with --text") }
                 let point = try parsePoint(at)
                 if press && point != nil { throw ValidationError("--press needs a ref or --text, not a point") }
             }
