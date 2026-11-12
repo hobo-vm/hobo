@@ -80,6 +80,21 @@ enum Input {
         pause(0.1)
     }
 
+    /// One scroll of `distance` points: a trackpad's kind of scroll, which moves content by
+    /// exactly that much where a wheel's lines are the app's to size.
+    static func scroll(at point: CGPoint, _ direction: HoboUI.ScrollDirection, points distance: Double) {
+        move(to: point)
+        let amount = Int32(min(distance.rounded(), 100_000))
+        let (vertical, horizontal): (Int32, Int32) = switch direction {
+        case .up: (amount, 0)
+        case .down: (-amount, 0)
+        case .left: (0, amount)
+        case .right: (0, -amount)
+        }
+        post(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: vertical, wheel2: horizontal, wheel3: 0))
+        pause(0.1)
+    }
+
     static func key(_ spec: KeySpec) {
         let flags = flags(spec.modifiers)
         for down in [true, false] {

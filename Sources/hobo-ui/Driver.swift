@@ -211,15 +211,17 @@ struct Driver {
         guard CGDisplayBounds(CGMainDisplayID()).contains(centre) else {
             throw UIError.failed("\(AppSnapshot.line(node)) is off the screen; scroll --to \(node.ref) first")
         }
+        // Before hit-testing, which can answer with the element itself where it's scrolled out
+        // under a bar laid over its scroll area (safeAreaInset): the click goes to the bar.
+        if ScrollVisibility.obstruction(of: centre, areas: scrollAreas(around: element)) != nil {
+            throw UIError.failed("\(AppSnapshot.line(node)) is scrolled out of view; scroll --to \(node.ref) first")
+        }
         guard let hit = AXElement.at(centre) else {
             throw UIError.failed("nothing answers at \(AppSnapshot.line(node))'s centre")
         }
         // Hit-testing can land on something inside the element (a cell's text), or on a container of
         // it that doesn't hit-test its children; either way the click reaches it.
         if hit.isWithin(element) || element.isWithin(hit) { return centre }
-        if ScrollVisibility.obstruction(of: centre, areas: scrollAreas(around: element)) != nil {
-            throw UIError.failed("\(AppSnapshot.line(node)) is scrolled out of view; scroll --to \(node.ref) first")
-        }
         // Within the element's own window, hit-testing isn't to be trusted: SwiftUI answers with the
         // scroll area under a bar laid over it (safeAreaInset), not the bar's button. Only another
         // window, sheet, popover or menu over it keeps a click from it.
@@ -354,7 +356,7 @@ struct Driver {
             throw UIError.failed("\(AppSnapshot.line(node)) isn't in a scroll area")
         }
         for _ in 0..<60 {
-            guard let frame = element.attributes().frame else { break }
+            guard let frame = settledFrame(of: element) else { break }
             let centre = CGPoint(x: frame.midX, y: frame.midY)
             guard let obstruction = ScrollVisibility.obstruction(of: centre, areas: scrollAreas(around: element)) else {
                 node = describe(element, ref: ref)
@@ -365,9 +367,28 @@ struct Driver {
             if obstruction.visible.isEmpty {
                 throw UIError.failed("\(AppSnapshot.line(node)) is in a scroll area that shows nothing, so it can't be scrolled into view")
             }
-            Input.scroll(at: CGPoint(x: obstruction.visible.midX, y: obstruction.visible.midY), obstruction.direction, lines: 3)
+            // By the distance to the middle of what the area shows.
+            let wheel = CGPoint(x: obstruction.visible.midX, y: obstruction.visible.midY)
+            let vertical = obstruction.direction == .up || obstruction.direction == .down
+            let distance = vertical ? abs(centre.y - wheel.y) : abs(centre.x - wheel.x)
+            Input.scroll(at: wheel, obstruction.direction, points: max(distance, 1))
         }
         throw UIError.failed("couldn't scroll \(AppSnapshot.line(node)) into view")
+    }
+
+    /// An element's frame once it stops moving, for up to a second: a scroll view goes on moving
+    /// its content after the wheel events, and a frame read mid-way says it's in view where it
+    /// comes to rest out of it.
+    func settledFrame(of element: AXElement) -> CGRect? {
+        var frame = element.attributes().frame
+        let deadline = Date().addingTimeInterval(1)
+        while Date() < deadline {
+            Input.pause(0.05)
+            let now = element.attributes().frame
+            if now == frame { break }
+            frame = now
+        }
+        return frame
     }
 
     /// The frames of the scroll areas an element is in, outermost first.
