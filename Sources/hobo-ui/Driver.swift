@@ -18,6 +18,7 @@ struct Driver {
         guard AXIsProcessTrusted() else { throw UIError.notTrusted }
         switch command {
         case let c as HoboUI.Snapshot: return try snapshot(c)
+        case let c as HoboUI.At: return try at(c)
         case let c as HoboUI.Click: return try click(c)
         case let c as HoboUI.Drag: return try drag(c)
         case let c as HoboUI.Scroll: return try scroll(c)
@@ -135,6 +136,27 @@ struct Driver {
         return AppSnapshot(app: app.identity, scale: scale.factor, elements: elements)
     }
 
+    /// What's at a point: the element there and the way to it from its window, in whichever app
+    /// it is, and a menu open elsewhere, which a click at the point would go to closing.
+    func at(_ c: HoboUI.At) throws -> Outcome {
+        // Validation leaves a point.
+        guard case .point(let pixels) = try UITarget(parsing: c.point) else { throw UIError.failed("give a point such as 840,412") }
+        let point = scale.points(pixels)
+        guard let hit = AXElement.at(point) else { throw UIError.failed("nothing answers at \(pixels.x),\(pixels.y)") }
+        let running = NSRunningApplication(processIdentifier: hit.pid)
+        let identity = AppIdentity(
+            name: running?.localizedName ?? running?.bundleIdentifier ?? "pid \(hit.pid)", bundleID: running?.bundleIdentifier, pid: hit.pid
+        )
+        let lineage = Array(hit.lineage)
+        let elements = try store.update(identity.storeKey) { refs in
+            path(to: lineage, same: { (a: AXElement, b: AXElement) in CFEqual(a.element, b.element) }, scale: scale, refs: &refs)
+        }
+        let snapshot = AppSnapshot(app: identity, scale: scale.factor, elements: elements)
+        let menu = openMenu(notAt: point)
+        let warning = menu.map { "\n\($0) is open elsewhere: a click at \(pixels.x),\(pixels.y) would likely just close it" } ?? ""
+        return Outcome(text: snapshot.text + warning, snapshot: snapshot, openMenu: menu)
+    }
+
     // MARK: Pointing
 
     /// The screen point (in points) to act on, having brought a ref's app forward and checked
@@ -247,7 +269,10 @@ struct Driver {
         let (what, node) = outcomeTarget(aim)
         let clicked = "\(c.right ? "right-clicked" : c.double ? "double-clicked" : "clicked") \(what)"
         guard let menu else { return Outcome(text: clicked, element: node) }
-        return Outcome(text: "\(clicked), but \(menu) was open elsewhere, so the click likely just closed it; check before going on", element: node)
+        return Outcome(
+            text: "\(clicked), but \(menu) was open elsewhere, so the click likely just closed it; check before going on",
+            element: node, openMenu: menu
+        )
     }
 
     /// An open menu (a pop-up, context or toolbar menu), described for a warning, when `point`
@@ -556,15 +581,18 @@ struct Outcome: Encodable {
     var element: SnapshotNode?
     var items: [MenuItemInfo]?
     var snapshot: AppSnapshot?
+    /// A menu open away from where a click went (or `at`'s point), which it would go to closing.
+    var openMenu: String?
 
-    init(text: String, element: SnapshotNode? = nil, items: [MenuItemInfo]? = nil, snapshot: AppSnapshot? = nil) {
+    init(text: String, element: SnapshotNode? = nil, items: [MenuItemInfo]? = nil, snapshot: AppSnapshot? = nil, openMenu: String? = nil) {
         self.text = text
         self.element = element
         self.items = items
         self.snapshot = snapshot
+        self.openMenu = openMenu
     }
 
-    enum CodingKeys: String, CodingKey { case text = "message", element, items, snapshot }
+    enum CodingKeys: String, CodingKey { case text = "message", element, items, snapshot, openMenu }
 }
 
 enum UIError: Error, CustomStringConvertible {

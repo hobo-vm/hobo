@@ -257,3 +257,33 @@ extension ElementAttributes {
         return shownTexts.contains { $0.contains(wanted) }
     }
 }
+
+/// The element at the end of `lineage` (the element, its parent, and so on up to its app) as a
+/// snapshot shows the way to it: its window, then each element inside down to it, nested, with
+/// refs. Unnamed layout groups are folded away as in a snapshot, all but the element itself. An
+/// element its parent doesn't list among its children has no locator, so it and those under it
+/// get no ref.
+public func path<E: AccessibleElement>(
+    to lineage: [E], same: (E, E) -> Bool, scale: PixelScale, refs: inout RefMap
+) -> [SnapshotNode] {
+    let downward = Array(lineage.reversed())
+    var nodes: [SnapshotNode] = []
+    var locator: Locator? = Locator()
+    for (depth, element) in downward.enumerated().dropFirst() {
+        let attributes = element.attributes()
+        if let parentLocator = locator {
+            let siblings = downward[depth - 1].children()
+            let steps = Locator.steps(for: siblings.map { $0.attributes() })
+            locator = siblings.firstIndex { same($0, element) }.map { parentLocator.appending(steps[$0]) }
+        }
+        if attributes.isUnnamedLayout && depth < downward.count - 1 { continue }
+        var node = SnapshotNode(ref: 0, attributes: attributes, scale: scale)
+        node.ref = locator.map { RefMap.format(refs.ref(for: $0)) } ?? ""
+        nodes.append(node)
+    }
+    return nodes.reversed().reduce([]) { inner, node in
+        var node = node
+        node.children = inner
+        return [node]
+    }
+}

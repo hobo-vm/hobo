@@ -15,7 +15,7 @@ public struct HoboUI: ParsableCommand {
             Clicks, drags, scrolls and keys are real input events, as a person's would be. \
             --app takes a bundle ID, a name or pid:<n>, and defaults to the frontmost app.
             """,
-        subcommands: [Snapshot.self, Click.self, Drag.self, Scroll.self, TypeText.self, Key.self, Menu.self, Choose.self, Wait.self]
+        subcommands: [Snapshot.self, At.self, Click.self, Drag.self, Scroll.self, TypeText.self, Key.self, Menu.self, Choose.self, Wait.self]
     )
 
     public init() {}
@@ -47,6 +47,24 @@ public struct HoboUI: ParsableCommand {
         public func validate() throws {
             if let root, RefMap.parse(root) == nil { throw ValidationError("--root takes a ref such as e12") }
             if let depth, depth < 1 { throw ValidationError("--depth must be at least 1") }
+        }
+    }
+
+    public struct At: ParsableCommand {
+        public static let configuration = CommandConfiguration(
+            abstract: "Show what's at a point: the element there, the elements it's in, and any menu open elsewhere.",
+            discussion: """
+                For a point read off a screenshot: the element a click there would reach, whichever app it's in, \
+                as snapshot lines from its window down, each with its ref. An open menu the point isn't in is named, \
+                since a click there would go to closing it.
+                """
+        )
+        @Argument(help: ArgumentHelp("A point in pixels.", valueName: "x,y")) public var point: String
+        @Flag(help: "Print the result as JSON.") public var json = false
+        public init() {}
+
+        public func validate() throws {
+            if try parsePoint(point) == nil { throw ValidationError("give a point such as 840,412, not a ref: snapshot --root \(point) shows an element") }
         }
     }
 

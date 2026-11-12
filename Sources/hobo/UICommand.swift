@@ -9,7 +9,7 @@ import HoboUICore
 struct UICommand: AsyncParsableCommand, JSONPassthrough {
     static let configuration = CommandConfiguration(
         commandName: "ui",
-        abstract: "Drive a macOS guest's apps: snapshot, click, drag, scroll, type, key, menu, choose, wait.",
+        abstract: "Drive a macOS guest's apps: snapshot, at, click, drag, scroll, type, key, menu, choose, wait.",
         discussion: HoboUI.configuration.discussion + " " + """
             Needs a VM built from a recipe with [gui_testing]. Commands: \(Self.commandList). \
             hobo ui <vm> <command> --help describes one. With --json a command prints JSON, failures included.

@@ -671,6 +671,11 @@ global VMs on 2026-11-01.
         about 75 px of shadow) still happens, but its message says the menu likely swallowed it.
         `click --press` and `menu` use AXPress; `menu` refuses a disabled item and lists a menu's
         items with shortcuts in `key`'s syntax.
+      - `at <x,y>` (2026-11-11) prints what a click at a point would reach: the hit-tested element
+        and the elements it's in, from its window down, as snapshot lines with refs, in whichever
+        app owns it, plus a menu open elsewhere. Agents read points off screenshots and guessed what
+        was there, and checking for an open menu took a script in the guest. An element its parent
+        doesn't list among its children has no locator, so it's shown without a ref.
       - `type --replace` (2026-11-11) presses Cmd-A before typing, so the text replaces a
         field's contents (and `""` empties it): `type` alone adds at the cursor, and every edit of
         a filled field had been click, `key cmd+a`, `type`.

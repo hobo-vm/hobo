@@ -306,6 +306,46 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 }
 
+@Suite struct PathTests {
+    let save = Fake("AXButton", "Save", frame: rect(10, 40, 80, 28))
+    var group: Fake { Fake("AXGroup", [Fake("AXButton", "Cancel"), save]) }
+    var window: Fake { Fake("AXWindow", "Main", frame: rect(0, 25, 800, 600), [Fake("AXButton", "Save"), group]) }
+    var app: Fake { Fake("AXApplication", "Demo", [window]) }
+
+    func shown(_ lineage: [Fake], refs: inout RefMap) -> String {
+        let nodes = path(to: lineage, same: { $0.a == $1.a && $0.kids.count == $1.kids.count }, scale: PixelScale(1), refs: &refs)
+        return AppSnapshot(app: AppIdentity(name: "Demo", bundleID: nil, pid: 7), scale: 1, elements: nodes).text
+    }
+
+    @Test func showsTheWayFromTheWindowWithRefsThatResolve() throws {
+        var refs = RefMap()
+        #expect(shown([save, group, window, app], refs: &refs) == """
+            app Demo pid 7
+            - window "Main" [e1] (0,25 800×600)
+              - button "Save" [e2] (10,40 80×28)
+            """)
+        // e2 is the Save inside the folded group, not the window's own Save.
+        let locator = try #require(refs.locator(for: 2))
+        #expect(locator.description == "AXWindow:Main[0]/AXGroup[0]/AXButton:Save[0]")
+        #expect(locator.resolve(from: app)?.a == save.a)
+    }
+
+    @Test func anElementItsParentDoesntListHasNoRef() {
+        var refs = RefMap()
+        let stray = Fake("AXButton", "Stray")
+        #expect(shown([stray, window, app], refs: &refs) == """
+            app Demo pid 7
+            - window "Main" [e1] (0,25 800×600)
+              - button "Stray"
+            """)
+    }
+
+    @Test func anUnnamedGroupAtThePointIsShown() {
+        var refs = RefMap()
+        #expect(shown([group, window, app], refs: &refs).hasSuffix("\n  - group [e2]"))
+    }
+}
+
 @Suite struct KeyTests {
     @Test func parsesModifiersAndNamedKeys() throws {
         #expect(try KeySpec.parse("cmd+shift+k") == KeySpec(modifiers: [.command, .shift], keyCode: 0x28))
@@ -336,6 +376,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(try HoboUI.parseAsRoot(["scroll", "e5", "down", "10"]) is HoboUI.Scroll)
         #expect(try HoboUI.parseAsRoot(["scroll", "--to", "e40"]) is HoboUI.Scroll)
         #expect(try HoboUI.parseAsRoot(["menu", "File > Save"]) is HoboUI.Menu)
+        #expect(try HoboUI.parseAsRoot(["at", "840,412", "--json"]) is HoboUI.At)
         #expect(try HoboUI.parseAsRoot(["wait", "--app", "TextEdit"]) is HoboUI.Wait)
         #expect(try HoboUI.parseAsRoot(["choose", "~/Pictures", "--app", "Candela"]) is HoboUI.Choose)
         #expect(try HoboUI.parseAsRoot(["type", "hello", "--into", "e3"]) is HoboUI.TypeText)
@@ -343,7 +384,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 
     @Test(arguments: [
-        ["click", "nowhere"], ["click", "1,2", "--press"], ["click"], ["click", "e1", "--text", "OK"], ["click", "e1", "--role", "button"],
+        ["click", "nowhere"], ["click", "1,2", "--press"], ["at", "e12"], ["at"], ["click"], ["click", "e1", "--text", "OK"], ["click", "e1", "--role", "button"],
         ["click", "--text", ""], ["wait", "--text", ""], ["scroll", "e5"], ["wait"], ["wait", "--ref", "e1", "--text", "x"],
         ["key", "cmd+blah"], ["choose", "Pictures/a.png"], ["snapshot", "--depth", "0"], ["menu", " > "],
         ["wait", "--app", "X", "--timeout", "0"], ["wait", "--app", "X", "--timeout", "nan"], ["wait", "--app", "X", "--timeout", "inf"],

@@ -40,7 +40,8 @@ public struct AppSnapshot: Codable, Equatable, Sendable {
     public static func line(_ node: SnapshotNode) -> String {
         var parts = [node.role]
         if let name = node.name { parts.append(quoted(name)) }
-        parts.append("[\(node.ref)]")
+        // An element with no locator (`path(to:)`) has no ref to show.
+        if !node.ref.isEmpty { parts.append("[\(node.ref)]") }
         if let identifier = node.identifier { parts.append("#" + identifier) }
         if let value = node.value { parts.append("= " + quoted(value)) }
         if let frame = node.frame { parts.append("(\(frame.x),\(frame.y) \(frame.width)×\(frame.height))") }
