@@ -484,6 +484,15 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(obstruction == .init(area: 0, visible: outer, direction: .down))
     }
 
+    // Three deep: a list below the part of a panel the scroll view shows, the panel partly in
+    // view. The panel, not the outermost view, brings the list in, with the wheel over its shown part.
+    @Test func theAreaThatBringsAnOutOfViewAreaInIsTheInnermostThatCan() {
+        let panel = CGRect(x: 0, y: 200, width: 400, height: 400)
+        let list = CGRect(x: 0, y: 700, width: 400, height: 100)
+        let obstruction = ScrollVisibility.obstruction(of: CGPoint(x: 600, y: 750), areas: [outer, panel, list])
+        #expect(obstruction == .init(area: 1, visible: CGRect(x: 0, y: 200, width: 400, height: 100), direction: .down))
+    }
+
     // A collapsed area shows nothing, though its centre is inside the area around it.
     @Test func aPointInAnEmptyAreaIsntInView() {
         let collapsed = CGRect(x: 0, y: 100, width: 400, height: 0)
