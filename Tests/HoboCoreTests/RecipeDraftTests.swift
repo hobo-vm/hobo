@@ -18,25 +18,10 @@ import Testing
         .windows(iso: "/isos/win.iso", sha256: sha),
     ]
 
-    /// Each template's machine lines are found and replaced (a template that lost one would trap).
+    /// Each OS's template parses, with that OS's default machine.
     @Test(arguments: sources)
-    func theMachineOverridesEveryTemplatesDefaults(source: RecipeDraft.Source) throws {
-        let draft = RecipeDraft(source: source, cpus: 3, memory: ByteSize(bytes: 5 << 30), disk: ByteSize(bytes: 50 << 30))
-        let recipe = try Recipe.parse(try draft.text(), directory: URL(filePath: "/recipes"))
-        #expect(recipe.os == draft.os)
-        #expect(recipe.cpus == 3 && recipe.memory.bytes == 5 << 30 && recipe.disk.bytes == 50 << 30)
-        #expect(recipe.guiTesting == nil)
-    }
-
-    @Test(arguments: sources)
-    func noOverridesIsTheTemplate(source: RecipeDraft.Source) throws {
-        let recipe = try Recipe.parse(try RecipeDraft(source: source).text(), directory: URL(filePath: "/recipes"))
+    func eachSourceWritesItsTemplate(source: RecipeDraft.Source) throws {
+        let recipe = try Recipe.parse(RecipeDraft(source: source).text(), directory: URL(filePath: "/recipes"))
         #expect(recipe.memory == Recipe.defaultMemory(for: recipe.os) && recipe.disk == Recipe.defaultDisk(for: recipe.os))
-    }
-
-    @Test func guiTestingIsMacOSOnly() throws {
-        let recipe = try Recipe.parse(try RecipeDraft(source: .macOS(nil), guiTesting: true).text(), directory: URL(filePath: "/recipes"))
-        #expect(recipe.guiTesting != nil)
-        #expect(throws: RecipeError.self) { try RecipeDraft(source: .linux(Self.ubuntu, desktop: true), guiTesting: true).text() }
     }
 }

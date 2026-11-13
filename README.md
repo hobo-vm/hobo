@@ -29,7 +29,7 @@ hobo stop dev                      # clean shutdown; --force powers off
 ## Install
 
 ```sh
-make install                 # release build, ad-hoc signed: /Applications/Hobo.app, linked as /usr/local/bin/hobo
+make install                 # release build, ad-hoc signed: /usr/local/bin/hobo and /usr/local/share/hobo
 ```
 
 ## Features
@@ -89,15 +89,6 @@ ubuntu   running  192.168.64.6  Ubuntu 26.04           4     4 GB    6.26 GB / 3
 ```
 
 Full guide → [hobo.gsquared.app/running-vms](https://hobo.gsquared.app/running-vms/)
-
-### The Hobo app
-
-Hobo.app lists your VMs with their state and disk use. From it you can start, stop, suspend, open
-a VM's window, clone, rename and delete VMs, and change their settings. **New VM** builds one
-without a recipe file. The app and the `hobo` command are the same program, so they always agree.
-Use either, or both at once.
-
-Full guide → [hobo.gsquared.app/app](https://hobo.gsquared.app/app/)
 
 ### Getting inside
 
@@ -240,9 +231,10 @@ Full guide → [hobo.gsquared.app/agents](https://hobo.gsquared.app/agents/)
 ## Build from source
 
 ```sh
-make install                 # release build, ad-hoc signed: /Applications/Hobo.app, linked as /usr/local/bin/hobo
+make install                 # release build, ad-hoc signed: /usr/local/bin/hobo and /usr/local/share/hobo
 HOBO_SIGN_IDENTITY="Developer ID Application: …" make install
-make app                     # assemble .build/Hobo.app without installing it
+make sign                    # stage and sign .build/hobo (bin/hobo, share/hobo) without installing it
+PREFIX=~/.local make install # install somewhere else
 make test                    # README check, then unit tests
 make integration-test        # tests that drive the signed binary
 HOBO_WINDOWS_ISO=<path> make integration-test   # also build and test a Windows guest from that ISO

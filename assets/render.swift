@@ -4,7 +4,7 @@
 //     swift assets/render.swift
 //
 // icon.svg is the master and icon-small.svg the simplified drawing for 16-32 px. The output is
-// Hobo.icns and the two README headers. The renderer is NSImage's SVG support, which has no blur
+// the two README headers. The renderer is NSImage's SVG support, which has no blur
 // filter, so the drawings don't use one. VM icons come from draw_signs.py instead.
 import AppKit
 
@@ -71,23 +71,3 @@ if arguments.first == "--preview", let directory = arguments.dropFirst().first {
 let icon = try String(contentsOf: master, encoding: .utf8)
 try header(icon: icon, ink: "#3B2A1A").write(to: assets.appending(path: "logo-light.svg"), atomically: true, encoding: .utf8)
 try header(icon: icon, ink: "#F3E7D0").write(to: assets.appending(path: "logo-dark.svg"), atomically: true, encoding: .utf8)
-
-let temporary = fileManager.temporaryDirectory.appending(path: "Hobo-\(UUID().uuidString).iconset")
-try fileManager.createDirectory(at: temporary, withIntermediateDirectories: true)
-defer { try? fileManager.removeItem(at: temporary) }
-let slots: [(name: String, pixels: Int, svg: URL)] = [
-    ("icon_16x16", 16, small), ("icon_16x16@2x", 32, small),
-    ("icon_32x32", 32, small), ("icon_32x32@2x", 64, master),
-    ("icon_128x128", 128, master), ("icon_128x128@2x", 256, master),
-    ("icon_256x256", 256, master), ("icon_256x256@2x", 512, master),
-    ("icon_512x512", 512, master), ("icon_512x512@2x", 1024, master),
-]
-for slot in slots {
-    try renderPNG(svg: slot.svg, width: slot.pixels, height: slot.pixels, to: temporary.appending(path: "\(slot.name).png"))
-}
-let iconutil = try Process.run(
-    URL(filePath: "/usr/bin/iconutil"),
-    arguments: ["-c", "icns", temporary.path, "-o", assets.appending(path: "Hobo.icns").path]
-)
-iconutil.waitUntilExit()
-if iconutil.terminationStatus != 0 { exit(iconutil.terminationStatus) }

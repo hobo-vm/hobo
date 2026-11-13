@@ -2,9 +2,8 @@ import Foundation
 import HoboCore
 
 /// The files hobo carries for its guests: the agent for each OS, `hobo-ui`, the Windows boot driver
-/// and install scripts, and the VM icons' signs. In Hobo.app they are in `Contents/Resources`; a bare
-/// build (`swift build`, `swift test`) reads SwiftPM's resource bundle. Not `Bundle.module` alone,
-/// whose accessor looks for the bundle at the top of `Hobo.app`, where code signing doesn't allow it.
+/// and install scripts, and the VM icons' signs. Installed, they are in `share/hobo` beside `bin/hobo`
+/// (`HoboInstall.resources`); a bare build (`swift build`, `swift test`) reads SwiftPM's resource bundle.
 public enum Payloads {
     public static let directory: URL = HoboInstall.resources ?? Bundle.module.resourceURL!
 

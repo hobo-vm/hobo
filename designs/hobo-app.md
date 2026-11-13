@@ -1,5 +1,8 @@
 # Hobo.app: a GUI for using VMs without the CLI, bundling the payloads
 
+**Superseded 2026-11-13** by docs/design.md decision 22: the GUI and the app were dropped, and hobo
+is a CLI laid out for Homebrew (`bin/hobo`, payloads in `share/hobo`).
+
 ## Decisions
 
 1. **Scope.** v1 is a library window. It lists VMs with their state, disk use and icon, and does

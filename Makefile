@@ -1,15 +1,13 @@
 HOBO_SIGN_IDENTITY ?= -
 RELEASE := .build/release
-# Hobo.app (designs/hobo-app.md): the GUI is Contents/MacOS/Hobo, the CLI Contents/Helpers/hobo, and
-# the payloads (agents, hobo-ui, Windows boot files and scripts, VM icon signs) Contents/Resources.
-APP := .build/Hobo.app
-BIN := $(APP)/Contents/Helpers/hobo
-INSTALLED := /Applications/Hobo.app
-CLI_LINK := /usr/local/bin/hobo
-VERSION := $(shell sed -n 's/.*version = "\(.*\)"/\1/p' Sources/HoboCore/Hobo.swift)
+# Laid out as Homebrew lays out a formula (docs/design.md decision 22): the CLI in bin/hobo and the
+# payloads (agents, hobo-ui, Windows boot files and scripts, VM icon signs) in share/hobo beside it.
+STAGE := .build/hobo
+BIN := $(STAGE)/bin/hobo
+PREFIX ?= /usr/local
 
 .DEFAULT_GOAL := help
-.PHONY: help build app sign install test integration-test readme readme-check site site-preview clean
+.PHONY: help build sign install test integration-test readme readme-check site site-preview clean
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -17,35 +15,23 @@ help: ## List targets
 build: ## Release build
 	swift build -c release
 
-app: build ## Assemble Hobo.app from the release build, unsigned
-	rm -rf $(APP)
-	install -d $(APP)/Contents/MacOS $(APP)/Contents/Helpers $(APP)/Contents/Resources
-	sed 's/@VERSION@/$(VERSION)/g' App/Info.plist > $(APP)/Contents/Info.plist
-	install -m 755 $(RELEASE)/HoboApp $(APP)/Contents/MacOS/Hobo
+# The staged tree, signed with the virtualization entitlement (ad-hoc unless HOBO_SIGN_IDENTITY names one).
+sign: build ## Stage .build/hobo (bin/hobo, share/hobo) and sign the CLI with the virtualization entitlement
+	rm -rf $(STAGE)
+	install -d $(STAGE)/bin $(STAGE)/share/hobo
 	install -m 755 $(RELEASE)/hobo $(BIN)
-	cp -R $(RELEASE)/hobo_HoboVM.bundle/Contents/Resources/ $(APP)/Contents/Resources/
-	cp assets/Hobo.icns $(APP)/Contents/Resources/
-
-# Inside out: the CLI, then the app, which seals its resources. Both hold the virtualization
-# entitlement: the CLI runs VM processes, and the GUI builds VMs in its own process.
-sign: app ## Hobo.app signed with the virtualization entitlement
+	cp -R $(RELEASE)/hobo_HoboVM.bundle/Contents/Resources/ $(STAGE)/share/hobo/
 	codesign --force --sign "$(HOBO_SIGN_IDENTITY)" --entitlements entitlements.plist --options runtime $(BIN)
-	codesign --force --sign "$(HOBO_SIGN_IDENTITY)" --entitlements entitlements.plist --options runtime $(APP)
 
-# Links the CLI where the app's Install Command Line Tool does (with sudo if /usr/local/bin needs
-# it), removes the binary older builds installed in ~/.local/bin, which would shadow the link, and
-# refreshes hobo's global Claude skill if one is installed, so it matches the new binary.
+# Copies the staged tree into PREFIX (with sudo if it needs it), removes the binary older builds
+# installed in ~/.local/bin, which would shadow it, and refreshes hobo's global Claude skill if one
+# is installed, so it matches the new binary.
 SKILL := $(HOME)/.claude/skills/hobo/SKILL.md
-install: sign ## Install Hobo.app to /Applications and link /usr/local/bin/hobo to its CLI
-	rm -rf $(INSTALLED)
-	ditto $(APP) $(INSTALLED)
-	@target=$(INSTALLED)/Contents/Helpers/hobo; \
-	  if [ "$$(readlink $(CLI_LINK))" != "$$target" ]; then \
-	    { mkdir -p $(dir $(CLI_LINK)) && ln -sfn $$target $(CLI_LINK); } 2>/dev/null || \
-	      sudo sh -c "mkdir -p $(dir $(CLI_LINK)) && ln -sfn $$target $(CLI_LINK)"; \
-	  fi
+install: sign ## Install bin/hobo and share/hobo under PREFIX (default /usr/local)
+	@copy='rm -f $(PREFIX)/bin/hobo && rm -rf $(PREFIX)/share/hobo && install -d $(PREFIX)/bin $(PREFIX)/share/hobo && install -m 755 $(BIN) $(PREFIX)/bin/hobo && ditto $(STAGE)/share/hobo $(PREFIX)/share/hobo'; \
+	  sh -c "$$copy" 2>/dev/null || sudo sh -c "$$copy"
 	rm -f $(HOME)/.local/bin/hobo
-	@if grep -qs '^hobo-version:' $(SKILL); then $(CLI_LINK) claude install; fi
+	@if grep -qs '^hobo-version:' $(SKILL); then $(PREFIX)/bin/hobo claude install; fi
 
 test: readme-check ## README check, docs-script tests, then unit tests
 	node --test 'site/scripts/*.test.mjs'

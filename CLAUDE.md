@@ -11,10 +11,10 @@ working tree; `bd dolt push` backs it up to origin's `refs/dolt/data`, and `bd b
 - `swift build` / `swift test` for day-to-day work. Building needs `brew install lld go`: the Windows
   boot driver (`Firmware/WindowsBoot`) and the guest agent (`Agent`, Go; `cd Agent && go test`) are
   compiled during the build.
-- `make sign` / `make install`: hobo ships as Hobo.app (`.build/Hobo.app`; the CLI is
-  `Contents/Helpers/hobo`), installed to `/Applications` with `/usr/local/bin/hobo` linked to it. It
-  needs the `com.apple.security.virtualization` entitlement (`entitlements.plist`) to create VMs, so
-  anything that boots a VM must use a signed build.
+- `make sign` / `make install`: hobo is laid out as a Homebrew formula is, the CLI in `bin/hobo` and
+  its payloads in `share/hobo`. `make sign` stages that in `.build/hobo` and signs it, and
+  `make install` copies it under `/usr/local` (`PREFIX`). The CLI needs the
+  `com.apple.security.virtualization` entitlement (`entitlements.plist`) to create VMs, so anything that boots a VM must use a signed build.
 - VM-booting tests live in `Tests/HoboVMTests` and run only with `HOBO_INTEGRATION=1` (`make integration-test`).
 - `make integration-test` holds a host-wide lock, so runs from different worktrees queue.
 - Feature docs live in `docs/features/*.md`, one file per feature; README.md's feature tour is

@@ -1,35 +1,27 @@
 import Foundation
 
-/// Where this build of hobo lives: inside Hobo.app, whose GUI is `Contents/MacOS/Hobo` and whose CLI
-/// is `Contents/Helpers/hobo` (outside `MacOS`, so VM processes aren't taken for the app), or a bare
-/// build such as `.build/debug/hobo`.
+/// Where this build of hobo lives. Installed, it is laid out as Homebrew lays out a formula, the CLI in
+/// `bin/hobo` and its payloads in `share/hobo` beside it (`make install`, the Homebrew formula, and
+/// `make sign`'s staged `.build/hobo`). A bare build such as `.build/debug/hobo` has neither, and reads
+/// SwiftPM's resource bundle instead.
 public enum HoboInstall {
-    /// The name of the CLI inside the app's `Contents/Helpers`.
-    public static let cliName = "hobo"
-
-    /// This process's executable, with symlinks resolved, so `/usr/local/bin/hobo` gives the binary
-    /// inside the app.
+    /// This process's executable, with symlinks resolved, so Homebrew's `bin/hobo` link gives the
+    /// binary in its Cellar.
     public static var executable: URL { Bundle.main.executableURL!.resolvingSymlinksInPath() }
 
-    /// The app's `Contents` directory, if `executable` is in its `MacOS` or `Helpers`.
-    public static var contents: URL? { contents(of: executable) }
+    /// The binary launchd runs as a VM process: this one, so a client and its VM processes are
+    /// always the same build.
+    public static var cli: URL { executable }
 
-    static func contents(of executable: URL) -> URL? {
-        let directory = executable.deletingLastPathComponent()
-        let contents = directory.deletingLastPathComponent()
-        guard ["MacOS", "Helpers"].contains(directory.lastPathComponent), contents.lastPathComponent == "Contents" else { return nil }
-        return contents
+    /// The installed payloads, `share/hobo` beside the `bin` this executable is in, if there is one.
+    public static var resources: URL? { resources(of: executable) }
+
+    static func resources(of executable: URL) -> URL? {
+        let bin = executable.deletingLastPathComponent()
+        guard bin.lastPathComponent == "bin" else { return nil }
+        let share = bin.deletingLastPathComponent().appending(path: "share/hobo", directoryHint: .isDirectory)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: share.path, isDirectory: &isDirectory), isDirectory.boolValue else { return nil }
+        return share
     }
-
-    /// The binary launchd runs as a VM process, so a client and its VM processes are always the same
-    /// build: the app's CLI, or in a bare build the `hobo` beside this executable (itself, for the CLI).
-    public static var cli: URL { cli(for: executable) }
-
-    static func cli(for executable: URL) -> URL {
-        if let contents = contents(of: executable) { return contents.appending(path: "Helpers/\(cliName)") }
-        return executable.deletingLastPathComponent().appending(path: cliName)
-    }
-
-    /// The app's `Contents/Resources`, which holds what a bare build reads from SwiftPM's resource bundle.
-    public static var resources: URL? { contents?.appending(path: "Resources", directoryHint: .isDirectory) }
 }

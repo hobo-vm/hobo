@@ -15,12 +15,11 @@ description: Install hobo, build a VM from a recipe, and log in.
 ```sh
 git clone https://github.com/ggal625/hobo.git
 cd hobo
-make install      # builds and signs Hobo.app, installs it in /Applications, links /usr/local/bin/hobo
+make install      # builds and signs hobo, installs /usr/local/bin/hobo and /usr/local/share/hobo
 ```
 
-`make install` may ask for your password to make the link. If you install Hobo.app some other way,
-its **Hobo › Install Command Line Tool…** menu item makes the same link. You can use VMs from
-[the app](../features/app.md), the `hobo` command, or both.
+`make install` may ask for your password if `/usr/local` needs it. `PREFIX=<dir> make install`
+installs under another directory instead.
 
 ## Your first VM
 

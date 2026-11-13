@@ -7,7 +7,8 @@
 2. **Code.** A Swift executable target, `hobo-ui`, with its pure logic in a `HoboUICore` library.
    The Go agent stays dependency- and cgo-free.
 3. **Shipping.** `hobo-ui` is embedded in `hobo` like the agent binaries; `make install` still copies
-   one file. All embedded payloads move into a Hobo.app bundle when there is one.
+   one file. All embedded payloads move into a Hobo.app bundle when there is one. (They became files,
+   in Hobo.app and then in `share/hobo` beside `bin/hobo`: docs/design.md decision 22.)
 4. **Interface.** A host command, `hobo ui <vm> <command> …`, and matching MCP tools from the same
    core. The guest-side path is an implementation detail.
 5. **Delivery.** On the first `ui` request after a boot, the agent fetches `ui-darwin-arm64` from
