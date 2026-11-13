@@ -950,7 +950,7 @@ struct Clone: OutputCommand {
     @Argument(help: "Name of the new VM.")
     var destination: String
 
-    @Flag(help: "Delete the clone when it stops (hobo set --keep changes that).")
+    @Flag(help: "Delete the clone when it stops (hobo set --keep changes that). To clone and boot in one step, use hobo start <source> --ephemeral.")
     var ephemeral = false
 
     @Flag(help: "Print the new VM as JSON.")
@@ -961,7 +961,17 @@ struct Clone: OutputCommand {
     func execute(_ output: Output) async throws -> Reply {
         let store = VMStore.standard()
         let vm = try store.cloneVM(source, to: destination, ephemeral: ephemeral, log: output.log)
-        return Reply(VMSummary(vm), text: "Cloned \(source) to \(vm.name)\(ephemeral ? " (ephemeral: deleted when it stops)" : "")")
+        return Reply(VMSummary(vm), text: Self.text(source: source, clone: vm.name, ephemeral: ephemeral))
+    }
+
+    /// What was made, and how to boot it, since a clone is left stopped. For an ephemeral one, also
+    /// the one step that clones and boots.
+    static func text(source: String, clone: String, ephemeral: Bool) -> String {
+        guard ephemeral else { return "Cloned \(source) to \(clone); hobo start \(clone) boots it" }
+        return """
+            Cloned \(source) to \(clone) (ephemeral: deleted when it stops); hobo start \(clone) boots it
+            (hobo start \(source) --ephemeral clones and boots in one step)
+            """
     }
 }
 

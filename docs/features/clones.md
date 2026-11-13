@@ -32,6 +32,9 @@ hobo clone dev experiment
 hobo clone dev throwaway --ephemeral   # deleted after its first run
 ```
 
+A clone is left stopped, and `clone` says how to boot it. For a throwaway copy to boot right away,
+`hobo start dev --ephemeral` clones and boots in one step.
+
 - The source must be stopped.
 - A clone gets its own machine identifier, serial number and MAC address, so it runs beside the
   original with its own network address.
