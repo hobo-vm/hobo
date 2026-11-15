@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFramesRoundTrip(t *testing.T) {
@@ -282,5 +283,43 @@ func TestStdinFramesReadAsAnExecsInputUpToTheEmptyOne(t *testing.T) {
 	}
 	if buffer.Len() == 0 {
 		t.Fatal("read past the end of the input")
+	}
+}
+
+// exitedProcess has already exited, with status 3, having read none of its input.
+type exitedProcess struct{ input io.WriteCloser }
+
+func (p exitedProcess) Stdin() io.WriteCloser { return p.input }
+func (exitedProcess) Wait() (int32, error)    { return 3, nil }
+func (exitedProcess) Terminate()              {}
+
+type discardCloser struct{}
+
+func (discardCloser) Write(p []byte) (int, error) { return len(p), nil }
+func (discardCloser) Close() error                { return nil }
+
+func TestAnExecThatExitsBeforeItsInputEndsAnswersAtOnce(t *testing.T) {
+	host, agent := net.Pipe()
+	defer host.Close()
+	defer agent.Close()
+	proc := exitedProcess{discardCloser{}}
+	go run(proc, agent, &frameWriter{w: agent}, func() {
+		// The host sends no more input until it has an answer.
+		_, _ = io.Copy(proc.Stdin(), &dataReader{r: agent, kind: frameStdin})
+	}, false, nil)
+	done := make(chan struct{})
+	var kind byte
+	var payload []byte
+	go func() {
+		kind, payload, _ = readFrame(host)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no answer while the host waits to send more input")
+	}
+	if kind != frameExit || !bytes.Equal(payload, []byte{0, 0, 0, 3}) {
+		t.Fatalf("%q %v", kind, payload)
 	}
 }

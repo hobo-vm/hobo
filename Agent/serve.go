@@ -131,7 +131,9 @@ func runExec(req request, conn io.Reader, frames *frameWriter) {
 			stdin.Close()
 		}
 	}
-	run(proc, conn, frames, feed, nil)
+	// Not waiting for the input to end: the host sends a line only once the command has answered
+	// the last, so after an early exit it waits for an answer that never comes.
+	run(proc, conn, frames, feed, false, nil)
 }
 
 // runPut extracts the host's tar stream as the request's user, by running this binary's `put`
@@ -158,7 +160,7 @@ func runPut(req request, conn io.Reader, frames *frameWriter) {
 		stdin.Close()
 		// The rest, if `put` stopped reading: the host sends all of it before it reads an answer.
 		_, _ = io.Copy(io.Discard, data)
-	}, nil)
+	}, true, nil)
 }
 
 // runGet sends a tar stream of the request's sources, read as its user.
@@ -170,7 +172,7 @@ func runGet(req request, conn io.Reader, frames *frameWriter) {
 	if !started(err, frames) {
 		return
 	}
-	run(proc, conn, frames, nil, func() {
+	run(proc, conn, frames, nil, false, func() {
 		_ = frames.write(frameData, nil) // Ends the stream, now that Wait has passed all of it on.
 	})
 }
@@ -241,10 +243,10 @@ func started(err error, frames *frameWriter) bool {
 
 // run does feed (copying the command's input) if there is one, then waits for the command while
 // watching the connection: the host hanging up terminates it. Once it has exited, its output is
-// sent and its input all read, finish runs if there is one, then the exit frame ends the request.
-// Answering before the host's stream has all been read would cut it off: tar stops reading at
-// its end-of-archive blocks, short of the stream's end.
-func run(proc process, conn io.Reader, frames *frameWriter, feed func(), finish func()) {
+// sent and, with waitForFeed, its input all read, finish runs if there is one, then the exit frame
+// ends the request. Answering before put's stream has all been read would cut it off: tar stops
+// reading at its end-of-archive blocks, short of the stream's end.
+func run(proc process, conn io.Reader, frames *frameWriter, feed func(), waitForFeed bool, finish func()) {
 	exited := make(chan struct{})
 	fed := make(chan struct{})
 	go func() {
@@ -262,7 +264,9 @@ func run(proc process, conn io.Reader, frames *frameWriter, feed func(), finish 
 	}()
 	status, err := proc.Wait()
 	close(exited)
-	<-fed
+	if waitForFeed {
+		<-fed
+	}
 	if err != nil {
 		_ = frames.fail("%v", err)
 		return
