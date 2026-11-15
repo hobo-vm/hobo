@@ -5,7 +5,11 @@
 # nothing of where its windows are), and sends input through a uinput device, which reaches
 # Wayland apps as a person's mouse and keyboard would. hobo-agent fetches it as the `ui` tool and
 # runs it in the desktop session. Frames are [x, y, w, h] in GNOME's logical screen coordinates.
+import fcntl
+import glob
 import json
+import os
+import struct
 import sys
 import time
 
@@ -115,10 +119,6 @@ class Device:
     RANGE = 65535
 
     def __init__(self, name, keys=(), relative=(), absolute=()):
-        import fcntl
-        import os
-        import struct
-        self.os, self.struct = os, struct
         self.fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
         for kind, bits, ioctl in ((EV_KEY, keys, UI_SET_KEYBIT), (EV_REL, relative, UI_SET_RELBIT), (EV_ABS, absolute, UI_SET_ABSBIT)):
             if bits:
@@ -137,7 +137,7 @@ class Device:
 
     def write(self, kind, code, value):
         # struct input_event: a timeval the kernel fills in, then type, code and value.
-        self.os.write(self.fd, self.struct.pack("qqHHi", 0, 0, kind, code, value))
+        os.write(self.fd, struct.pack("qqHHi", 0, 0, kind, code, value))
 
     def syn(self):
         self.write(EV_SYN, 0, 0)
@@ -146,8 +146,6 @@ class Device:
 def wait_until_opened(names, timeout=3):
     """Waits for gnome-shell, which runs as this user, to open the event devices of the uinput
     devices `names`: it has them in its fds once libinput has added them."""
-    import glob
-    import os
     nodes = set()
     for name_file in glob.glob("/sys/devices/virtual/input/input*/name"):
         try:
@@ -329,11 +327,10 @@ class Backend:
     # Elements are numbered as they're met, the same number for the same object all session:
     # libatspi keeps one object per remote accessible, and PyGObject one wrapper per object.
     def id(self, accessible):
-        key = accessible
-        if key not in self.ids:
-            self.ids[key] = len(self.elements)
+        if accessible not in self.ids:
+            self.ids[accessible] = len(self.elements)
             self.elements.append(accessible)
-        return self.ids[key]
+        return self.ids[accessible]
 
     def get(self, arguments):
         index = arguments.get("id")
@@ -481,7 +478,7 @@ class Backend:
                     return content
             if has(accessible, "Value"):
                 current = Atspi.Value.get_current_value(accessible)
-                return ("%g" % current)
+                return "%g" % current
         except GLib.Error:
             pass
         return None
