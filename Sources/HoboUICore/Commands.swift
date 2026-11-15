@@ -180,11 +180,12 @@ public struct HoboUI: ParsableCommand {
         return "the direction and line count are arguments after the ref or point, not options: \(example)"
     }
 
-    /// What a command given `--ref e12` got wrong: a ref is an argument (`click e12`), except to
-    /// `wait`, whose `--ref` is its own option.
+    /// What a command given `--ref e12` got wrong: to the commands whose first argument is a ref
+    /// (`click e12`), a ref is an argument. Others take one by an option of their own, or none.
     public static func refOptionHint(for arguments: [String]) -> String? {
         let names = HoboUI.configuration.subcommands.map { $0._commandName }
-        guard let command = arguments.first(where: names.contains), command != Wait._commandName,
+        let takingARef = [Click._commandName, Scroll._commandName, Drag._commandName]
+        guard let command = arguments.first(where: names.contains), takingARef.contains(command),
               let index = arguments.firstIndex(where: { $0 == "--ref" || $0.hasPrefix("--ref=") }) else { return nil }
         let attached = arguments[index].split(separator: "=", maxSplits: 1).dropFirst().first.map(String.init)
         let ref = attached ?? arguments.dropFirst(index + 1).first.flatMap { RefMap.parse($0) != nil ? $0 : nil } ?? "e12"

@@ -468,13 +468,15 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(HoboUI.scrollHint(for: ["click", "--down"]) == nil)
     }
 
-    // A ref given as --ref is put right with the positional form, but wait's --ref is its own.
+    // A ref given as --ref is put right with the positional form, only for commands that take one.
     @Test func hintsAtARefGivenAsAnOption() {
         let hint = { HoboUI.refOptionHint(for: $0)?.components(separatedBy: ": ").last }
         #expect(hint(["click", "--ref", "e47"]) == "click e47")
         #expect(hint(["--app", "Photos", "click", "--ref=e47"]) == "click e47")
         #expect(hint(["click", "--ref"]) == "click e12")
         #expect(HoboUI.refOptionHint(for: ["wait", "--ref", "e47", "--gone"]) == nil)
+        #expect(HoboUI.refOptionHint(for: ["type", "--ref", "e47", "hi"]) == nil)
+        #expect(HoboUI.refOptionHint(for: ["snapshot", "--ref", "e47"]) == nil)
         #expect(HoboUI.refOptionHint(for: ["click", "e47"]) == nil)
     }
 
