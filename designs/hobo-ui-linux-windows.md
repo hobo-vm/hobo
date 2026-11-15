@@ -46,6 +46,23 @@
     windows polls until window frames stop changing; pixel scale comes from GNOME's monitor scale and
     a per-monitor DPI aware Windows backend.
 
+## As built
+
+- The driver runs in the VM process (`GuestUI`), not a separate host process; refs for Linux and
+  Windows guests live in `VMJob.uiState`, kept across a resume and cleared by a fresh boot.
+- The Windows backend targets .NET Framework 4.8.1 (in every Windows 11), not NativeAOT: a
+  self-contained exe with no runtime to ship, built by `make windows-ui` with `dotnet build`.
+- The Linux backend writes uinput itself (ioctls and `input_event` structs) rather than through
+  python3-evdev, which Ubuntu 26.04 doesn't package for arm64; it waits until gnome-shell has
+  opened the new devices, since events before then are lost.
+- GTK 4 reports AT-SPI window coordinates relative to the window's frame, not its buffer (which
+  includes the client-side shadow), so the extension's frame rect is the origin.
+- GTK 4 menu items carry no name of their own; they're named by their labelled-by targets.
+- GNOME's file chooser is the portal's, a window of Nautilus's process that the shell attributes
+  to the app it's transient for. The extension reports transient windows, a pid with only those
+  goes by its AT-SPI name, and `choose` looks for the chooser in every app. Its save mode takes
+  the folder in the location bar and the file name in a separate File Name box.
+
 ## Deferred
 
 - A long-lived hobo ui backend per boot, if measured per-command latency is still too slow

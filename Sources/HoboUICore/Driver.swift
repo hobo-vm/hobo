@@ -548,11 +548,12 @@ public struct UIDriver<Backend: UIBackend> {
         if linux, descendant(of: found, identifiedBy: ["filename_widget"]) != nil {
             // Nautilus's save chooser: its location bar only goes to folders, and its File Name box
             // takes no slashes, so go to the folder, then name the file.
-            let url = URL(fileURLWithPath: c.path)
-            try typeInLocationBar(url.deletingLastPathComponent().path + "/", spec: c.target.app)
+            // As strings: a guest path, perhaps from ~, that the host's file system knows nothing of.
+            let folder = (c.path as NSString).deletingLastPathComponent + "/"
+            try typeInLocationBar(folder, spec: c.target.app)
             backend.key(KeySpec(modifiers: [], key: "return"))
             guard waitUntil(3, { fileDialog(c.target.app).flatMap(focusedTextbox) == nil }) else {
-                throw UIError.failed("the file dialog's location field didn't go to \(url.deletingLastPathComponent().path): is it a folder in the guest?")
+                throw UIError.failed("the file dialog's location field didn't go to \(folder): is it a folder in the guest?")
             }
             // A click as the location bar closes can go nowhere, so click until the box opens.
             // Looked up afresh each time: the dialog's tree as it first showed may not have it yet.
@@ -573,7 +574,7 @@ public struct UIDriver<Backend: UIBackend> {
             }
             guard let entry else { throw UIError.failed("the file dialog's File Name box didn't open") }
             field = entry
-            typed = url.lastPathComponent
+            typed = (c.path as NSString).lastPathComponent
         } else if linux {
             field = try typeInLocationBar(nil, spec: c.target.app)
         } else {

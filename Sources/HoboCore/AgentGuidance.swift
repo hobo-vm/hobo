@@ -62,17 +62,18 @@ public enum AgentGuidance {
         `exec` runs a command, `cp` copies files in and out.
         - Never drive the VM's window from the host: don't click, type or take host screenshots of \
         it, or script it with AppleScript or computer use. `view` and `start --gui` are for a person \
-        to watch. To drive the guest's UI, run the automation inside the guest (`hobo ui` on macOS; \
-        AT-SPI on Linux; UI Automation on Windows) and look with `screenshot`, \
+        to watch. To drive the guest's UI, run the automation inside the guest (`hobo ui` on macOS \
+        and Linux; UI Automation on Windows) and look with `screenshot`, \
         which fails rather than leave windows out if a macOS VM lacks the Screen Recording grant.
-        - On a macOS guest, drive apps with `hobo ui <vm>`: `snapshot --app <name>` prints the app's \
+        - On a macOS or Linux guest, drive apps with `hobo ui <vm>`: `snapshot --app <name>` prints the app's \
         elements as a tree, each with a ref such as `e12`; `click`, `drag`, `scroll`, `type --into` and \
-        `menu "File > Save"` act on them with real input events, and `wait --text`, `--ref` or `--app` \
+        `menu "File > Save"` (a GNOME app's menus are behind a header-bar button instead: \
+        `click --text`) act on them with real input events, and `wait --text`, `--ref` or `--app` \
         waits for a condition instead of a sleep. `click --text Remove` (with `--role menuitem` to \
         narrow it) clicks an element by what it shows, without a snapshot to find its ref; `at x,y` \
         shows what's at a point off a screenshot, with its ref. `type` adds \
         to a field's text unless given `--replace`. With an \
-        open or save panel showing, `choose <path>` picks the file or folder in it; don't type a \
+        open or save panel or dialog showing, `choose <path>` picks the file or folder in it; don't type a \
         path into a panel, which loses a character. Refs keep their numbers across snapshots; a stale \
         one fails rather than hit something else. Coordinates are screenshot pixels. Check results \
         in the app's own state where you can (its files or database through `exec`), not only in \
@@ -84,11 +85,8 @@ public enum AgentGuidance {
         `[gui_testing]`, which grants Accessibility and Screen Recording.
         - On a Linux guest, plain `exec` has no display. `exec --gui` runs the command with the GNOME \
         (Wayland) session's environment, waiting for it after a boot: start apps with it, and drive \
-        them with AT-SPI from Python, which needs no grant. After `gi.require_version('Atspi', '2.0')`, \
-        walk each app's tree from `Atspi.get_desktop(0)` (`get_child_at_index`, `get_role_name`, \
-        `get_name`), then act and read through the interface classes: `Atspi.Action.do_action(node, 0)`, \
-        `Atspi.EditableText.set_text_contents(node, text)`, `Atspi.Text.get_text(node, 0, -1)`. AT-SPI's \
-        synthetic key and mouse events don't reach Wayland apps. A guest built with \
+        them with `hobo ui`, whose `--app` takes the desktop app ID (`org.gnome.TextEditor`) and whose \
+        shortcuts use `ctrl`. A guest built with \
         `init --os linux --server` has no desktop, so `exec --gui` and `screenshot` fail at once.
         - On a Windows guest, `exec` runs a program or a PowerShell command as `hobo`, an elevated \
         administrator, in session 0, which has no desktop; `cp` takes guest paths like \

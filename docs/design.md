@@ -628,7 +628,7 @@ global VMs on 2026-11-01.
     - Linux guests have their own `exec --gui` and `screenshot` (decision 21), and Windows guests
       theirs (decision 20).
     - A host-side framebuffer screenshot for wedged guests is deferred.
-    - **`hobo ui <vm> <command>`** drives a macOS guest's apps through accessibility (decided
+    - **`hobo ui <vm> <command>`** drives a guest's apps through accessibility (decided
       2026-11-08; the interview is `designs/hobo-ui.md`). It replaces what agents improvised:
       System Events' `click at` returns without clicking in a guest, the guest has no compiler for
       a CGEvent tool, coordinates read off screenshots go stale, and waits were sleeps.
@@ -914,9 +914,13 @@ global VMs on 2026-11-01.
         requests waiting behind it. So the script grants it first, each time, through the
         permission store, which covers clones and a grant someone withdrew with no recipe key. The
         portal saves to `~/Pictures`; the script sends the file to stdout and removes it.
-      - UI driving is AT-SPI from Python (`gir1.2-atspi-2.0`), in the guest: walking trees, actions,
-        and setting and reading text all work. Its synthetic key and mouse events don't reach
-        Wayland apps, and raw input (`ydotool` via `/dev/uinput`) was left out. The desktop step
+      - UI driving is `hobo ui` (2026-11-15, `designs/hobo-ui-linux-windows.md`): AT-SPI from
+        Python (`gir1.2-atspi-2.0`) in the guest for trees and actions, and, since AT-SPI's
+        synthetic key and mouse events don't reach Wayland apps, a uinput pointer and keyboard the
+        script writes directly (the desktop step gives `hobo` `/dev/uinput`). Screen positions,
+        stacking and raising come from hobo's GNOME Shell extension (`Agent/gnome-extension`, which
+        the agent embeds and installs at start), since AT-SPI's frames are window-relative under
+        Wayland. The desktop step
         sets `toolkit-accessibility` in the system dconf database and locks it, since `hobo`'s
         own settings end up holding `false`; Chromium and Electron expose their trees only with
         it on.

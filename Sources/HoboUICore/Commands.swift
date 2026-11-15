@@ -7,13 +7,14 @@ import Foundation
 public struct HoboUI: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "hobo ui <vm>",
-        abstract: "Drive a macOS guest's apps through accessibility.",
+        abstract: "Drive a guest's apps through accessibility.",
         discussion: """
             snapshot prints an app's elements, each with a ref such as e12 that the other commands act on. \
             A ref keeps its number across snapshots while the element is there; one that has gone fails as stale. \
             Coordinates and frames are screenshot pixels, the same as in a hobo screenshot PNG. \
             Clicks, drags, scrolls and keys are real input events, as a person's would be. \
-            --app takes a bundle ID, a name or pid:<n>, and defaults to the frontmost app.
+            --app takes an app ID (a macOS bundle ID, a Linux desktop app ID such as org.gnome.TextEditor), \
+            a name or pid:<n>, and defaults to the frontmost app. Shortcuts are the guest's own: cmd+s on macOS, ctrl+s on Linux.
             """,
         subcommands: [Snapshot.self, At.self, Click.self, Drag.self, Scroll.self, TypeText.self, Key.self, Menu.self, Choose.self, Wait.self]
     )
@@ -21,7 +22,7 @@ public struct HoboUI: ParsableCommand {
     public init() {}
 
     public struct AppOption: ParsableArguments {
-        @Option(help: ArgumentHelp("The app: a bundle ID, a name, or pid:<n>. Default: the frontmost app.", valueName: "app"))
+        @Option(help: ArgumentHelp("The app: an ID (bundle ID, desktop app ID), a name, or pid:<n>. Default: the frontmost app.", valueName: "app"))
         public var app: String?
 
         @Flag(help: "Print the result as JSON.")
@@ -78,7 +79,7 @@ public struct HoboUI: ParsableCommand {
                 can be there to accessibility before it's there to click, and gone from it before it stops taking clicks. \
                 --text clicks the one element showing exactly that text, e.g. click --text Remove --role menuitem, \
                 and fails listing them if several do; with --contains, the one showing it as part of its text, \
-                for a label that carries more, such as a photo cell's capture time. --press performs the element's AXPress action instead, with no mouse.
+                for a label that carries more, such as a photo cell's capture time. --press performs the element's default action instead (AXPress, AT-SPI's first action), with no mouse.
                 """
         )
         @OptionGroup public var target: AppOption
@@ -89,7 +90,7 @@ public struct HoboUI: ParsableCommand {
         @Option(help: ArgumentHelp("Modifiers held down: cmd, shift, opt, ctrl.", valueName: "cmd,shift")) public var mods: String?
         @Flag(help: "Right-click.") public var right = false
         @Flag(help: "Double-click.") public var double = false
-        @Flag(help: "Perform AXPress rather than clicking.") public var press = false
+        @Flag(help: "Perform the element's default action rather than clicking.") public var press = false
         public init() {}
 
         public func validate() throws {
@@ -239,7 +240,9 @@ public struct HoboUI: ParsableCommand {
             discussion: """
                 With the panel showing, goes to the path through its Go to Folder sheet, then clicks its Open or Save \
                 button, failing if the panel is still there afterwards. In a save panel the path is the file to save. \
-                (A path typed into a panel loses the character after its first /, while that sheet opens.)
+                (A path typed into a panel loses the character after its first /, while that sheet opens.) \
+                On Linux it goes through the file chooser's location bar (Ctrl-L), and in GNOME's save dialog \
+                names the file in its File Name box.
                 """
         )
         @OptionGroup public var target: AppOption

@@ -50,10 +50,10 @@ On macOS, a privacy prompt raised by what `--gui` runs (Photos, Automation and t
 starts, so the prompt can't show the program's own usage text, and what the prompt
 grants goes to `hobo-agent`.
 
-## Drive a macOS app with hobo ui
+## Drive an app with hobo ui
 
-`hobo ui` drives a macOS guest's apps through accessibility, from the host, with nothing to
-install in the guest. `snapshot` prints an app's windows as a tree, each element with a ref to act
+`hobo ui` drives a macOS or Linux guest's apps through accessibility, from the host, with nothing
+to install in the guest. `snapshot` prints an app's windows as a tree, each element with a ref to act
 on:
 
 ```console
@@ -73,17 +73,26 @@ $ hobo ui dev menu "Format > Font > Bold" --app TextEdit
 $ hobo ui dev wait --text "Hello" --app TextEdit
 ```
 
+A Linux guest takes the same commands, against GNOME's apps:
+
+```console
+$ hobo exec ubuntu --gui -- gnome-text-editor
+$ hobo ui ubuntu type "Hello" --app org.gnome.TextEditor
+$ hobo ui ubuntu key ctrl+shift+s --app org.gnome.TextEditor
+$ hobo ui ubuntu choose ~/Documents/hello.txt --app org.gnome.TextEditor
+```
+
 | Command | Does |
 | --- | --- |
 | `snapshot` | Prints the tree. `--all` adds offscreen elements and long lists in full, `--root e12` one subtree, `--depth N` fewer levels |
 | `at <x,y>` | What's at a point read off a screenshot: the element there and the elements it's in, with refs, in whichever app it is, and a menu open elsewhere that a click there would close |
-| `click <ref\|x,y>` | A real click at the element's centre once windows over it stop animating in or out, failing if something covers it, and warning when a menu open elsewhere likely swallowed it. `--text Remove` clicks the one element showing exactly that text, `--contains` matches part of it instead, and `--role menuitem` narrows it. `--right`, `--double`, `--mods cmd,shift`; `--press` uses AXPress instead |
+| `click <ref\|x,y>` | A real click at the element's centre once windows over it stop animating in or out, failing if something covers it, and warning when a menu open elsewhere likely swallowed it. `--text Remove` clicks the one element showing exactly that text, `--contains` matches part of it instead, and `--role menuitem` narrows it. `--right`, `--double`, `--mods cmd,shift`; `--press` performs the element's default action instead |
 | `drag <from> <to>` | A real drag, pausing over the target before it drops |
 | `scroll <ref\|x,y> <direction> [lines]` | Scroll wheel events; `scroll --to e40` brings an element into view |
 | `type <text> [--into ref]` | Types text where the cursor is, whatever the keyboard layout. `--replace` selects all first, so the text replaces what the field had |
 | `key <cmd+k>` | Presses a key with modifiers. Keys are named as typed or by name: `cmd+-` or `cmd+minus`, `cmd++` or `cmd+plus`, `return`, `escape`, `left`, `f5` |
 | `menu "File > Save"` | Chooses a menu item, failing if it's disabled; `menu File` lists the items with their shortcuts |
-| `choose <path>` | Chooses a file or folder in the open or save panel an app is showing: goes to the path, then clicks Open or Save |
+| `choose <path>` | Chooses a file or folder in the open or save panel an app is showing: goes to the path, then clicks Open or Save. On Linux it uses the file chooser's location bar, including GNOME's save dialog, which runs in Files' process |
 | `wait` | Waits for `--ref`, `--text` or `--app`, or with `--gone` for it to go. On a timeout it prints the snapshot |
 
 - **Refs** keep their numbers across snapshots while the element is there, so `e12` from an earlier
@@ -94,9 +103,14 @@ $ hobo ui dev wait --text "Hello" --app TextEdit
   `text` and `scrollarea`, so `--role` means the same in every guest; `--json` also gives the
   platform's own role (`AXTextArea`).
 - **Coordinates** are screenshot pixels, the same as in a `hobo screenshot` PNG.
-- `--app` takes a bundle ID, a name or `pid:<n>`; without it, the frontmost app.
+- `--app` takes an app ID (a bundle ID such as `com.apple.TextEdit`, a desktop app ID such as
+  `org.gnome.TextEditor`), a name or `pid:<n>`; without it, the frontmost app.
+- **Shortcuts** are the guest's own: `cmd+s` on macOS, `ctrl+s` on Linux.
 - `--json` prints any command's result as JSON, failures included.
-- Each call takes about a third of a second. The VM needs `[gui_testing]`.
+- Each call takes about a third of a second. A macOS VM needs `[gui_testing]`; a Linux desktop VM
+  is set up for it by its recipe's desktop step.
+- GTK 4 lists build rows only for what's on screen, so in a Linux snapshot a long list's rows come
+  and go as it scrolls.
 - To launch an app with environment variables or arguments, use `hobo exec dev -- open -n --env
   KEY=value /Applications/App.app --args …`.
 
@@ -115,7 +129,8 @@ $ hobo ui dev wait --text "Hello" --app TextEdit
 
   A VM built this way, and its clones, show `"guiTesting": true` in their config in `hobo list --json`.
 
-- **Linux:** the desktop has accessibility on for AT-SPI, with the Python bindings installed.
+- **Linux:** the desktop has accessibility on for AT-SPI, with the Python bindings installed, and
+  the `hobo` user can send input through `/dev/uinput`, which `hobo ui` uses.
 - **Windows:** UI Automation, through `powershell.exe` in the desktop session.
 
 ## Test in a clean copy every time
