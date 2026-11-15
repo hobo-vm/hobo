@@ -386,13 +386,16 @@ class Backend:
         return [extents.x + origin[0], extents.y + origin[1], extents.width, extents.height]
 
     def node(self, accessible, origin=None, depth=None, budget=None):
+        # An element gone since it was found (a closed menu, a list row replaced) is left out,
+        # rather than failing the whole tree.
         try:
             role = accessible.get_role_name()
             states = accessible.get_state_set()
+            name = accessible.get_name() or self.labelled_by(accessible)
+            description = accessible.get_description()
         except GLib.Error:
             return None
         node = {"id": self.id(accessible), "role": role}
-        name = accessible.get_name() or self.labelled_by(accessible)
         if name:
             node["title"] = name
         try:
@@ -402,7 +405,6 @@ class Backend:
                 node["identifier"] = identifier
         except (GLib.Error, AttributeError):
             pass
-        description = accessible.get_description()
         if description:
             node["label"] = description
         value = self.value(accessible, role)
@@ -531,8 +533,12 @@ class Backend:
         desktop = Atspi.get_desktop(0)
         for index in range(desktop.get_child_count()):
             app = desktop.get_child_at_index(index)
-            if app is not None and app.get_process_id() == pid:
-                return app
+            try:
+                if app is not None and app.get_process_id() == pid:
+                    return app
+            except GLib.Error:
+                # An app that has quit and not yet left the registry.
+                continue
         raise Failure("no app with pid %d has an accessibility tree" % pid)
 
     def app_of(self, accessible):
@@ -604,9 +610,11 @@ class Backend:
             app = self.application(window["pid"])
         except Failure:
             return None
-        tops = [app.get_child_at_index(i) for i in range(app.get_child_count())]
-        tops = [t for t in tops if t is not None]
-        named = [t for t in tops if (t.get_name() or "") == window["title"]]
+        tops = self.children(app)
+        try:
+            named = [t for t in tops if (t.get_name() or "") == window["title"]]
+        except GLib.Error:
+            return None
         if named:
             return named[0]
         return tops[0] if len(tops) == 1 else None
