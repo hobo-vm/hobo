@@ -6,6 +6,7 @@ import Virtualization
 /// variable store, and a machine identifier. The guest boots through EFI from the disk, and its
 /// serial console goes to `console.log`, the only record of a boot that never gets as far as hobo-agent.
 public struct LinuxVMBundle: VMBundle {
+    public static let goos = "linux"
     public static let platformFiles = ["disk.asif", "efi-vars.fd", "machine-identifier.bin"]
     public static let hiDPIDisplay = false
     /// chrony would slew a long suspension away only slowly, so the host's time is set instead.

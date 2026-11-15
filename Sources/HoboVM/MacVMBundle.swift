@@ -5,6 +5,7 @@ import Virtualization
 /// The files that make up one macOS VM: an ASIF disk plus the platform identity VZ needs to boot
 /// it.
 public struct MacVMBundle: VMBundle {
+    public static let goos = "darwin"
     public static let platformFiles = ["disk.asif", "aux.img", "hardware-model.bin", "machine-identifier.bin"]
     public static let hiDPIDisplay = true
     /// A macOS guest has no display mode smaller than 1024x640 points, so VZ's resizing stops there

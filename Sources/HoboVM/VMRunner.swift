@@ -36,6 +36,8 @@ public final class VMRunner {
     private var guest: GuestVM?
     /// The shares this run has, which a suspend records so the resumed run has the same.
     private var shares: [VMShare] = []
+    /// Where `hobo ui` keeps a Linux or Windows guest's refs this boot (`VMJob.uiState`).
+    private var uiState: URL?
     private var window: VMWindow?
     private var server: ControlServer?
     private var status = VMRunStatus(state: .starting, pid: getpid(), detail: "booting")
@@ -93,6 +95,9 @@ public final class VMRunner {
         // Left by a restore that died partway; `restore` itself finishes before it starts the VM.
         try? FileManager.default.removeItem(at: vm.bundle.appending(path: VMStore.restoringDirectory))
         let saved = SavedState.load(in: vm.bundle)
+        // A boot's refs, which a resumed guest's apps still match.
+        if saved == nil { try? FileManager.default.removeItem(at: job.uiState) }
+        uiState = job.uiState
         if let saved {
             // The saved state fits only the run it came from, shares and all.
             guard let run = saved.run else { throw LifecycleError.cantResume(vm.name, "its \(SavedState.runFile) is unreadable") }
@@ -300,7 +305,13 @@ public final class VMRunner {
             }
         case .ui(let arguments):
             guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
-            guard guest.bundle is MacVMBundle else { return .error("hobo ui drives macOS guests only, for now") }
+            guard guest.bundle is MacVMBundle else {
+                let platform = type(of: guest.bundle)
+                let refs = uiState ?? store.job(for: name).uiState
+                return await withGuest(reply: reply) { shell, onOutput in
+                    try await GuestUI.run(arguments, agent: shell, platform: platform, refs: refs, onOutput: onOutput)
+                }
+            }
             return await withGuest(reply: reply) { shell, onOutput in
                 try await shell.exec(Conventions.uiCommand(arguments), gui: true, platform: MacVMBundle.self, tool: "ui", onOutput: onOutput)
             }

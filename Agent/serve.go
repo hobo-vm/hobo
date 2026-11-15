@@ -10,6 +10,10 @@ import (
 
 // serve answers the host's requests, one per connection, until the guest shuts down.
 func serve() {
+	// For the next login, should this boot's agent carry a newer extension than the guest has.
+	if err := installGnomeExtension(); err != nil {
+		fmt.Fprintf(os.Stderr, "hobo-agent: %v\n", err)
+	}
 	listener, err := vsockListen(agentPort)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hobo-agent: %v\n", err)

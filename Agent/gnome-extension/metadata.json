@@ -1,0 +1,6 @@
+{
+  "uuid": "hobo@gsquared.app",
+  "name": "Hobo",
+  "description": "Window positions and stacking for hobo ui, which drives this guest's apps from the host.",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51", "52"]
+}

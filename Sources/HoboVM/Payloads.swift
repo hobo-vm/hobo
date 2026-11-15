@@ -19,6 +19,8 @@ public enum Payloads {
     /// hobo-agent for a guest OS, by Go's `GOOS`: `linux`, `darwin` or `windows`.
     static func agent(_ goos: String) throws -> Data { try data("hobo-agent-\(goos)") }
     static func hoboUI() throws -> Data { try data("hobo-ui") }
+    /// `hobo ui`'s backend in a Linux or Windows guest (designs/hobo-ui-linux-windows.md).
+    static func uiBackend(_ goos: String) throws -> Data { try data(goos == "windows" ? "UI/hobo-ui-windows.exe" : "UI/hobo-ui-linux.py") }
     /// `framebuffer.efi` or `loader.efi` (`Firmware/WindowsBoot`).
     static func windowsBoot(_ name: String) throws -> Data { try data(name) }
     /// A file of `Resources/Windows`: the install scripts and answer file.

@@ -93,7 +93,8 @@ public struct VMStore: Sendable {
             label: Launchd.labelPrefix + key,
             socket: home.root.appending(path: "\(key).sock"),
             log: home.root.appending(path: "\(key).log"),
-            plist: home.root.appending(path: "launchd/\(key).plist")
+            plist: home.root.appending(path: "launchd/\(key).plist"),
+            uiState: home.root.appending(path: "\(key).ui")
         )
     }
 
@@ -102,7 +103,7 @@ public struct VMStore: Sendable {
     public func forgetJob(of name: String) {
         let job = job(for: name)
         launchd.bootout(job.label)
-        for file in [job.plist, job.socket, job.log] { try? FileManager.default.removeItem(at: file) }
+        for file in [job.plist, job.socket, job.log, job.uiState] { try? FileManager.default.removeItem(at: file) }
     }
 
     /// Starts a build: checks the name is valid and free, creates the bundle and marks it as
@@ -366,6 +367,9 @@ public struct VMJob: Equatable, Sendable {
     /// The VM process's stdout and stderr.
     public var log: URL
     public var plist: URL
+    /// `hobo ui`'s refs for a Linux or Windows guest, kept for its boot (a resume included), as a
+    /// macOS guest keeps its own in the agent's run directory.
+    public var uiState: URL
 }
 
 public enum VMStoreError: Error, Equatable, CustomStringConvertible {

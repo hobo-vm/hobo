@@ -42,7 +42,7 @@ public struct GuestAgent: GuestShell {
     ) async throws -> Int32 {
         var request = AgentRequest(op: "exec", command: platform.agentCommand(command, gui: gui), user: user)
         request.tool = tool
-        request.toolDigest = try tool.flatMap(AgentFetchServer.digest)
+        request.toolDigest = try tool.flatMap { try AgentFetchServer.digest($0, goos: platform.goos) }
         if gui && platform.agentStartsInDesktop { request.desktop = true }
         return try await stream(request, onOutput: onOutput)
     }
@@ -52,7 +52,7 @@ public struct GuestAgent: GuestShell {
     public func session(_ command: [String], gui: Bool, platform: any VMBundle.Type, tool: String? = nil) async throws -> AgentSession {
         var request = AgentRequest(op: "exec", command: platform.agentCommand(command, gui: gui), user: user)
         request.tool = tool
-        request.toolDigest = try tool.flatMap(AgentFetchServer.digest)
+        request.toolDigest = try tool.flatMap { try AgentFetchServer.digest($0, goos: platform.goos) }
         request.stdin = true
         if gui && platform.agentStartsInDesktop { request.desktop = true }
         let socket = try await connect()
@@ -650,14 +650,16 @@ final class AgentFetchServer: NSObject, @MainActor VZVirtioSocketListenerDelegat
         case "darwin-arm64": try Payloads.agent("darwin")
         case "windows-arm64": try Payloads.agent("windows")
         case "ui-darwin-arm64": try Payloads.hoboUI()
+        case "ui-linux-arm64": try Payloads.uiBackend("linux")
+        case "ui-windows-arm64": try Payloads.uiBackend("windows")
         default: nil
         }
     }
 
-    /// The SHA-256 (hex) of the tool an agent would fetch now, which it compares with the one it
-    /// has: hobo may have been updated since it fetched it. Tools are macOS guests' alone.
-    nonisolated static func digest(_ tool: String) throws -> String? {
-        try binary(for: "\(tool)-darwin-arm64").map { SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined() }
+    /// The SHA-256 (hex) of the tool an agent in a `goos` guest would fetch now, which it compares
+    /// with the one it has: hobo may have been updated since it fetched it.
+    nonisolated static func digest(_ tool: String, goos: String) throws -> String? {
+        try binary(for: "\(tool)-\(goos)-arm64").map { SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined() }
     }
 
     func listener(

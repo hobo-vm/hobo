@@ -45,6 +45,9 @@ public protocol VMBundle: Sendable {
     /// Whether hobo-agent starts an `exec --gui` command in the desktop session itself (Windows,
     /// where the agent is a SYSTEM process in session 0), rather than `agentCommand`'s line.
     static var agentStartsInDesktop: Bool { get }
+    /// Go's name for the guest's OS (`darwin`, `linux`, `windows`), which names the agent and the
+    /// tools it fetches.
+    static var goos: String { get }
     /// Whether the window shares the clipboard with the guest (`ClipboardSync`). Linux guests don't
     /// yet: whether GNOME on Wayland lets hobo-agent read its clipboard is still to be found out.
     static var sharesClipboard: Bool { get }

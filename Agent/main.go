@@ -6,6 +6,7 @@
 //	hobo-agent put|get   one side of a copy, started by serve as the copy's user
 //	hobo-agent clipboard the guest's side of the shared clipboard, started by serve in the desktop session
 //	hobo-agent login     becomes a user and execs a command, where serve can't start it as them
+//	hobo-agent gnome-extension  installs hobo's GNOME Shell extension, from a Linux desktop's recipe step
 package main
 
 import (
@@ -40,6 +41,11 @@ func main() {
 		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "hobo-agent clipboard: %v\n", err)
+			os.Exit(1)
+		}
+	case "gnome-extension":
+		if err := installGnomeExtension(); err != nil {
+			fmt.Fprintf(os.Stderr, "hobo-agent: %v\n", err)
 			os.Exit(1)
 		}
 	case "login":

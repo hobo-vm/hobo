@@ -109,12 +109,17 @@ extension Recipe {
     /// tests see the desktop. For GUI testing, toolkits that only expose their accessibility tree
     /// when asked (Chromium, Electron) always do, and the Python bindings that `hobo screenshot`
     /// and AT-SPI scripts use are installed by name rather than relied on as the desktop's
-    /// dependencies, which they are today.
+    /// dependencies, which they are today. For `hobo ui` (designs/hobo-ui-linux-windows.md): hobo
+    /// gets `/dev/uinput`, for real input events that reach Wayland apps, and hobo's GNOME Shell
+    /// extension, which says where windows are, is installed and enabled.
     static let desktopScript = """
         set -eu
         export DEBIAN_FRONTEND=noninteractive
         apt-get update
-        apt-get install -y -o DPkg::Lock::Timeout=300 ubuntu-desktop-minimal python3-gi gir1.2-atspi-2.0
+        apt-get install -y -o DPkg::Lock::Timeout=300 ubuntu-desktop-minimal python3-gi gir1.2-atspi-2.0 python3-evdev
+        echo uinput > /etc/modules-load.d/hobo.conf
+        echo 'KERNEL=="uinput", SUBSYSTEM=="misc", OWNER="\(Conventions.username)", MODE="0600"' > /etc/udev/rules.d/70-hobo-uinput.rules
+        \(CloudInit.agentPath) gnome-extension
         cat > /etc/gdm3/custom.conf <<'EOF'
         [daemon]
         AutomaticLoginEnable=true
@@ -131,10 +136,14 @@ extension Recipe {
 
         [org/gnome/desktop/interface]
         toolkit-accessibility=true
+
+        [org/gnome/shell]
+        enabled-extensions=['hobo@gsquared.app']
+        disable-user-extensions=false
         EOF
         # Locked: hobo's own settings end up holding false (seen on 26.04), which would otherwise win.
         mkdir -p /etc/dconf/db/local.d/locks
-        echo /org/gnome/desktop/interface/toolkit-accessibility > /etc/dconf/db/local.d/locks/00-hobo
+        printf '%s\\n' /org/gnome/desktop/interface/toolkit-accessibility /org/gnome/shell/enabled-extensions /org/gnome/shell/disable-user-extensions > /etc/dconf/db/local.d/locks/00-hobo
         dconf update
         systemctl --global mask gnome-initial-setup-first-login.service gnome-initial-setup-upgrade-login.service
 

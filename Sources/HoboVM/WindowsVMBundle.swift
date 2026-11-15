@@ -5,6 +5,7 @@ import Virtualization
 /// The files that make up one Windows VM: an ASIF disk, the EFI variable store (which holds the
 /// framebuffer driver's boot option) and a machine identifier.
 public struct WindowsVMBundle: VMBundle {
+    public static let goos = "windows"
     public static let platformFiles = ["disk.asif", "efi-vars.fd", "machine-identifier.bin"]
     public static let hiDPIDisplay = false
     public static let ntpClockCommand: String? = nil

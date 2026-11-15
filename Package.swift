@@ -20,10 +20,10 @@ let package = Package(
         .target(name: "HoboControl", dependencies: ["HoboCore"]),
         .target(
             name: "HoboVM",
-            dependencies: ["HoboCore", "HoboControl"],
+            dependencies: ["HoboCore", "HoboControl", "HoboUICore"],
             // Files, read through `Payloads`: from `share/hobo` beside the installed `bin/hobo`, or
             // SwiftPM's resource bundle in a dev build. The plugins' outputs (agents, hobo-ui, the Windows boot driver) join them.
-            resources: [.copy("Resources/Signs"), .copy("Resources/Windows")],
+            resources: [.copy("Resources/Signs"), .copy("Resources/Windows"), .copy("Resources/UI")],
             // For `ucal_getWindowsTimeZoneID`, which Foundation doesn't surface.
             linkerSettings: [.linkedLibrary("icucore")],
             plugins: ["WindowsBootPlugin", "HoboAgentPlugin", "HoboUIPlugin"]
