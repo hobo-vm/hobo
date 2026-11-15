@@ -316,6 +316,11 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(elements(showing: "Remov", partial: true, role: "button", under: app).count == 2)
     }
 
+    @Test func includeKeepsOnlyTheElementsItAccepts() {
+        let inMenu = elements(showing: "Remove", role: nil, under: app) { $0.attributes().role == "menuitem" }
+        #expect(inMenu.map(\.2.description) == ["window:Main[0]/menu[0]/menuitem:Remove[0]"])
+    }
+
     @Test func aCheckboxStateIsNotTextItShows() {
         #expect(found("1") == ["window:Main[0]/text[0]"])
     }
@@ -430,6 +435,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(try HoboUI.parseAsRoot(["click", "e12", "--mods", "cmd,shift"]) is HoboUI.Click)
         #expect(try HoboUI.parseAsRoot(["click", "--text", "Remove", "--role", "menuitem", "--press"]) is HoboUI.Click)
         #expect(try HoboUI.parseAsRoot(["click", "--text", "IMG_0001", "--contains"]) is HoboUI.Click)
+        #expect((try HoboUI.parseAsRoot(["click", "--text", "IMG_0001.jpg", "--in", "e30"]) as? HoboUI.Click)?.in == "e30")
         #expect(try HoboUI.parseAsRoot(["scroll", "e5", "down", "10"]) is HoboUI.Scroll)
         #expect(try HoboUI.parseAsRoot(["scroll", "--to", "e40"]) is HoboUI.Scroll)
         #expect(try HoboUI.parseAsRoot(["menu", "File > Save"]) is HoboUI.Menu)
@@ -442,7 +448,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 
     @Test(arguments: [
-        ["click", "nowhere"], ["click", "1,2", "--press"], ["at", "e12"], ["at"], ["click"], ["click", "e1", "--text", "OK"], ["click", "e1", "--role", "button"], ["click", "e1", "--contains"],
+        ["click", "nowhere"], ["click", "1,2", "--press"], ["at", "e12"], ["at"], ["click"], ["click", "e1", "--text", "OK"], ["click", "e1", "--role", "button"], ["click", "e1", "--contains"], ["click", "e1", "--in", "e2"], ["click", "--text", "OK", "--in", "list"],
         ["click", "--text", ""], ["wait", "--text", ""], ["scroll", "e5"], ["wait"], ["wait", "--ref", "e1", "--text", "x"],
         ["key", "cmd+blah"], ["choose", "Pictures/a.png"], ["snapshot", "--depth", "0"], ["menu", " > "],
         ["wait", "--app", "X", "--timeout", "0"], ["wait", "--app", "X", "--timeout", "nan"], ["wait", "--app", "X", "--timeout", "inf"],
@@ -460,6 +466,16 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(hint(["scroll", "--up", "3"]) == "scroll <ref|x,y> up 3")
         #expect(HoboUI.scrollHint(for: ["scroll", "e99", "sideways"]) == nil)
         #expect(HoboUI.scrollHint(for: ["click", "--down"]) == nil)
+    }
+
+    // A ref given as --ref is put right with the positional form, but wait's --ref is its own.
+    @Test func hintsAtARefGivenAsAnOption() {
+        let hint = { HoboUI.refOptionHint(for: $0)?.components(separatedBy: ": ").last }
+        #expect(hint(["click", "--ref", "e47"]) == "click e47")
+        #expect(hint(["--app", "Photos", "click", "--ref=e47"]) == "click e47")
+        #expect(hint(["click", "--ref"]) == "click e12")
+        #expect(HoboUI.refOptionHint(for: ["wait", "--ref", "e47", "--gone"]) == nil)
+        #expect(HoboUI.refOptionHint(for: ["click", "e47"]) == nil)
     }
 
     @Test(arguments: [["click", "840", "412"], ["drag", "840", "412", "e2"]])

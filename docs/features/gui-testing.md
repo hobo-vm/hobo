@@ -95,7 +95,7 @@ $ hobo ui win choose 'C:\Users\hobo\Documents\hello.txt' --app notepad
 | --- | --- |
 | `snapshot` | Prints the tree. `--all` adds offscreen elements and long lists in full, `--root e12` one subtree, `--depth N` fewer levels |
 | `at <x,y>` | What's at a point read off a screenshot: the element there and the elements it's in, with refs, in whichever app it is, and a menu open elsewhere that a click there would close |
-| `click <ref\|x,y>` | A real click at the element's centre once windows over it stop animating in or out, failing if something covers it, and warning when a menu open elsewhere likely swallowed it. `--text Remove` clicks the one element showing exactly that text, `--contains` matches part of it instead, and `--role menuitem` narrows it. `--right`, `--double`, `--mods cmd,shift`; `--press` performs the element's default action instead |
+| `click <ref\|x,y>` | A real click at the element's centre once windows over it stop animating in or out, failing if something covers it, and warning when a menu open elsewhere likely swallowed it. `--text Remove` clicks the one element showing exactly that text, `--contains` matches part of it instead, `--role menuitem` narrows it, and `--in e30` looks only inside that element (the list, not an inspector showing the same name). `--right`, `--double`, `--mods cmd,shift`; `--press` performs the element's default action instead |
 | `drag <from> <to>` | A real drag, pausing over the target before it drops |
 | `scroll <ref\|x,y> <direction> [lines]` | Scroll wheel events; `scroll --to e40` brings an element into view |
 | `type <text> [--into ref]` | Types text where the cursor is, whatever the keyboard layout. `--replace` selects all first, so the text replaces what the field had |

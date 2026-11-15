@@ -80,7 +80,8 @@ public struct HoboUI: ParsableCommand {
                 It first waits, for up to 2 s, for windows over it to finish animating in or out: a prompt or sheet \
                 can be there to accessibility before it's there to click, and gone from it before it stops taking clicks. \
                 --text clicks the one element showing exactly that text, e.g. click --text Remove --role menuitem, \
-                and fails listing them if several do; with --contains, the one showing it as part of its text, \
+                and fails listing them if several do; --in <ref> looks only inside that element, such as the list \
+                when an inspector shows the same name. With --contains, the one showing it as part of its text, \
                 for a label that carries more, such as a photo cell's capture time. --press performs the element's default action instead (AXPress, AT-SPI's first action, UI Automation's Invoke), with no mouse.
                 """
         )
@@ -89,6 +90,7 @@ public struct HoboUI: ParsableCommand {
         @Option(help: ArgumentHelp("Click the element whose title, value or label is exactly this, instead of a ref.", valueName: "text")) public var text: String?
         @Option(help: ArgumentHelp("With --text, only elements of this role as snapshot shows it, e.g. button.", valueName: "role")) public var role: String?
         @Flag(help: "With --text, match elements showing it as part of their text, not all of it.") public var contains = false
+        @Option(name: .customLong("in"), help: ArgumentHelp("With --text, only elements inside this one.", valueName: "ref")) public var `in`: String?
         @Option(help: ArgumentHelp("Modifiers held down: cmd, shift, opt, ctrl.", valueName: "cmd,shift")) public var mods: String?
         @Flag(help: "Right-click.") public var right = false
         @Flag(help: "Double-click.") public var double = false
@@ -101,8 +103,10 @@ public struct HoboUI: ParsableCommand {
             case (.some, .some): throw ValidationError("give a ref or point, or --text, not both")
             case (nil, let text?):
                 if text.isEmpty { throw ValidationError("--text needs some text") }
+                if let scope = self.in, RefMap.parse(scope) == nil { throw ValidationError("--in takes a ref such as e12") }
             case (let at?, nil):
                 if role != nil { throw ValidationError("--role goes with --text") }
+                if self.in != nil { throw ValidationError("--in goes with --text") }
                 if contains { throw ValidationError("--contains goes with --text") }
                 let point = try parsePoint(at)
                 if press && point != nil { throw ValidationError("--press needs a ref or --text, not a point") }
@@ -174,6 +178,17 @@ public struct HoboUI: ParsableCommand {
         }.map { rest[$0] } ?? "<ref|x,y>"
         let example = (["scroll", target, direction] + [lines].compactMap { $0 }).joined(separator: " ")
         return "the direction and line count are arguments after the ref or point, not options: \(example)"
+    }
+
+    /// What a command given `--ref e12` got wrong: a ref is an argument (`click e12`), except to
+    /// `wait`, whose `--ref` is its own option.
+    public static func refOptionHint(for arguments: [String]) -> String? {
+        let names = HoboUI.configuration.subcommands.map { $0._commandName }
+        guard let command = arguments.first(where: names.contains), command != Wait._commandName,
+              let index = arguments.firstIndex(where: { $0 == "--ref" || $0.hasPrefix("--ref=") }) else { return nil }
+        let attached = arguments[index].split(separator: "=", maxSplits: 1).dropFirst().first.map(String.init)
+        let ref = attached ?? arguments.dropFirst(index + 1).first.flatMap { RefMap.parse($0) != nil ? $0 : nil } ?? "e12"
+        return "a ref is an argument, not an option: \(command) \(ref)"
     }
 
     /// The direction and any `=lines` of an argument like `--down` or `--down=10`.

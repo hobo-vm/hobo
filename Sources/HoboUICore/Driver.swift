@@ -61,31 +61,38 @@ public struct UIDriver<Backend: UIBackend> {
         return element
     }
 
-    /// The ref of the one element showing `text` (`click --text`), failing with the candidates
-    /// when there are several: picking one would be a guess.
-    func ref(showing text: String, partial: Bool, role: String?, app spec: String?) throws -> Int {
+    /// The ref of the one element showing `text` (`click --text`), inside the element `scope` names
+    /// if given (`--in`), failing with the candidates when there are several: picking one would be
+    /// a guess.
+    func ref(showing text: String, partial: Bool, role: String?, in scope: Int?, app spec: String?) throws -> Int {
         let app = try app(spec)
-        let matches = elements(showing: text, partial: partial, role: role, under: app.root)
+        let container = try scope.map { try element($0, in: app) }
+        let matches = elements(showing: text, partial: partial, role: role, under: app.root) { match in
+            container.map { isWithin(match, $0) } ?? true
+        }
         let nodes = try store.update(app.identity.storeKey) { refs in
             matches.map { SnapshotNode(ref: refs.ref(for: $0.2), attributes: $0.1, scale: scale) }
         }
         // "checkbox elements": a role with an s on the end isn't always its plural.
         let kind = role.map { "\($0.lowercased()) element" } ?? "element"
+        let place = scope.map { "\(RefMap.format($0)) in \(app.identity.name)" } ?? app.identity.name
         guard let first = nodes.first, let ref = RefMap.parse(first.ref) else {
             let how = partial ? "shows" : "shows exactly"
             let hint = partial ? "" : ", or --contains to match part of its text"
-            if menuBarShows(text, partial: partial, under: app.root) {
+            if scope == nil, menuBarShows(text, partial: partial, under: app.root) {
                 throw UIError.failed(
                     "no \(kind) in \(app.identity.name)'s windows \(how) \(AppSnapshot.quoted(text)), but its menu bar does, which click --text and snapshot leave out: menu \"File\" lists a menu's items and menu \"File > Save\" chooses one"
                 )
             }
-            throw UIError.failed("no \(kind) in \(app.identity.name) \(how) \(AppSnapshot.quoted(text)); take a snapshot to see what's there\(hint)")
+            throw UIError.failed("no \(kind) in \(place) \(how) \(AppSnapshot.quoted(text)); take a snapshot to see what's there\(hint)")
         }
         guard nodes.count == 1 else {
             let listed = 10
             let lines = nodes.prefix(listed).map { "\n  " + AppSnapshot.line($0) }.joined()
             let rest = nodes.count > listed ? "\n  … \(nodes.count - listed) more" : ""
-            throw UIError.failed("\(nodes.count) \(kind)s in \(app.identity.name) show \(AppSnapshot.quoted(text)); click one by its ref\(role == nil ? ", or narrow with --role" : ""):\(lines)\(rest)")
+            let narrow = [role == nil ? "--role" : nil, scope == nil ? "--in <ref> (inside that element)" : nil].compactMap { $0 }
+            let how = "click one by its ref, as in click \(first.ref)" + (narrow.isEmpty ? "" : ", or narrow with \(narrow.joined(separator: " or "))")
+            throw UIError.failed("\(nodes.count) \(kind)s in \(place) show \(AppSnapshot.quoted(text)); \(how):\(lines)\(rest)")
         }
         return ref
     }
@@ -270,7 +277,7 @@ public struct UIDriver<Backend: UIBackend> {
     func click(_ c: HoboUI.Click) throws -> Outcome {
         let target: UITarget
         if let text = c.text {
-            target = .ref(try ref(showing: text, partial: c.contains, role: c.role, app: c.target.app))
+            target = .ref(try ref(showing: text, partial: c.contains, role: c.role, in: c.in.flatMap(RefMap.parse), app: c.target.app))
         } else {
             // Validation leaves one of --text and the ref or point.
             target = try UITarget(parsing: c.at ?? "")
