@@ -40,21 +40,14 @@ public struct GuestAgent: GuestShell {
         _ command: [String], gui: Bool, platform: any VMBundle.Type, tool: String? = nil,
         onOutput: @escaping @Sendable (GuestStream, Data) -> Void
     ) async throws -> Int32 {
-        var request = AgentRequest(op: "exec", command: platform.agentCommand(command, gui: gui), user: user)
-        request.tool = tool
-        request.toolDigest = try tool.flatMap { try AgentFetchServer.digest($0, goos: platform.goos) }
-        if gui && platform.agentStartsInDesktop { request.desktop = true }
-        return try await stream(request, onOutput: onOutput)
+        try await stream(execRequest(command, gui: gui, platform: platform, tool: tool), onOutput: onOutput)
     }
 
     /// Starts `command` as `exec` does and keeps the connection, for a conversation in lines over its
     /// stdin and stdout (`AgentSession`): the hobo ui backends' (designs/hobo-ui-linux-windows.md).
     public func session(_ command: [String], gui: Bool, platform: any VMBundle.Type, tool: String? = nil) async throws -> AgentSession {
-        var request = AgentRequest(op: "exec", command: platform.agentCommand(command, gui: gui), user: user)
-        request.tool = tool
-        request.toolDigest = try tool.flatMap { try AgentFetchServer.digest($0, goos: platform.goos) }
+        var request = try execRequest(command, gui: gui, platform: platform, tool: tool)
         request.stdin = true
-        if gui && platform.agentStartsInDesktop { request.desktop = true }
         let socket = try await connect()
         do {
             try socket.write(try JSONEncoder().encode(request) + Data("\n".utf8))
@@ -63,6 +56,14 @@ public struct GuestAgent: GuestShell {
             throw error
         }
         return AgentSession(socket)
+    }
+
+    private func execRequest(_ command: [String], gui: Bool, platform: any VMBundle.Type, tool: String?) throws -> AgentRequest {
+        var request = AgentRequest(op: "exec", command: platform.agentCommand(command, gui: gui), user: user)
+        request.tool = tool
+        request.toolDigest = try tool.flatMap { try AgentFetchServer.digest($0, goos: platform.goos) }
+        if gui && platform.agentStartsInDesktop { request.desktop = true }
+        return request
     }
 
     private func stream(_ request: AgentRequest, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
