@@ -99,6 +99,17 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(map.ref(for: path("Second", sole: false)) == 2)
     }
 
+    /// Each hobo ui command loads the map afresh, so the rename is followed from the file too.
+    @Test func keepsARefThroughARenameAfterALoad() throws {
+        func path(_ window: String) -> Locator {
+            Locator([.init(role: "window", name: window, index: 0, soleOfRole: true), .init(role: "textbox", name: "view", index: 0)])
+        }
+        var map = RefMap()
+        #expect(map.ref(for: path("Untitled")) == 1)
+        var loaded = try JSONDecoder().decode(RefMap.self, from: JSONEncoder().encode(map))
+        #expect(loaded.ref(for: path("Hello - Text Editor")) == 1)
+    }
+
     @Test func survivesTheFile() throws {
         var map = RefMap()
         _ = map.ref(for: Locator([.init(role: "window", name: "W", index: 0)]))
@@ -413,6 +424,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(try HoboUI.parseAsRoot(["at", "840,412", "--json"]) is HoboUI.At)
         #expect(try HoboUI.parseAsRoot(["wait", "--app", "TextEdit"]) is HoboUI.Wait)
         #expect(try HoboUI.parseAsRoot(["choose", "~/Pictures", "--app", "Candela"]) is HoboUI.Choose)
+        #expect(try HoboUI.parseAsRoot(["choose", #"C:\Users\hobo\a.txt"#, "--app", "notepad"]) is HoboUI.Choose)
         #expect(try HoboUI.parseAsRoot(["type", "hello", "--into", "e3"]) is HoboUI.TypeText)
         #expect((try HoboUI.parseAsRoot(["type", "", "--into", "e3", "--replace"]) as? HoboUI.TypeText)?.replace == true)
     }
