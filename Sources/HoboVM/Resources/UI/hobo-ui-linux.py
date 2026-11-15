@@ -281,7 +281,8 @@ class Input:
         """US-layout keys for what the layout has; IBus's Unicode entry (Ctrl-Shift-U, the code
         point in hex, Space) for the rest."""
         self.devices()
-        for character in text:
+        # A CRLF is one line break, as on macOS and Windows guests.
+        for character in text.replace("\r\n", "\n"):
             if character in "\r\n":
                 self.tap(KEYS["return"])
             elif character == " ":
