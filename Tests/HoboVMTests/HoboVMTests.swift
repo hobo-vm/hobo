@@ -469,7 +469,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
     }
 
     /// Creates an Ubuntu VM with the desktop `init --os linux` adds by default and tests GUI work in it
-    /// (decision 21): `exec --gui` in the Wayland session, an app driven over AT-SPI, and a
+    /// (decision 21): `exec --gui` in the Wayland session, apps driven with `hobo ui`, and a
     /// screenshot, taken twice so the second shows no permission dialog left by the first.
     @Test(.timeLimit(.minutes(40)))
     func linuxDesktop() throws {
@@ -501,25 +501,8 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         calculator.standardError = FileHandle.nullDevice
         try calculator.run()
         defer { if calculator.isRunning { calculator.terminate() } }
-        let driven = try output(hobo, ["exec", "ldesk", "--gui", "--", "python3", "-c", """
-            import time, gi
-            gi.require_version("Atspi", "2.0")
-            from gi.repository import Atspi
-            def find(node, test):
-                if test(node): return node
-                for i in range(node.get_child_count()):
-                    found = find(node.get_child_at_index(i), test)
-                    if found: return found
-            app = None
-            for _ in range(30):
-                app = find(Atspi.get_desktop(0), lambda n: n.get_role_name() == "application" and n.get_name() == "gnome-calculator")
-                if app: break
-                time.sleep(1)
-            Atspi.Action.do_action(find(app, lambda n: n.get_role_name() == "button" and n.get_name() == "7"), 0)
-            time.sleep(1)
-            print(Atspi.Text.get_text(find(app, lambda n: n.get_role_name() == "text"), 0, -1))
-            """], environment: env)
-        #expect(driven == "7\n", "\(driven)")
+        #expect(try run(hobo, ["ui", "ldesk", "wait", "--app", "org.gnome.Calculator", "--timeout", "30"], in: work, environment: env) == 0)
+        try checkLinuxUI("ldesk", hobo: hobo, work: work, env: env)
 
         // The screenshot is the whole 1920x1200 display, twice, and leaves nothing in ~/Pictures.
         for attempt in 1...2 {
@@ -715,6 +698,46 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         let folder = try #require(find(finder) { $0.role == "img" && $0.name == "Folder" })
         #expect(try ui(["drag", file.ref, folder.ref, "--app", "Finder"]) == 0)
         #expect(try ui(["wait", "--ref", file.ref, "--gone", "--app", "Finder"]) == 0)
+        #expect(try run(hobo, ["exec", vm, "--", "test", "-f", "DragTest/Folder/a.txt"], in: work, environment: env) == 0)
+    }
+
+    /// `hobo ui` on a Linux guest (designs/hobo-ui-linux-windows.md) against GNOME Text Editor and
+    /// Files, checked through their files: typing past the US layout, a header-bar menu, scrolling,
+    /// `choose` through the portal's save dialog, and a drag onto a folder.
+    private func checkLinuxUI(_ vm: String, hobo: String, work: URL, env: [String: String]) throws {
+        func ui(_ arguments: [String]) throws -> Int32 { try run(hobo, ["ui", vm] + arguments, in: work, environment: env) }
+        func snapshot(_ app: String) throws -> [SnapshotNode] { try uiSnapshot(vm, app: app, hobo: hobo, env: env) }
+        func gui(_ command: String) throws -> Int32 {
+            try run(hobo, ["exec", vm, "--gui", "--", "sh", "-c", "\(command) >/dev/null 2>&1 &"], in: work, environment: env)
+        }
+        let find = Self.find
+        let editor = "org.gnome.TextEditor"
+
+        #expect(try gui("gnome-text-editor") == 0)
+        #expect(try ui(["wait", "--app", editor, "--timeout", "30"]) == 0)
+        let text = try #require(find(try snapshot(editor)) { $0.role == "textbox" })
+        let typed = "Hello, café ✓"
+        #expect(try ui(["type", typed, "--into", text.ref, "--app", editor]) == 0)
+        #expect(try ui(["wait", "--text", typed, "--app", editor, "--timeout", "5"]) == 0)
+        let edited = find(try snapshot(editor)) { $0.ref == text.ref }
+        #expect(edited?.value == typed, "\(String(describing: edited))")
+        #expect(try ui(["scroll", text.ref, "down", "3", "--app", editor]) == 0)
+        #expect(try ui(["menu", "File > Save", "--app", editor]) == 1, "GNOME apps have no menu bar")
+        #expect(try ui(["click", "--text", "Main Menu", "--role", "button", "--app", editor]) == 0)
+        #expect(try ui(["click", "--text", "Save As…", "--role", "menuitem", "--app", editor]) == 0)
+        #expect(try ui(["wait", "--text", "Save a File", "--app", "org.gnome.Nautilus", "--timeout", "10"]) == 0)
+        #expect(try ui(["choose", "~/Documents/hello.txt", "--app", editor]) == 0)
+        #expect(try output(hobo, ["exec", vm, "--", "cat", "Documents/hello.txt"], environment: env) == typed + "\n")
+
+        // Files' grid, whose cells are named with their kind: drag a file onto a folder, and find it moved on disk.
+        #expect(try run(hobo, ["exec", vm, "--", "sh", "-c", "mkdir -p ~/DragTest/Folder && touch ~/DragTest/a.txt"], in: work, environment: env) == 0)
+        #expect(try gui("nautilus ~/DragTest") == 0)
+        #expect(try ui(["wait", "--text", "a.txt. File", "--app", "org.gnome.Nautilus", "--timeout", "10"]) == 0)
+        let files = try snapshot("org.gnome.Nautilus")
+        let file = try #require(find(files) { $0.name == "a.txt. File" })
+        let folder = try #require(find(files) { $0.name == "Folder. Folder" })
+        #expect(try ui(["drag", file.ref, folder.ref, "--app", "org.gnome.Nautilus"]) == 0)
+        #expect(try ui(["wait", "--ref", file.ref, "--gone", "--app", "org.gnome.Nautilus"]) == 0)
         #expect(try run(hobo, ["exec", vm, "--", "test", "-f", "DragTest/Folder/a.txt"], in: work, environment: env) == 0)
     }
 

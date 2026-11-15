@@ -51,14 +51,23 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(locator.resolve(from: changed) != nil)
     }
 
-    @Test func isStaleOnceTheElementIsGoneOrRenamed() {
+    @Test func isStaleOnceTheElementIsRenamed() {
         let locator = Locator([.init(role: "window", name: "Main", index: 0), .init(role: "button", name: "OK", index: 1)])
         var renamed = app
         renamed.kids[1].kids[3] = Fake("AXButton", "Done")
         #expect(locator.resolve(from: renamed) == nil)
+    }
+
+    @Test func followsARenamedAncestorOnlyWhenItIsTheOnlyOneOfItsRole() {
+        let locator = Locator([.init(role: "window", name: "Main", index: 0), .init(role: "button", name: "OK", index: 1)])
         var retitled = app
-        retitled.kids[1].a.title = "Other"
-        #expect(locator.resolve(from: retitled) == nil)
+        retitled.kids[1].a.title = "Hello - Text Editor"
+        #expect(locator.resolve(from: retitled)?.a == app.kids[1].kids[3].a)
+        var twoWindows = retitled
+        twoWindows.kids.append(Fake("AXWindow", "Second", retitled.kids[1].kids))
+        #expect(locator.resolve(from: twoWindows) == nil, "which window is ambiguous")
+        let window = Locator([.init(role: "window", name: "Main", index: 0)])
+        #expect(window.resolve(from: retitled) == nil, "a renamed element itself is stale")
     }
 
     @Test func namesByIdentifierBeforeTitleAndNeverByValue() {
@@ -76,6 +85,18 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(map.ref(for: b) == 2)
         #expect(map.ref(for: a) == 1)
         #expect(map.locator(for: 2) == b)
+    }
+
+    @Test func keepsARefThroughARenamedAncestorOnlyWhenItWasTheOnlyOneOfItsRole() {
+        func path(_ window: String, sole: Bool) -> Locator {
+            Locator([.init(role: "window", name: window, index: 0, soleOfRole: sole), .init(role: "textbox", name: "view", index: 0)])
+        }
+        var map = RefMap()
+        #expect(map.ref(for: path("Untitled", sole: true)) == 1)
+        #expect(map.ref(for: path("Hello - Text Editor", sole: true)) == 1)
+        #expect(map.locator(for: 1) == path("Hello - Text Editor", sole: true))
+        // Alongside another window, a window's name is what tells them apart.
+        #expect(map.ref(for: path("Second", sole: false)) == 2)
     }
 
     @Test func survivesTheFile() throws {

@@ -46,14 +46,21 @@ class Shell:
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
     def call(self, method, parameters=None, reply="(s)"):
-        try:
-            result = self.bus.call_sync(
-                "org.gnome.Shell", "/app/gsquared/Hobo", "app.gsquared.Hobo", method, parameters,
-                GLib.VariantType(reply), Gio.DBusCallFlags.NONE, 5000, None)
-        except GLib.Error as error:
-            raise Failure("hobo's GNOME Shell extension didn't answer (%s); was this VM's desktop set up by a "
-                          "current hobo init --os linux recipe?" % error.message)
-        return result.unpack()[0]
+        # Just after the session starts, the shell may not have enabled extensions yet (or even
+        # be on the bus): wait for the extension's object up to 15 s rather than fail.
+        deadline = time.monotonic() + 15
+        while True:
+            try:
+                result = self.bus.call_sync(
+                    "org.gnome.Shell", "/app/gsquared/Hobo", "app.gsquared.Hobo", method, parameters,
+                    GLib.VariantType(reply), Gio.DBusCallFlags.NONE, 5000, None)
+                return result.unpack()[0]
+            except GLib.Error as error:
+                starting = "UnknownMethod" in error.message or "ServiceUnknown" in error.message
+                if not starting or time.monotonic() >= deadline:
+                    raise Failure("hobo's GNOME Shell extension didn't answer (%s); was this VM's desktop set up "
+                                  "by a current hobo init --os linux recipe?" % error.message)
+                time.sleep(0.5)
 
     def windows(self):
         return json.loads(self.call("Windows"))

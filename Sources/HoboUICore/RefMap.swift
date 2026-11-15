@@ -13,17 +13,33 @@ public struct RefMap: Codable, Equatable, Sendable {
     public private(set) var entries: [Entry] = []
     private var byLocator: [Locator: Int] = [:]
     private var byRef: [Int: Locator] = [:]
+    private var byLoose: [Locator: Int] = [:]
 
     public init() {}
 
     /// The ref for `locator`, giving it the next number if it has none.
+    /// An element whose ancestor was renamed, the only child of its role there (a window named
+    /// after its document), keeps its ref, which moves to the new locator.
     public mutating func ref(for locator: Locator) -> Int {
         if let ref = byLocator[locator] { return ref }
+        if let loose = locator.loose, let ref = byLoose[loose], let old = byRef[ref],
+           let index = entries.firstIndex(where: { $0.ref == ref }) {
+            byLocator[old] = nil
+            entries[index].locator = locator
+            byLocator[locator] = ref
+            byRef[ref] = locator
+            return ref
+        }
         let ref = (entries.last?.ref ?? 0) + 1
         entries.append(Entry(ref: ref, locator: locator))
-        byLocator[locator] = ref
-        byRef[ref] = locator
+        index(Entry(ref: ref, locator: locator))
         return ref
+    }
+
+    private mutating func index(_ entry: Entry) {
+        byLocator[entry.locator] = entry.ref
+        byRef[entry.ref] = entry.locator
+        if let loose = entry.locator.loose { byLoose[loose] = entry.ref }
     }
 
     public func locator(for ref: Int) -> Locator? { byRef[ref] }
@@ -34,8 +50,7 @@ public struct RefMap: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for entry in try container.decode([Entry].self, forKey: .entries) {
             entries.append(entry)
-            byLocator[entry.locator] = entry.ref
-            byRef[entry.ref] = entry.locator
+            index(entry)
         }
     }
 

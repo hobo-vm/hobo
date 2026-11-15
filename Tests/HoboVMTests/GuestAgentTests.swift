@@ -87,7 +87,7 @@ import Testing
         #expect(status == -3)
         #expect(output.text(.stdout) == "out")
         #expect(output.text(.stderr) == "err")
-        #expect(seen.fields == ["version": "1", "op": "exec", "command": "echo hi", "user": Conventions.username])
+        #expect(seen.fields == ["version": "2", "op": "exec", "command": "echo hi", "user": Conventions.username])
     }
 
     // `hobo ui` names its tool, which the agent fetches (Agent/tool.go) by `ui-<GOOS>-<GOARCH>`.
@@ -104,7 +104,8 @@ import Testing
         #expect(seen.fields["toolDigest"] == SHA256.hash(data: served).map { String(format: "%02x", $0) }.joined())
         #expect(seen.fields["desktop"] == nil)
         #expect(try AgentFetchServer.binary(for: "ui-darwin-arm64")?.isEmpty == false)
-        #expect(try AgentFetchServer.binary(for: "ui-linux-arm64") == nil)
+        #expect(try AgentFetchServer.binary(for: "ui-linux-arm64")?.isEmpty == false)
+        #expect(try AgentFetchServer.binary(for: "ui-freebsd-arm64") == nil)
     }
 
     @Test func anErrorFrameIsARefusal() async throws {
@@ -383,7 +384,7 @@ import Testing
         let received = Mutex<[String]>([])
         let status = try await agent.clipboard(outgoing: outgoing) { text in received.withLock { $0.append(text) } }
         #expect(status == 0)
-        #expect(seen.fields == ["version": "1", "op": "clipboard", "user": Conventions.username])
+        #expect(seen.fields == ["version": "2", "op": "clipboard", "user": Conventions.username])
         #expect(fromHost.withLock { $0 } == ["one", "two\nlines"])
         #expect(received.withLock { $0 } == [big, "after"])
     }
