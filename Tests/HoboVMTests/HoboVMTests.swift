@@ -688,11 +688,11 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         let find = Self.find
 
         #expect(try ui(["wait", "--app", "TextEdit"]) == 0)
-        let text = try #require(find(try snapshot("TextEdit")) { $0.role == "textarea" })
+        let text = try #require(find(try snapshot("TextEdit")) { $0.role == "textbox" })
         #expect(try ui(["type", "Hello from hobo ui", "--into", text.ref, "--app", "TextEdit"]) == 0)
         #expect(try ui(["wait", "--text", "Hello from hobo ui", "--app", "TextEdit", "--timeout", "5"]) == 0)
         // Refs keep their numbers across snapshots.
-        let typed = try #require(find(try snapshot("TextEdit")) { $0.role == "textarea" })
+        let typed = try #require(find(try snapshot("TextEdit")) { $0.role == "textbox" })
         #expect(typed.ref == text.ref)
         #expect(typed.value == "Hello from hobo ui")
 
@@ -711,8 +711,8 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["exec", vm, "--", "sh", "-c", "mkdir -p ~/DragTest/Folder && touch ~/DragTest/a.txt && open ~/DragTest"], in: work, environment: env) == 0)
         #expect(try ui(["wait", "--text", "a.txt", "--app", "Finder"]) == 0)
         let finder = try snapshot("Finder")
-        let file = try #require(find(finder) { $0.role == "image" && $0.name == "a.txt" })
-        let folder = try #require(find(finder) { $0.role == "image" && $0.name == "Folder" })
+        let file = try #require(find(finder) { $0.role == "img" && $0.name == "a.txt" })
+        let folder = try #require(find(finder) { $0.role == "img" && $0.name == "Folder" })
         #expect(try ui(["drag", file.ref, folder.ref, "--app", "Finder"]) == 0)
         #expect(try ui(["wait", "--ref", file.ref, "--gone", "--app", "Finder"]) == 0)
         #expect(try run(hobo, ["exec", vm, "--", "test", "-f", "DragTest/Folder/a.txt"], in: work, environment: env) == 0)
