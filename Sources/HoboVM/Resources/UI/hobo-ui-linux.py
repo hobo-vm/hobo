@@ -656,15 +656,16 @@ class Backend:
                     found.append({"id": window["id"], "bounds": window["drawn"], "alpha": window["opacity"]})
             return found
         if op == "open_menu":
+            # A point in a submenu is in a menu, though its parent menu is elsewhere.
             x, y = request["x"], request["y"]
-            for window in self.windows(fresh=True):
-                if not window["menu"]:
-                    continue
+            menus = [w for w in self.windows(fresh=True) if w["menu"]]
+            for window in menus:
                 fx, fy, fw, fh = window["frame"]
                 if fx <= x < fx + fw and fy <= y < fy + fh:
                     return None
-                return "a menu of %s" % (window.get("appName") or "pid %d" % window["pid"])
-            return None
+            if not menus:
+                return None
+            return "a menu of %s" % (menus[0].get("appName") or "pid %d" % menus[0]["pid"])
         if op == "press":
             accessible = self.get(request)
             if not has(accessible, "Action") or Atspi.Action.get_n_actions(accessible) == 0:
