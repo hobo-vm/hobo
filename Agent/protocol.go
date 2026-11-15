@@ -24,7 +24,7 @@ const (
 // protocolVersion is bumped on any incompatible change to a request or a frame. The agent always
 // comes from the host it serves (the stub fetches it on every boot), so this only guards against
 // a guest that kept an agent running across a host upgrade, as a suspended VM does.
-const protocolVersion = 1
+const protocolVersion = 2
 
 // request is the one JSON line that opens every connection from the host.
 type request struct {
@@ -40,6 +40,9 @@ type request struct {
 	// exec: the SHA-256 (hex) of the tool the host serves now. One fetched earlier this boot that
 	// differs, from before hobo was updated, is fetched again.
 	ToolDigest string `json:"toolDigest,omitempty"`
+	// exec: the host sends the command's input as stdin frames, an empty one closing it. Without
+	// it the command's stdin is empty.
+	Stdin bool `json:"stdin,omitempty"`
 	// exec, put, get, clipboard: who runs it, and whose files the copy reads or writes.
 	User string `json:"user,omitempty"`
 	// put: where the copy goes; single says the tar holds one top-level entry, and replace that
@@ -57,6 +60,8 @@ type request struct {
 const (
 	frameStdout = '1'
 	frameStderr = '2'
+	// A chunk of an exec's input, from the host; an empty one closes it.
+	frameStdin = '0'
 	// A chunk of a tar stream: put's from the host, get's to it. An empty one ends the stream.
 	frameData = 'd'
 	// A chunk of clipboard text (UTF-8, LF line endings), either way; an empty one ends the text.
@@ -141,9 +146,11 @@ func readFrame(r io.Reader) (byte, []byte, error) {
 	return header[0], payload, nil
 }
 
-// dataReader reads the payloads of data frames until the empty one that ends them.
+// dataReader reads the payloads of data frames (or of `kind`'s, when set) until the empty one
+// that ends them.
 type dataReader struct {
 	r       io.Reader
+	kind    byte
 	pending []byte
 	done    bool
 }
@@ -157,8 +164,12 @@ func (d *dataReader) Read(p []byte) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		if kind != frameData {
-			return 0, fmt.Errorf("expected a data frame, got %q", kind)
+		want := d.kind
+		if want == 0 {
+			want = frameData
+		}
+		if kind != want {
+			return 0, fmt.Errorf("expected a %q frame, got %q", want, kind)
 		}
 		if len(payload) == 0 {
 			d.done = true

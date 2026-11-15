@@ -101,8 +101,9 @@ type exitEarly struct {
 
 func (e exitEarly) Error() string { return e.message }
 
-// runExec runs the command as the request's user and streams its output. The host closing the
-// connection cancels it: nothing else is ever sent, so any read returning means the host is gone.
+// runExec runs the command as the request's user and streams its output, and with `stdin` feeds
+// it the host's stdin frames. The host closing the connection cancels it: after the input
+// nothing else is ever sent, so any read returning means the host is gone.
 func runExec(req request, conn io.Reader, frames *frameWriter) {
 	if req.Tool != "" {
 		if err := ensureTool(req.Tool, req.ToolDigest, req.User); err != nil {
@@ -111,13 +112,22 @@ func runExec(req request, conn io.Reader, frames *frameWriter) {
 		}
 	}
 	proc, err := start(commandSpec{
-		user: req.User, line: req.Command, desktop: req.Desktop,
+		user: req.User, line: req.Command, desktop: req.Desktop, stdin: req.Stdin,
 		stdout: streamWriter{frames, frameStdout}, stderr: streamWriter{frames, frameStderr},
 	})
 	if !started(err, frames) {
 		return
 	}
-	run(proc, conn, frames, nil, nil)
+	var feed func()
+	if req.Stdin {
+		feed = func() {
+			stdin := proc.Stdin()
+			// A command that exits without reading all of it fails the copy; the rest is dropped.
+			_, _ = io.Copy(stdin, &dataReader{r: conn, kind: frameStdin})
+			stdin.Close()
+		}
+	}
+	run(proc, conn, frames, feed, nil)
 }
 
 // runPut extracts the host's tar stream as the request's user, by running this binary's `put`

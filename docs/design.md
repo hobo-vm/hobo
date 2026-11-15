@@ -400,7 +400,8 @@ global VMs on 2026-11-01.
       no other authentication: only the VM process can reach the device, and `hobo` has
       passwordless sudo anyway. Each request is a connection, opened by the host: one line of
       JSON (`ping`, `exec`, `put`, `get`, `clipboard`), then frames both ways (a type byte, a 4-byte
-      length, the bytes: stdout, stderr, tar data, clipboard text, the exit status, or why it
+      length, the bytes: stdin (for an `exec` asking for it, which the hobo ui backends speak JSON
+      lines over, 2026-11-15), stdout, stderr, tar data, clipboard text, the exit status, or why it
       couldn't run). Frames rather than
       the control socket's JSON lines, so output and copies go unencoded. Closing the connection
       cancels a request, and the agent kills the command's process group (`SIGTERM`, then
@@ -644,8 +645,13 @@ global VMs on 2026-11-01.
         differs (2026-11-11): `make install` under a running VM had left its guest on the old one
         until a reboot. So it matches the installed hobo, clones and snapshots included, and
         costs nothing on VMs that never use it. TCC counts it as the agent's stub, which
-        `[gui_testing]` grants; without them it fails saying so. macOS only: Linux (AT-SPI) and
-        Windows (UIA) backends would take the same commands.
+        `[gui_testing]` grants; without them it fails saying so. Linux (AT-SPI) and Windows (UIA)
+        guests take the same commands through the same driver run in the VM process, over thin
+        guest backends (2026-11-15, `designs/hobo-ui-linux-windows.md`).
+      - Roles are ARIA role names on every guest (2026-11-15), mapped from AX, AT-SPI and UIA roles
+        as W3C Core-AAM maps them, plus `window`, `text` and `scrollarea`, so `--role` and agents'
+        prompts work alike everywhere; `--json` keeps the native role. Playwright, whose aria
+        snapshots the output follows, uses the same names.
       - `hobo` parses the command with `HoboUI`'s definitions (for `--help` and usage errors), then
         sends the arguments unchanged; `hobo-ui` parses them again. One definition, two parsers.
       - Refs: `snapshot` gives each shown element a ref (`e12`) kept in a file per app (by bundle

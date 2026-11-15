@@ -18,7 +18,7 @@ public struct GuestAgent: GuestShell {
     public static let fetchPort: UInt32 = 1100
     public static let agentPort: UInt32 = 1101
     /// The agent's `protocolVersion`.
-    static let protocolVersion = 1
+    static let protocolVersion = 2
 
     @discardableResult
     public func run(_ command: String, quiet: Bool) async throws -> Int32 {
@@ -45,6 +45,24 @@ public struct GuestAgent: GuestShell {
         request.toolDigest = try tool.flatMap(AgentFetchServer.digest)
         if gui && platform.agentStartsInDesktop { request.desktop = true }
         return try await stream(request, onOutput: onOutput)
+    }
+
+    /// Starts `command` as `exec` does and keeps the connection, for a conversation in lines over its
+    /// stdin and stdout (`AgentSession`): the hobo ui backends' (designs/hobo-ui-linux-windows.md).
+    public func session(_ command: [String], gui: Bool, platform: any VMBundle.Type, tool: String? = nil) async throws -> AgentSession {
+        var request = AgentRequest(op: "exec", command: platform.agentCommand(command, gui: gui), user: user)
+        request.tool = tool
+        request.toolDigest = try tool.flatMap(AgentFetchServer.digest)
+        request.stdin = true
+        if gui && platform.agentStartsInDesktop { request.desktop = true }
+        let socket = try await connect()
+        do {
+            try socket.write(try JSONEncoder().encode(request) + Data("\n".utf8))
+        } catch {
+            socket.close()
+            throw error
+        }
+        return AgentSession(socket)
     }
 
     private func stream(_ request: AgentRequest, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
@@ -281,6 +299,70 @@ public struct GuestAgent: GuestShell {
     }
 }
 
+/// A command in the guest spoken to in lines: each `send` writes one line to its stdin and
+/// returns the next line it prints. Blocking, for one thread at a time; `close` ends its input
+/// and waits for it to exit. What it prints to stderr is kept for the error when it ends early.
+public final class AgentSession: @unchecked Sendable {
+    private let socket: AgentSocket
+    private var pending = Data()
+    private var errors = Data()
+    private var exited: Int32?
+
+    init(_ socket: AgentSocket) { self.socket = socket }
+
+    deinit { socket.close() }
+
+    public func send(_ line: Data) throws -> Data {
+        try socket.writeFrame(.stdin, line + Data("\n".utf8))
+        return try readLine()
+    }
+
+    /// The next line of stdout, without its newline.
+    func readLine() throws -> Data {
+        while true {
+            if let newline = pending.firstIndex(of: UInt8(ascii: "\n")) {
+                let line = pending[pending.startIndex..<newline]
+                pending = Data(pending[(newline + 1)...])
+                return Data(line)
+            }
+            guard exited == nil, try receive() else { throw ended() }
+        }
+    }
+
+    /// Takes in the next frame; false at the end of the connection.
+    private func receive() throws -> Bool {
+        guard let (kind, payload) = try socket.readFrame() else { return false }
+        switch kind {
+        case .stdout: pending.append(payload)
+        case .stderr: errors.append(payload)
+        case .exit: exited = payload.count == 4 ? Int32(bitPattern: payload.reduce(0) { $0 << 8 | UInt32($1) }) : -1
+        case .error: throw AgentError.refused(String(decoding: payload, as: UTF8.self))
+        default: throw AgentError.unexpectedFrame(kind)
+        }
+        return true
+    }
+
+    private func ended() -> Error {
+        let said = String(decoding: errors, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        let status = exited.map { "exited with status \($0)" } ?? "closed the connection"
+        return AgentError.refused("the command \(status)\(said.isEmpty ? "" : ": \(said)")")
+    }
+
+    /// Ends its input and waits for it to exit, giving its status.
+    @discardableResult
+    public func close() throws -> Int32 {
+        defer { socket.close() }
+        if exited == nil { try socket.writeFrame(.stdin, Data()) }
+        while exited == nil {
+            guard try receive() else { throw AgentError.disconnected }
+        }
+        return exited ?? -1
+    }
+
+    /// Ends it without waiting: the agent takes a closed connection as a cancel.
+    public func cancel() { socket.shutdown() }
+}
+
 /// Puts a clipboard text back together from its text frames, up to the empty one that ends it.
 /// A text over `ClipboardSync.maxText` is dropped.
 private final class ClipboardTextReader: @unchecked Sendable {
@@ -330,6 +412,7 @@ struct AgentRequest: Encodable, Equatable {
     var desktop: Bool?
     var tool: String?
     var toolDigest: String?
+    var stdin: Bool?
     var user: String?
     var destination: String?
     var single: Bool?
@@ -339,6 +422,8 @@ struct AgentRequest: Encodable, Equatable {
 
 /// The agent's frame types: a type byte, a big-endian UInt32 length, then the payload.
 enum AgentFrame: UInt8 {
+    /// A chunk of an exec's input, to the guest; an empty one closes it.
+    case stdin = 0x30 // "0"
     case stdout = 0x31 // "1"
     case stderr = 0x32 // "2"
     /// A chunk of a tar stream; an empty one ends it.

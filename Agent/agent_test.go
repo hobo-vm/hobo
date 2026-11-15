@@ -41,7 +41,7 @@ func TestFramesRoundTrip(t *testing.T) {
 
 func TestRequestLineLeavesWhatFollows(t *testing.T) {
 	var buffer bytes.Buffer
-	buffer.WriteString(`{"version":1,"op":"put","destination":"d"}` + "\n")
+	buffer.WriteString(`{"version":2,"op":"put","destination":"d"}` + "\n")
 	frames := &frameWriter{w: &buffer}
 	_ = frames.write(frameData, []byte("abc"))
 	_ = frames.write(frameData, nil)
@@ -246,14 +246,14 @@ func ask(t *testing.T, line string) (byte, []byte) {
 }
 
 func TestHandleAnswersAPingAndRefusesWhatItCantDo(t *testing.T) {
-	if kind, payload := ask(t, `{"version":1,"op":"ping"}`); kind != frameExit || !bytes.Equal(payload, []byte{0, 0, 0, 0}) {
+	if kind, payload := ask(t, `{"version":2,"op":"ping"}`); kind != frameExit || !bytes.Equal(payload, []byte{0, 0, 0, 0}) {
 		t.Fatalf("ping: %q %v", kind, payload)
 	}
 	// An agent left running across a host upgrade says so, rather than misreading the request.
-	if kind, payload := ask(t, `{"version":2,"op":"ping"}`); kind != frameError || !strings.Contains(string(payload), "protocol 1, not 2") {
+	if kind, payload := ask(t, `{"version":3,"op":"ping"}`); kind != frameError || !strings.Contains(string(payload), "protocol 2, not 3") {
 		t.Fatalf("version: %q %q", kind, payload)
 	}
-	if kind, payload := ask(t, `{"version":1,"op":"shell"}`); kind != frameError || !strings.Contains(string(payload), `unknown request "shell"`) {
+	if kind, payload := ask(t, `{"version":2,"op":"shell"}`); kind != frameError || !strings.Contains(string(payload), `unknown request "shell"`) {
 		t.Fatalf("op: %q %q", kind, payload)
 	}
 	if kind, _ := ask(t, `not json`); kind != frameError {
@@ -266,5 +266,21 @@ func TestDataReaderRejectsAnotherFrame(t *testing.T) {
 	_ = (&frameWriter{w: &buffer}).write(frameStdout, []byte("x"))
 	if _, err := io.ReadAll(&dataReader{r: &buffer}); err == nil {
 		t.Fatal("a stdout frame read as data")
+	}
+}
+
+func TestStdinFramesReadAsAnExecsInputUpToTheEmptyOne(t *testing.T) {
+	var buffer bytes.Buffer
+	frames := &frameWriter{w: &buffer}
+	_ = frames.write(frameStdin, []byte("one\n"))
+	_ = frames.write(frameStdin, []byte("two\n"))
+	_ = frames.write(frameStdin, nil)
+	_ = frames.write(frameData, []byte("after"))
+	input, err := io.ReadAll(&dataReader{r: &buffer, kind: frameStdin})
+	if err != nil || string(input) != "one\ntwo\n" {
+		t.Fatalf("%q %v", input, err)
+	}
+	if buffer.Len() == 0 {
+		t.Fatal("read past the end of the input")
 	}
 }
