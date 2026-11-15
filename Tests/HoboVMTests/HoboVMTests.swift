@@ -429,8 +429,10 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         try FileManager.default.createDirectory(at: tree.appending(path: "sub"), withIntermediateDirectories: true)
         try "deep\n".write(to: tree.appending(path: "sub/deep.txt"), atomically: true, encoding: .utf8)
         try FileManager.default.createSymbolicLink(atPath: tree.appending(path: "link").path, withDestinationPath: "sub/deep.txt")
-        #expect(try run(hobo, ["cp", tree.path, "\(vm):tree"], in: work, environment: env) != 0, "a directory needs -r")
-        #expect(try run(hobo, ["cp", "-r", tree.path, "\(vm):tree"], in: work, environment: env) == 0)
+        // A directory is copied whole without -r (e38fdf4), and -r, habit from cp and scp, still works.
+        #expect(try run(hobo, ["cp", tree.path, "\(vm):tree"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["cp", "-r", tree.path, "\(vm):tree-r"], in: work, environment: env) == 0)
+        #expect(try output(hobo, ["exec", vm, "--", "cat", "tree-r/sub/deep.txt"], environment: env) == "deep\n")
         #expect(try output(hobo, ["exec", vm, "--", "cat", "tree/link"], environment: env) == "deep\n")
         #expect(try run(hobo, ["cp", "-r", "\(vm):tree", "tree-back"], in: work, environment: env) == 0)
         #expect(try String(contentsOf: work.appending(path: "tree-back/sub/deep.txt"), encoding: .utf8) == "deep\n")
