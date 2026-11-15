@@ -1,21 +1,23 @@
-import AppKit
-import ApplicationServices
-import HoboUICore
+import CoreGraphics
+import Foundation
 
-/// Runs one `hobo ui` command against the guest's apps.
-@MainActor
-struct Driver {
-    var store = RefStore.standard()
-    var scale = PixelScale(Driver.displayScale())
+/// Runs one `hobo ui` command against a guest's apps, through its platform's `UIBackend`: in a
+/// macOS guest from `hobo-ui`, for Linux and Windows guests from the VM process.
+public struct UIDriver<Backend: UIBackend> {
+    public typealias Element = Backend.Element
 
-    /// Screenshot pixels per point on the main display.
-    static func displayScale() -> Double {
-        guard let mode = CGDisplayCopyDisplayMode(CGMainDisplayID()), mode.width > 0 else { return 1 }
-        return Double(mode.pixelWidth) / Double(mode.width)
+    public var backend: Backend
+    public var store: RefStore
+
+    public init(backend: Backend, store: RefStore) {
+        self.backend = backend
+        self.store = store
     }
 
-    func run(_ command: any ParsableCommand) throws -> Outcome {
-        guard AXIsProcessTrusted() else { throw UIError.notTrusted }
+    var scale: PixelScale { backend.scale }
+
+    public func run(_ command: any ParsableCommand) throws -> Outcome {
+        try backend.checkAccess()
         switch command {
         case let c as HoboUI.Snapshot: return try snapshot(c)
         case let c as HoboUI.At: return try at(c)
@@ -34,40 +36,14 @@ struct Driver {
     // MARK: Apps and refs
 
     struct App {
-        var running: NSRunningApplication
-        var element: AXElement
-        var identity: AppIdentity
+        var running: RunningApp
+        var root: Element
+        var identity: AppIdentity { running.identity }
     }
 
     func app(_ spec: String?) throws -> App {
-        let running = try Self.findApp(spec)
-        let identity = AppIdentity(
-            name: running.localizedName ?? running.bundleIdentifier ?? "pid \(running.processIdentifier)",
-            bundleID: running.bundleIdentifier, pid: running.processIdentifier
-        )
-        return App(running: running, element: .application(running.processIdentifier), identity: identity)
-    }
-
-    static func findApp(_ spec: String?) throws -> NSRunningApplication {
-        let apps = NSWorkspace.shared.runningApplications
-        guard let spec else {
-            guard let front = NSWorkspace.shared.frontmostApplication else { throw UIError.failed("no app is frontmost; give --app") }
-            return front
-        }
-        if spec.hasPrefix("pid:") {
-            guard let pid = pid_t(spec.dropFirst(4)), let app = NSRunningApplication(processIdentifier: pid) else {
-                throw UIError.noApp(spec)
-            }
-            return app
-        }
-        let byBundle = apps.filter { $0.bundleIdentifier?.caseInsensitiveCompare(spec) == .orderedSame }
-        let matches = byBundle.isEmpty ? apps.filter { $0.localizedName?.caseInsensitiveCompare(spec) == .orderedSame } : byBundle
-        guard let first = matches.first else { throw UIError.noApp(spec) }
-        guard matches.count == 1 else {
-            let names = matches.map { "\($0.localizedName ?? "?") (\($0.bundleIdentifier ?? "no bundle ID"), pid \($0.processIdentifier))" }
-            throw UIError.failed("\(spec) matches \(matches.count) apps: \(names.joined(separator: "; ")); give --app pid:<n>")
-        }
-        return first
+        let running = try RunningApp.find(spec, in: backend.apps(), frontmost: backend.frontmostApp())
+        return App(running: running, root: try backend.root(of: running))
     }
 
     /// Where a snapshot found the element `ref` names; throws for a ref no snapshot gave.
@@ -78,8 +54,8 @@ struct Driver {
         return locator
     }
 
-    func element(_ ref: Int, in app: App) throws -> AXElement {
-        guard let element = try locator(ref, in: app).resolve(from: app.element) else {
+    func element(_ ref: Int, in app: App) throws -> Element {
+        guard let element = try locator(ref, in: app).resolve(from: app.root) else {
             throw UIError.failed("stale ref \(RefMap.format(ref)): it isn't where it was; take a new snapshot")
         }
         return element
@@ -89,7 +65,7 @@ struct Driver {
     /// when there are several: picking one would be a guess.
     func ref(showing text: String, partial: Bool, role: String?, app spec: String?) throws -> Int {
         let app = try app(spec)
-        let matches = elements(showing: text, partial: partial, role: role, under: app.element)
+        let matches = elements(showing: text, partial: partial, role: role, under: app.root)
         let nodes = try store.update(app.identity.storeKey) { refs in
             matches.map { SnapshotNode(ref: refs.ref(for: $0.2), attributes: $0.1, scale: scale) }
         }
@@ -109,9 +85,25 @@ struct Driver {
         return ref
     }
 
+    /// The element's attributes now, or as they were fetched if it has gone since.
+    func attributes(_ element: Element) -> ElementAttributes {
+        backend.current(element) ?? element.attributes()
+    }
+
     /// The element as a snapshot line, with its ref.
-    func describe(_ element: AXElement, ref: Int) -> SnapshotNode {
-        SnapshotNode(ref: ref, attributes: element.attributes(), scale: scale)
+    func describe(_ element: Element, ref: Int) -> SnapshotNode {
+        SnapshotNode(ref: ref, attributes: attributes(element), scale: scale)
+    }
+
+    /// This element, then its parent, and so on up to the app; at most 200, so a parent loop in a
+    /// misbehaving app's tree ends.
+    func lineage(_ element: Element) -> [Element] {
+        Array(sequence(first: element, next: backend.parent).prefix(200))
+    }
+
+    /// Whether `element` is `other`, or inside it.
+    func isWithin(_ element: Element, _ other: Element) -> Bool {
+        lineage(element).contains { backend.same($0, other) }
     }
 
     // MARK: snapshot
@@ -121,7 +113,7 @@ struct Driver {
         let builder = SnapshotBuilder(options: SnapshotOptions(all: c.all, depth: c.depth), scale: scale)
         let elements = try store.update(app.identity.storeKey) { refs in
             guard let root = c.root.flatMap(RefMap.parse) else {
-                return builder.build(root: app.element, locator: Locator(), isApp: true, refs: &refs)
+                return builder.build(root: app.root, locator: Locator(), isApp: true, refs: &refs)
             }
             let element = try element(root, in: app)
             return builder.build(root: element, locator: try locator(root, in: app), isApp: false, refs: &refs)
@@ -133,7 +125,7 @@ struct Driver {
     func snapshotNow(_ app: App) -> AppSnapshot? {
         let builder = SnapshotBuilder(options: SnapshotOptions(), scale: scale)
         guard let elements = try? store.update(app.identity.storeKey, { refs in
-            builder.build(root: app.element, locator: Locator(), isApp: true, refs: &refs)
+            builder.build(root: app.root, locator: Locator(), isApp: true, refs: &refs)
         }) else { return nil }
         return AppSnapshot(app: app.identity, scale: scale.factor, elements: elements)
     }
@@ -144,25 +136,22 @@ struct Driver {
         // Validation leaves a point.
         guard case .point(let pixels) = try UITarget(parsing: c.point) else { throw UIError.failed("give a point such as 840,412") }
         let point = scale.points(pixels)
-        guard let hit = AXElement.at(point) else { throw UIError.failed("nothing answers at \(pixels.x),\(pixels.y)") }
-        let running = NSRunningApplication(processIdentifier: hit.pid)
-        let identity = AppIdentity(
-            name: running?.localizedName ?? running?.bundleIdentifier ?? "pid \(hit.pid)", bundleID: running?.bundleIdentifier, pid: hit.pid
-        )
-        let lineage = Array(hit.lineage)
+        guard let hit = backend.element(at: point) else { throw UIError.failed("nothing answers at \(pixels.x),\(pixels.y)") }
+        let identity = backend.app(of: hit)
+        let lineage = lineage(hit)
         let elements = try store.update(identity.storeKey) { refs in
-            path(to: lineage, same: { (a: AXElement, b: AXElement) in CFEqual(a.element, b.element) }, scale: scale, refs: &refs)
+            path(to: lineage, same: backend.same, scale: scale, refs: &refs)
         }
         let snapshot = AppSnapshot(app: identity, scale: scale.factor, elements: elements)
-        let menu = openMenu(notAt: point)
+        let menu = backend.openMenu(notAt: point)
         let warning = menu.map { "\n\($0) is open elsewhere: a click at \(pixels.x),\(pixels.y) would likely just close it" } ?? ""
         return Outcome(text: snapshot.text + warning, snapshot: snapshot, openMenu: menu)
     }
 
     // MARK: Pointing
 
-    /// The screen point (in points) to act on, having brought a ref's app forward and checked
-    /// that the element is what's there.
+    /// The screen point to act on, having brought a ref's app forward and checked that the
+    /// element is what's there.
     func aim(_ target: UITarget, app spec: String?) throws -> Aim {
         switch target {
         case .point(let pixels):
@@ -173,7 +162,7 @@ struct Driver {
             let app = try app(spec)
             let element = try element(ref, in: app)
             let node = describe(element, ref: ref)
-            bringForward(app, element)
+            backend.bringForward(element, of: app.running)
             return Aim(point: try hitPoint(element, node: node), node: node, element: element, ref: ref)
         }
     }
@@ -181,7 +170,7 @@ struct Driver {
     struct Aim {
         var point: CGPoint
         var node: SnapshotNode?
-        var element: AXElement?
+        var element: Element?
         var ref = 0
     }
 
@@ -192,31 +181,22 @@ struct Driver {
         return (AppSnapshot.line(now), now)
     }
 
-    /// Makes the app frontmost and raises the element's window, through accessibility (an app
-    /// activating another from the background is refused), and waits up to 2 s for it to take.
-    func bringForward(_ app: App, _ element: AXElement) {
-        if let window = element.element("AXWindow") { _ = window.perform("AXRaise") }
-        if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.identity.pid { return }
-        app.element.set("AXFrontmost", kCFBooleanTrue)
-        let deadline = Date().addingTimeInterval(2)
-        while Date() < deadline {
-            if (app.element.attribute("AXFrontmost") as Bool?) == true { break }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-        }
-        Input.pause(0.1)
+    /// The top-level window an element is in (a sheet's parent window, not the sheet), or the
+    /// element itself outside one.
+    func window(of element: Element) -> Element {
+        lineage(element).last { ["window", "dialog", "alertdialog"].contains(attributes($0).role) } ?? element
     }
 
     /// The element's centre, if a click there would reach it, once the windows over the element's
     /// window have stopped animating.
-    func hitPoint(_ element: AXElement, node: SnapshotNode) throws -> CGPoint {
+    func hitPoint(_ element: Element, node: SnapshotNode) throws -> CGPoint {
         // The whole window, not just the element: a sheet opening or closing covers all of it.
-        let window = element.element("AXWindow") ?? element
-        if let area = window.attributes().frame { settleWindows(over: area) }
-        guard let frame = element.attributes().frame, !frame.isEmpty else {
+        if let area = attributes(window(of: element)).frame { settleWindows(over: area) }
+        guard let frame = attributes(element).frame, !frame.isEmpty else {
             throw UIError.failed("\(AppSnapshot.line(node)) has no frame on screen to click; try --press")
         }
         let centre = CGPoint(x: frame.midX, y: frame.midY)
-        guard CGDisplayBounds(CGMainDisplayID()).contains(centre) else {
+        guard backend.screen.contains(centre) else {
             throw UIError.failed("\(AppSnapshot.line(node)) is off the screen; scroll --to \(node.ref) first")
         }
         // Before hit-testing, which can answer with the element itself where it's scrolled out
@@ -224,16 +204,16 @@ struct Driver {
         if ScrollVisibility.obstruction(of: centre, areas: scrollAreas(around: element)) != nil {
             throw UIError.failed("\(AppSnapshot.line(node)) is scrolled out of view; scroll --to \(node.ref) first")
         }
-        guard let hit = AXElement.at(centre) else {
+        guard let hit = backend.element(at: centre) else {
             throw UIError.failed("nothing answers at \(AppSnapshot.line(node))'s centre")
         }
         // Hit-testing can land on something inside the element (a cell's text), or on a container of
         // it that doesn't hit-test its children; either way the click reaches it.
-        if hit.isWithin(element) || element.isWithin(hit) { return centre }
+        if isWithin(hit, element) || isWithin(element, hit) { return centre }
         // Within the element's own window, hit-testing isn't to be trusted: SwiftUI answers with the
         // scroll area under a bar laid over it (safeAreaInset), not the bar's button. Only another
         // window, sheet, popover or menu over it keeps a click from it.
-        if let mine = container(of: element), let theirs = container(of: hit), CFEqual(mine.element, theirs.element) { return centre }
+        if let mine = container(of: element), let theirs = container(of: hit), backend.same(mine, theirs) { return centre }
         throw UIError.failed("\(AppSnapshot.line(node)) is covered at its centre by \(covering(hit)); close what's over it")
     }
 
@@ -243,55 +223,41 @@ struct Driver {
     /// click at its button goes to what's behind it, and a closing sheet's window fades over its
     /// parent for 100 ms after its elements have gone.
     func settleWindows(over area: CGRect) {
-        struct Window: Equatable {
-            var number: Int
-            var bounds: CGRect
-            var alpha: Double
-        }
-        func windows() -> [Window] {
-            let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-            return list.compactMap { info in
-                guard let number = info[kCGWindowNumber as String] as? Int,
-                      let bounds = (info[kCGWindowBounds as String] as? NSDictionary).flatMap({ CGRect(dictionaryRepresentation: $0) }),
-                      bounds.intersects(area)
-                else { return nil }
-                return Window(number: number, bounds: bounds, alpha: info[kCGWindowAlpha as String] as? Double ?? 1)
-            }
-        }
         // Two reads three frames apart that agree: an animation changes something every frame.
-        var last = windows()
+        var last = backend.windows(over: area)
         let deadline = Date().addingTimeInterval(2)
         while Date() < deadline {
-            Input.pause(0.05)
-            let now = windows()
+            backend.pause(0.05)
+            let now = backend.windows(over: area)
             if now == last { return }
             last = now
         }
     }
 
     /// The sheet, window, popover or menu an element is part of.
-    func container(of element: AXElement) -> AXElement? {
-        element.lineage.first { UIRole.containers.contains($0.attributes().role) }
+    func container(of element: Element) -> Element? {
+        lineage(element).first { UIRole.containers.contains(attributes($0).role) }
     }
 
     /// What's in the way, by the sheet, window, popover or menu it's part of.
-    func covering(_ hit: AXElement) -> String {
-        let owner = NSRunningApplication(processIdentifier: hit.pid)?.localizedName ?? "pid \(hit.pid)"
-        guard let attributes = container(of: hit)?.attributes() else {
-            return "\(SnapshotNode.shownRole(hit.attributes())) of \(owner)"
+    func covering(_ hit: Element) -> String {
+        let owner = backend.app(of: hit).name
+        guard let container = container(of: hit) else {
+            return "\(SnapshotNode.shownRole(attributes(hit))) of \(owner)"
         }
-        let name = (attributes.displayName ?? attributes.identifier).map { " \"\($0)\"" } ?? ""
-        return "\(attributes.role)\(name) of \(owner)"
+        let a = attributes(container)
+        let name = (a.displayName ?? a.identifier).map { " \"\($0)\"" } ?? ""
+        return "\(a.role)\(name) of \(owner)"
     }
 
     /// The element as it is after an action, or as it was if the action took it away.
-    func after(_ element: AXElement, ref: Int, before: SnapshotNode) -> SnapshotNode {
-        Input.pause(0.15)
-        let attributes = element.attributes()
+    func after(_ element: Element, ref: Int, before: SnapshotNode) -> SnapshotNode {
+        backend.pause(0.15)
+        guard let attributes = backend.current(element) else { return before }
         // An element on its way out (a button that dismissed its own sheet) can still answer, with
         // no size at the screen's corner: (0,1200 0×0) says nothing about what was clicked.
         let lostItsFrame = attributes.frame?.isEmpty == true && before.frame.map { $0.width > 0 && $0.height > 0 } == true
-        return attributes.nativeRole == "AXUnknown" || lostItsFrame ? before : SnapshotNode(ref: ref, attributes: attributes, scale: scale)
+        return lostItsFrame ? before : SnapshotNode(ref: ref, attributes: attributes, scale: scale)
     }
 
     // MARK: click, drag, scroll
@@ -308,15 +274,18 @@ struct Driver {
             let app = try app(c.target.app)
             let element = try element(ref, in: app)
             let node = describe(element, ref: ref)
-            let result = element.perform("AXPress")
-            guard result == .success else { throw UIError.failed("AXPress on \(AppSnapshot.line(node)) failed (\(result.rawValue))") }
+            do {
+                try backend.press(element)
+            } catch {
+                throw UIError.failed("pressing \(AppSnapshot.line(node)) failed: \(error)")
+            }
             let now = after(element, ref: ref, before: node)
             return Outcome(text: "pressed \(AppSnapshot.line(now))", element: now)
         }
         let aim = try aim(target, app: c.target.app)
         let modifiers = try c.mods.map(Modifier.parseList) ?? []
-        let menu = openMenu(notAt: aim.point)
-        Input.click(at: aim.point, right: c.right, count: c.double ? 2 : 1, modifiers: modifiers)
+        let menu = backend.openMenu(notAt: aim.point)
+        backend.click(at: aim.point, right: c.right, count: c.double ? 2 : 1, modifiers: modifiers)
         let (what, node) = outcomeTarget(aim)
         let clicked = "\(c.right ? "right-clicked" : c.double ? "double-clicked" : "clicked") \(what)"
         guard let menu else { return Outcome(text: clicked, element: node) }
@@ -326,32 +295,10 @@ struct Driver {
         )
     }
 
-    /// An open menu (a pop-up, context or toolbar menu), described for a warning, when `point`
-    /// isn't in one: a click outside every open menu goes to dismissing them, not to what's under
-    /// the point. A click in a submenu is in a menu, though its parent menu is elsewhere.
-    func openMenu(notAt point: CGPoint) -> String? {
-        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-        // A closing menu stays listed while it fades out, at alpha 0.
-        let menus = windows.filter {
-            $0[kCGWindowLayer as String] as? Int == Int(CGWindowLevelForKey(.popUpMenuWindow)) && ($0[kCGWindowAlpha as String] as? Double ?? 1) > 0
-        }
-        guard let menu = menus.first else { return nil }
-        // A menu window's bounds take in its shadow, so ask what's at the point; only if nothing
-        // answers, fall back on the bounds.
-        if let hit = AXElement.at(point) {
-            if hit.lineage.contains(where: { $0.attributes().role == "menu" }) { return nil }
-        } else if menus.contains(where: { window in
-            (window[kCGWindowBounds as String] as? NSDictionary).flatMap { CGRect(dictionaryRepresentation: $0) }?.contains(point) == true
-        }) {
-            return nil
-        }
-        return "a menu\((menu[kCGWindowOwnerName as String] as? String).map { " of \($0)" } ?? "")"
-    }
-
     func drag(_ c: HoboUI.Drag) throws -> Outcome {
         let from = try aim(UITarget(parsing: c.from), app: c.target.app)
         let to = try aim(UITarget(parsing: c.to), app: c.target.app)
-        Input.drag(from: from.point, to: to.point, modifiers: try c.mods.map(Modifier.parseList) ?? [])
+        backend.drag(from: from.point, to: to.point, modifiers: try c.mods.map(Modifier.parseList) ?? [])
         let what = from.node.map(AppSnapshot.line) ?? pixelText(from.point)
         let (onto, node) = outcomeTarget(to)
         return Outcome(text: "dragged \(what) to \(onto)", element: node)
@@ -362,34 +309,33 @@ struct Driver {
             return try scrollIntoView(ref, app: c.target.app)
         }
         guard let at = c.at, let direction = c.direction else { throw UIError.failed("give where and which way") }
-        let target = try UITarget(parsing: at)
         let point: CGPoint
         var node: SnapshotNode?
-        switch target {
+        switch try UITarget(parsing: at) {
         case .point(let pixels): point = scale.points(pixels)
         case .ref(let ref):
             let app = try app(c.target.app)
             let element = try element(ref, in: app)
             let described = describe(element, ref: ref)
             node = described
-            bringForward(app, element)
-            guard let frame = element.attributes().frame else { throw UIError.failed("\(AppSnapshot.line(described)) has no frame") }
+            backend.bringForward(element, of: app.running)
+            guard let frame = attributes(element).frame else { throw UIError.failed("\(AppSnapshot.line(described)) has no frame") }
             point = CGPoint(x: frame.midX, y: frame.midY)
         }
-        Input.scroll(at: point, direction, lines: c.lines)
+        backend.scroll(at: point, direction, lines: c.lines)
         return Outcome(text: "scrolled \(direction.rawValue) \(c.lines) at \(node.map(AppSnapshot.line) ?? pixelText(point))", element: node)
     }
 
-    /// AXScrollToVisible where the element has it, then wheel events on the scroll areas around
-    /// it, outermost first, until its centre is in view: the test a click makes (`hitPoint`).
+    /// The platform's scroll-to-visible where the element has it, then scrolls on the scroll areas
+    /// around it, outermost first, until its centre is in view: the test a click makes (`hitPoint`).
     func scrollIntoView(_ ref: Int, app spec: String?) throws -> Outcome {
         let app = try app(spec)
         let element = try element(ref, in: app)
         var node = describe(element, ref: ref)
-        bringForward(app, element)
+        backend.bringForward(element, of: app.running)
         // It can leave the element short of view in an area around the one it scrolled.
-        let scrolledItself = element.actions().contains("AXScrollToVisible") && element.perform("AXScrollToVisible") == .success
-        if scrolledItself { Input.pause(0.2) }
+        let scrolledItself = backend.scrollToVisible(element)
+        if scrolledItself { backend.pause(0.2) }
         if !scrolledItself && scrollAreas(around: element).isEmpty {
             throw UIError.failed("\(AppSnapshot.line(node)) isn't in a scroll area")
         }
@@ -400,8 +346,8 @@ struct Driver {
                 node = describe(element, ref: ref)
                 return Outcome(text: "scrolled to \(AppSnapshot.line(node))", element: node)
             }
-            // A collapsed area shows nothing for the wheel to reach; scrolling where it sits would
-            // scroll the area around it instead.
+            // A collapsed area shows nothing to scroll at; scrolling where it sits would scroll the
+            // area around it instead.
             if obstruction.visible.isEmpty {
                 throw UIError.failed("\(AppSnapshot.line(node)) is in a scroll area that shows nothing, so it can't be scrolled into view")
             }
@@ -409,20 +355,20 @@ struct Driver {
             let wheel = CGPoint(x: obstruction.visible.midX, y: obstruction.visible.midY)
             let vertical = obstruction.direction == .up || obstruction.direction == .down
             let distance = vertical ? abs(centre.y - wheel.y) : abs(centre.x - wheel.x)
-            Input.scroll(at: wheel, obstruction.direction, points: max(distance, 1))
+            backend.scroll(at: wheel, obstruction.direction, distance: max(distance, 1))
         }
         throw UIError.failed("couldn't scroll \(AppSnapshot.line(node)) into view")
     }
 
     /// An element's frame once it stops moving, for up to a second: a scroll view goes on moving
-    /// its content after the wheel events, and a frame read mid-way says it's in view where it
-    /// comes to rest out of it.
-    func settledFrame(of element: AXElement) -> CGRect? {
-        var frame = element.attributes().frame
+    /// its content after the scroll, and a frame read mid-way says it's in view where it comes to
+    /// rest out of it.
+    func settledFrame(of element: Element) -> CGRect? {
+        var frame = backend.current(element)?.frame
         let deadline = Date().addingTimeInterval(1)
         while Date() < deadline {
-            Input.pause(0.05)
-            let now = element.attributes().frame
+            backend.pause(0.05)
+            let now = backend.current(element)?.frame
             if now == frame { break }
             frame = now
         }
@@ -430,36 +376,41 @@ struct Driver {
     }
 
     /// The frames of the scroll areas an element is in, outermost first.
-    func scrollAreas(around element: AXElement) -> [CGRect] {
-        element.lineage.dropFirst().compactMap {
-            let attributes = $0.attributes()
-            return attributes.role == "scrollarea" ? attributes.frame : nil
+    func scrollAreas(around element: Element) -> [CGRect] {
+        lineage(element).dropFirst().compactMap {
+            let a = attributes($0)
+            return a.role == "scrollarea" ? a.frame : nil
         }.reversed()
     }
 
     // MARK: Keyboard
 
+    /// Select All: Cmd-A on macOS, Ctrl-A elsewhere.
+    var selectAll: KeySpec {
+        KeySpec(modifiers: [backend.platform == .macOS ? .command : .control], key: "a")
+    }
+
     func type(_ c: HoboUI.TypeText) throws -> Outcome {
         var node: SnapshotNode?
         if let into = c.into, let ref = RefMap.parse(into) {
             let aim = try aim(.ref(ref), app: c.target.app)
-            Input.click(at: aim.point)
-            Input.pause(0.1)
+            backend.click(at: aim.point, right: false, count: 1, modifiers: [])
+            backend.pause(0.1)
             node = aim.node
         }
         if c.replace {
-            Input.key(try KeySpec.parse("cmd+a"))
+            backend.key(selectAll)
             // Typing over the selection replaces it; with nothing to type, delete it.
-            if c.text.isEmpty { Input.key(try KeySpec.parse("delete")) }
+            if c.text.isEmpty { backend.key(KeySpec(modifiers: [], key: "delete")) }
         }
-        Input.type(c.text)
+        backend.type(c.text)
         let count = c.text.count
         let typed = "typed \(count) character\(count == 1 ? "" : "s")\(c.replace ? " over what was there" : "")"
         return Outcome(text: typed + (node.map { " into " + AppSnapshot.line($0) } ?? ""), element: node)
     }
 
     func key(_ c: HoboUI.Key) throws -> Outcome {
-        Input.key(try KeySpec.parse(c.key))
+        backend.key(try KeySpec.parse(c.key))
         return Outcome(text: "pressed \(c.key)")
     }
 
@@ -467,41 +418,54 @@ struct Driver {
 
     func menu(_ c: HoboUI.Menu) throws -> Outcome {
         let app = try app(c.target.app)
-        guard let bar = app.element.element("AXMenuBar") else { throw UIError.failed("\(app.identity.name) has no menu bar") }
+        guard let bar = backend.menuBar(of: app.root) else {
+            if backend.platform == .macOS { throw UIError.failed("\(app.identity.name) has no menu bar") }
+            throw UIError.failed(
+                "\(app.identity.name) has no menu bar: its menus are behind a button; click --text \"Main Menu\" (or the button snapshot shows), then click --text <item> --role menuitem"
+            )
+        }
         let titles = c.titles
-        var items = bar.children()
+        var items = backend.menuItems(of: bar)
         var path: [String] = []
-        var current: AXElement?
+        var current: Element?
         for title in titles {
-            guard let found = items.first(where: { MenuPath.matches(($0.attribute("AXTitle") as String?) ?? "", title) }) else {
-                let names = items.compactMap { $0.attribute("AXTitle") as String? }.filter { !$0.isEmpty }
+            let infos = items.map(backend.menuItem)
+            guard let index = infos.firstIndex(where: { MenuPath.matches($0.title, title) }) else {
+                let names = infos.map(\.title).filter { !$0.isEmpty }
                 let place = path.isEmpty ? "the menu bar" : path.joined(separator: " > ")
                 throw UIError.failed("no \"\(title)\" in \(place); it has: \(names.joined(separator: ", "))")
             }
             path.append(title)
-            current = found
-            // A menu bar item, or an item with a submenu, holds its menu as its only child.
-            items = found.children().first.map { $0.children() } ?? []
+            current = items[index]
+            items = infos[index].submenu || path.count == 1 ? backend.menuItems(of: items[index]) : []
         }
         guard let current else { throw UIError.failed("give a menu") }
         let chosen = path.joined(separator: " > ")
-        if titles.count == 1 || !current.children().isEmpty {
-            let listed = items.map(MenuItemInfo.init)
+        let info = backend.menuItem(current)
+        if titles.count == 1 || info.submenu {
+            let listed = items.map(backend.menuItem)
             return Outcome(text: ([chosen] + listed.map { "  " + $0.line }).joined(separator: "\n"), items: listed)
         }
-        let info = MenuItemInfo(current)
         guard info.enabled else { throw UIError.failed("\(chosen) is disabled") }
-        let result = current.perform("AXPress")
-        guard result == .success else { throw UIError.failed("pressing \(chosen) failed (\(result.rawValue))") }
+        do {
+            try backend.press(current)
+        } catch {
+            throw UIError.failed("pressing \(chosen) failed: \(error)")
+        }
         let state = info.checked ? " (it was checked)" : ""
         return Outcome(text: "chose \(chosen)\(state)", items: [info])
     }
 
     // MARK: choose
 
-    /// The first element under `root` with one of these accessibility identifiers.
-    func descendant(of root: AXElement, identifiedBy identifiers: Set<String>) -> AXElement? {
-        allElements(under: root, locator: Locator()).first { $0.1.identifier.map(identifiers.contains) == true }?.0
+    /// The first element under `root` that `matches`.
+    func descendant(of root: Element, where matches: (ElementAttributes) -> Bool) -> Element? {
+        allElements(under: root, locator: Locator()).first { matches($0.1) }?.0
+    }
+
+    /// The first element under `root` with one of these identifiers.
+    func descendant(of root: Element, identifiedBy identifiers: Set<String>) -> Element? {
+        descendant(of: root) { $0.identifier.map(identifiers.contains) == true }
     }
 
     /// Asks every 50 ms until `body` gives a value, for up to `seconds`.
@@ -510,7 +474,7 @@ struct Driver {
         while true {
             if let value = body() { return value }
             if Date() >= deadline { return nil }
-            Input.pause(0.05)
+            backend.pause(0.05)
         }
     }
 
@@ -519,48 +483,113 @@ struct Driver {
         poll(seconds) { condition() ? true : nil } != nil
     }
 
+    func choose(_ c: HoboUI.Choose) throws -> Outcome {
+        switch backend.platform {
+        case .macOS: try chooseInPanel(c)
+        case .linux, .windows: try chooseInDialog(c)
+        }
+    }
+
     /// Through the panel's Go to Folder sheet, which takes a whole path (a save panel puts its last
     /// part in the name field), with each step waited for: keys typed while the sheet opens are lost.
     /// The identifiers are AppKit's own for NSOpenPanel and NSSavePanel.
-    func choose(_ c: HoboUI.Choose) throws -> Outcome {
+    func chooseInPanel(_ c: HoboUI.Choose) throws -> Outcome {
         let app = try app(c.target.app)
         let panels: Set<String> = ["open-panel", "save-panel"]
-        guard let panel = descendant(of: app.element, identifiedBy: panels) else {
+        guard let panel = descendant(of: app.root, identifiedBy: panels) else {
             throw UIError.failed("\(app.identity.name) has no open or save panel showing")
         }
-        bringForward(app, panel)
-        func goTo() -> AXElement? { descendant(of: panel, identifiedBy: ["GoToWindow"]) }
-        if goTo() == nil { Input.key(try KeySpec.parse("cmd+shift+g")) }
+        backend.bringForward(panel, of: app.running)
+        func goTo() -> Element? { descendant(of: panel, identifiedBy: ["GoToWindow"]) }
+        if goTo() == nil { backend.key(try KeySpec.parse("cmd+shift+g")) }
         guard let field = poll(3, { goTo().flatMap { descendant(of: $0, identifiedBy: ["PathTextField"]) } }) else {
             throw UIError.failed("the panel's Go to Folder sheet didn't open")
         }
-        guard waitUntil(2, { field.attributes().focused }) else {
+        guard waitUntil(2, { backend.current(field)?.focused == true }) else {
             throw UIError.failed("the Go to Folder sheet's path field didn't take focus")
         }
-        Input.key(try KeySpec.parse("cmd+a"))
-        Input.type(c.path)
-        guard waitUntil(2, { field.attributes().value == c.path }) else {
-            throw UIError.failed("the Go to Folder sheet has \(AppSnapshot.quoted(field.attributes().value ?? "")), not the path typed")
+        backend.key(selectAll)
+        backend.type(c.path)
+        guard waitUntil(2, { backend.current(field)?.value == c.path }) else {
+            throw UIError.failed("the Go to Folder sheet has \(AppSnapshot.quoted(backend.current(field)?.value ?? "")), not the path typed")
         }
         // The sheet looks the path up as it's typed; Return before it has goes nowhere.
-        Input.pause(0.3)
-        Input.key(try KeySpec.parse("return"))
+        backend.pause(0.3)
+        backend.key(KeySpec(modifiers: [], key: "return"))
         guard waitUntil(3, { goTo() == nil }) else {
             throw UIError.failed("the panel wouldn't go to \(c.path), and its Go to Folder sheet is still open: is the path there in the guest?")
         }
         guard let button = descendant(of: panel, identifiedBy: ["OKButton"]) else { throw UIError.failed("the panel has no Open or Save button") }
-        let title = button.attributes().displayName ?? "OK"
-        guard waitUntil(2, { button.attributes().enabled }) else {
+        let title = attributes(button).displayName ?? "OK"
+        guard waitUntil(2, { backend.current(button)?.enabled == true }) else {
             throw UIError.failed("the panel went to \(c.path), but its \(title) button is disabled: it may not let that be chosen")
         }
         guard let point = try? hitPoint(button, node: describe(button, ref: 0)) else {
             throw UIError.failed("the panel went to \(c.path), but something covers its \(title) button; take a snapshot to see what")
         }
-        Input.click(at: point)
-        guard waitUntil(3, { descendant(of: app.element, identifiedBy: panels) == nil }) else {
+        backend.click(at: point, right: false, count: 1, modifiers: [])
+        guard waitUntil(3, { descendant(of: app.root, identifiedBy: panels) == nil }) else {
             throw UIError.failed("clicked \(title) with \(c.path), but the panel is still open; take a snapshot to see why")
         }
         return Outcome(text: "chose \(c.path) with the panel's \(title) button")
+    }
+
+    /// A GTK file chooser or a Windows common file dialog: both take a whole path in one field
+    /// (GTK's location entry, which Ctrl-L opens; Windows' File name box) and go with Return.
+    func chooseInDialog(_ c: HoboUI.Choose) throws -> Outcome {
+        let linux = backend.platform == .linux
+        guard let found = fileDialog(c.target.app) else {
+            throw UIError.failed("\((try? app(c.target.app))?.identity.name ?? "the app") has no file dialog showing")
+        }
+        let app = try app(c.target.app)
+        backend.bringForward(found, of: app.running)
+        let field: Element
+        if linux {
+            backend.key(KeySpec(modifiers: [.control], key: "l"))
+            guard let entry = poll(3, { fileDialog(c.target.app).flatMap(focusedTextbox) }) else {
+                throw UIError.failed("the file dialog's location field didn't open")
+            }
+            field = entry
+        } else {
+            guard let box = fileNameBox(in: found) else { throw UIError.failed("the file dialog has no File name box") }
+            backend.bringForward(box, of: app.running)
+            guard let point = try? hitPoint(box, node: describe(box, ref: 0)) else {
+                throw UIError.failed("something covers the file dialog's File name box; take a snapshot to see what")
+            }
+            backend.click(at: point, right: false, count: 1, modifiers: [])
+            field = box
+        }
+        backend.key(selectAll)
+        backend.type(c.path)
+        guard waitUntil(2, { backend.current(field)?.value == c.path }) else {
+            throw UIError.failed("the file dialog's field has \(AppSnapshot.quoted(backend.current(field)?.value ?? "")), not the path typed")
+        }
+        backend.pause(0.3)
+        backend.key(KeySpec(modifiers: [], key: "return"))
+        guard waitUntil(3, { fileDialog(c.target.app) == nil }) else {
+            throw UIError.failed("pressed Return with \(c.path), but the file dialog is still open: is the path there in the guest? Take a snapshot to see why")
+        }
+        return Outcome(text: "chose \(c.path) in the file dialog")
+    }
+
+    /// The file dialog the app is showing: GTK's `file chooser`, or a Windows window with a File
+    /// name box.
+    func fileDialog(_ spec: String?) -> Element? {
+        guard let app = try? app(spec) else { return nil }
+        if backend.platform == .linux { return descendant(of: app.root) { $0.nativeRole == "file chooser" } }
+        return allElements(under: app.root, locator: Locator()).first { element, a, _ in
+            ["dialog", "window"].contains(a.role) && fileNameBox(in: element) != nil
+        }?.0
+    }
+
+    /// A Windows file dialog's File name box: the edit field of its `File name:` combo box.
+    func fileNameBox(in dialog: Element) -> Element? {
+        descendant(of: dialog) { $0.role == "textbox" && $0.displayName?.hasPrefix("File name") == true }
+    }
+
+    /// The focused text field in `root`.
+    func focusedTextbox(_ root: Element) -> Element? {
+        descendant(of: root) { $0.role == "textbox" && $0.focused }
     }
 
     // MARK: wait
@@ -581,7 +610,7 @@ struct Driver {
                 return Outcome(text: "\(what) is gone")
             }
             if Date() >= deadline { break }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            backend.pause(0.1)
         }
         let snapshot = (try? app(c.target.app)).flatMap(snapshotNow)
         throw UIError.timedOut("timed out after \(c.timeout.formatted())s waiting for \(what)\(c.gone ? " to go" : "")", snapshot)
@@ -595,97 +624,22 @@ struct Driver {
     /// Throws for a ref no snapshot gave, which no amount of waiting will bring.
     func check(_ c: HoboUI.Wait, in app: App) throws -> Found {
         if let ref = c.ref.flatMap(RefMap.parse) {
-            guard let element = try locator(ref, in: app).resolve(from: app.element) else { return Found(present: false) }
+            guard let element = try locator(ref, in: app).resolve(from: app.root) else { return Found(present: false) }
             return Found(present: true, node: describe(element, ref: ref))
         }
         if let text = c.text {
-            for (_, attributes, locator) in searchableElements(under: app.element) where attributes.contains(text) {
+            for (_, attributes, locator) in searchableElements(under: app.root) where attributes.contains(text) {
                 let ref = try store.update(app.identity.storeKey) { $0.ref(for: locator) }
                 return Found(present: true, node: SnapshotNode(ref: ref, attributes: attributes, scale: scale))
             }
             return Found(present: false)
         }
-        let windows: [AXUIElement] = app.element.attribute("AXWindows") ?? []
+        let windows = app.root.children().filter { ["window", "dialog", "alertdialog"].contains($0.attributes().role) }
         return Found(present: !windows.isEmpty)
     }
 
     func pixelText(_ point: CGPoint) -> String {
         let pixels = scale.pixels(point)
         return "\(pixels.x),\(pixels.y)"
-    }
-}
-
-/// A menu item as `menu` lists it.
-struct MenuItemInfo: Encodable {
-    var title: String
-    var enabled: Bool
-    var checked: Bool
-    /// In `key`'s syntax, e.g. cmd+shift+s.
-    var shortcut: String?
-    var submenu: Bool
-
-    init(_ item: AXElement) {
-        title = item.attribute("AXTitle") ?? ""
-        enabled = item.attribute("AXEnabled") ?? true
-        checked = !((item.attribute("AXMenuItemMarkChar") as String?) ?? "").isEmpty
-        submenu = !item.children().isEmpty
-        shortcut = nil
-        if let char = item.attribute("AXMenuItemCmdChar") as String?, !char.isEmpty {
-            // AXMenuItemCmdModifiers: 1 shift, 2 option, 4 control, 8 no command.
-            let bits = (item.attribute("AXMenuItemCmdModifiers") as Int?) ?? 0
-            var parts: [String] = []
-            if bits & 8 == 0 { parts.append("cmd") }
-            if bits & 4 != 0 { parts.append("ctrl") }
-            if bits & 2 != 0 { parts.append("opt") }
-            if bits & 1 != 0 { parts.append("shift") }
-            parts.append(char.lowercased())
-            shortcut = parts.joined(separator: "+")
-        }
-    }
-
-    var line: String {
-        if title.isEmpty { return "---" }
-        var parts = ["\"\(title)\""]
-        if let shortcut { parts.append(shortcut) }
-        if submenu { parts.append(">") }
-        if !enabled { parts.append("disabled") }
-        if checked { parts.append("checked") }
-        return parts.joined(separator: " ")
-    }
-}
-
-/// What a command prints: `text`, or with `--json` the rest.
-struct Outcome: Encodable {
-    var text: String
-    var element: SnapshotNode?
-    var items: [MenuItemInfo]?
-    var snapshot: AppSnapshot?
-    /// A menu open away from where a click went (or `at`'s point), which it would go to closing.
-    var openMenu: String?
-
-    init(text: String, element: SnapshotNode? = nil, items: [MenuItemInfo]? = nil, snapshot: AppSnapshot? = nil, openMenu: String? = nil) {
-        self.text = text
-        self.element = element
-        self.items = items
-        self.snapshot = snapshot
-        self.openMenu = openMenu
-    }
-
-    enum CodingKeys: String, CodingKey { case text = "message", element, items, snapshot, openMenu }
-}
-
-enum UIError: Error, CustomStringConvertible {
-    case notTrusted
-    case noApp(String)
-    case failed(String)
-    case timedOut(String, AppSnapshot?)
-
-    var description: String {
-        switch self {
-        case .notTrusted: "Accessibility isn't granted; build this VM from a recipe with [gui_testing]"
-        case .noApp(let spec): "no running app matches \(spec)"
-        case .failed(let message): message
-        case .timedOut(let message, _): message
-        }
     }
 }

@@ -27,11 +27,16 @@ public enum Modifier: String, CaseIterable, Codable, Sendable {
 /// key's position means; `type` sends text without regard to layout).
 public struct KeySpec: Equatable, Sendable {
     public var modifiers: [Modifier]
+    /// The key's name, the same for every way of writing it (`minus` and `-` are `-`, `enter` is
+    /// `return`, `+` is `=`, the key it's on), for the Linux and Windows backends.
+    public var key: String
+    /// macOS's virtual key code for it.
     public var keyCode: UInt16
 
-    public init(modifiers: [Modifier], keyCode: UInt16) {
+    public init(modifiers: [Modifier], key: String) {
         self.modifiers = modifiers
-        self.keyCode = keyCode
+        self.key = key
+        keyCode = Self.keyCodes[key] ?? 0
     }
 
     /// `cmd+shift+k`, `return`, `ctrl+f2`, `cmd++` or `cmd+plus` (the plus key), `cmd+-` or `cmd+minus`.
@@ -48,8 +53,9 @@ public struct KeySpec: Equatable, Sendable {
             guard let modifier = Modifier.parse(part) else { throw KeyError.unknownModifier(part).asUsage }
             if !modifiers.contains(modifier) { modifiers.append(modifier) }
         }
-        guard let code = keyCodes[keyName.lowercased()] else { throw KeyError.unknownKey(keyName).asUsage }
-        return KeySpec(modifiers: modifiers, keyCode: code)
+        let name = keyName.lowercased()
+        guard keyCodes[name] != nil else { throw KeyError.unknownKey(keyName).asUsage }
+        return KeySpec(modifiers: modifiers, key: canonical[name] ?? name)
     }
 
     /// Virtual key codes (Carbon's `kVK_*`), by name.
@@ -78,6 +84,17 @@ public struct KeySpec: Equatable, Sendable {
         for (name, key) in names { codes[name] = codes[key] }
         return codes
     }()
+
+    /// The one name `key` gives each key with more than one.
+    static let canonical: [String: String] = [
+        "enter": "return", "backspace": "delete", "esc": "escape", "+": "=", "plus": "=",
+        "minus": "-", "equals": "=", "equal": "=", "comma": ",", "period": ".", "dot": ".",
+        "slash": "/", "backslash": "\\", "semicolon": ";", "quote": "'", "backtick": "`", "grave": "`",
+        "leftbracket": "[", "rightbracket": "]",
+    ]
+
+    /// Every key name after `canonical`, for a backend's table to cover.
+    public static var names: Set<String> { Set(keyCodes.keys.map { canonical[$0] ?? $0 }) }
 }
 
 /// What's wrong with a key or modifier as typed. The parsers throw it as a `ValidationError`

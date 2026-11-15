@@ -110,7 +110,7 @@ enum Input {
         for character in text {
             // `isNewline`, as "\r\n" is one Character, equal to neither "\n" nor "\r".
             if character.isNewline {
-                key(KeySpec(modifiers: [], keyCode: 0x24))
+                key(KeySpec(modifiers: [], key: "return"))
                 continue
             }
             let units = Array(String(character).utf16)

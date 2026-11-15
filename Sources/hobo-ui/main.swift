@@ -13,32 +13,12 @@ do {
 }
 let json = arguments.contains("--json")
 
-func emit(_ value: some Encodable) {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-    if let data = try? encoder.encode(value) {
-        FileHandle.standardOutput.write(data + Data("\n".utf8))
-    }
-}
-
-struct Failure: Encodable {
-    var error: String
-    var snapshot: AppSnapshot?
-}
-
 do {
-    let outcome = try Driver().run(command)
-    if json { emit(outcome) } else { print(outcome.text) }
+    let outcome = try UIDriver(backend: MacBackend(), store: .standard()).run(command)
+    print(UIOutput.success(outcome, json: json).stdout)
 } catch {
-    var snapshot: AppSnapshot?
-    if case UIError.timedOut(_, let taken) = error { snapshot = taken }
-    if json {
-        emit(Failure(error: String(describing: error), snapshot: snapshot))
-        // On stderr too, as the host's hobo does, so a pipe into jq doesn't hide it.
-        FileHandle.standardError.write(Data("Error: \(error)\n".utf8))
-    } else {
-        FileHandle.standardError.write(Data("hobo-ui: \(error)\n".utf8))
-        if let snapshot { print(snapshot.text) }
-    }
+    let (stdout, stderr) = UIOutput.failure(error, json: json, program: "hobo-ui")
+    if !stdout.isEmpty { print(stdout) }
+    FileHandle.standardError.write(Data((stderr + "\n").utf8))
     exit(1)
 }

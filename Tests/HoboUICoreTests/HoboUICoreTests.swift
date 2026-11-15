@@ -114,7 +114,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
 @Suite struct SnapshotTests {
     func snapshot(_ app: Fake, _ options: SnapshotOptions = SnapshotOptions(), refs: inout RefMap) -> AppSnapshot {
         let elements = SnapshotBuilder(options: options, scale: PixelScale(1)).build(root: app, locator: Locator(), isApp: true, refs: &refs)
-        return AppSnapshot(app: AppIdentity(name: "Demo", bundleID: "com.example.Demo", pid: 7), scale: 1, elements: elements)
+        return AppSnapshot(app: AppIdentity(name: "Demo", id: "com.example.Demo", pid: 7), scale: 1, elements: elements)
     }
 
     @Test func foldsUnnamedGroupsAndLeavesOutTheMenuBar() {
@@ -225,7 +225,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         var refs = RefMap()
         let app = Fake("AXApplication", [Fake("AXWindow", "Main")])
         let shown = SnapshotBuilder(options: SnapshotOptions(), scale: scale).build(root: app, locator: Locator(), isApp: true, refs: &refs)
-        #expect(AppSnapshot(app: AppIdentity(name: "Demo", bundleID: nil, pid: 7), scale: 2, elements: shown).text == """
+        #expect(AppSnapshot(app: AppIdentity(name: "Demo", id: nil, pid: 7), scale: 2, elements: shown).text == """
             app Demo pid 7
             scale 2
             - window "Main" [e1]
@@ -323,7 +323,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
 
     func shown(_ lineage: [Fake], refs: inout RefMap) -> String {
         let nodes = path(to: lineage, same: { $0.a == $1.a && $0.kids.count == $1.kids.count }, scale: PixelScale(1), refs: &refs)
-        return AppSnapshot(app: AppIdentity(name: "Demo", bundleID: nil, pid: 7), scale: 1, elements: nodes).text
+        return AppSnapshot(app: AppIdentity(name: "Demo", id: nil, pid: 7), scale: 1, elements: nodes).text
     }
 
     @Test func showsTheWayFromTheWindowWithRefsThatResolve() throws {
@@ -357,10 +357,13 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
 
 @Suite struct KeyTests {
     @Test func parsesModifiersAndNamedKeys() throws {
-        #expect(try KeySpec.parse("cmd+shift+k") == KeySpec(modifiers: [.command, .shift], keyCode: 0x28))
-        #expect(try KeySpec.parse("return") == KeySpec(modifiers: [], keyCode: 0x24))
-        #expect(try KeySpec.parse("ctrl+F2") == KeySpec(modifiers: [.control], keyCode: 0x78))
-        #expect(try KeySpec.parse("cmd++") == KeySpec(modifiers: [.command], keyCode: 0x18))
+        #expect(try KeySpec.parse("cmd+shift+k") == KeySpec(modifiers: [.command, .shift], key: "k"))
+        #expect(try KeySpec.parse("cmd+shift+k").keyCode == 0x28)
+        #expect(try KeySpec.parse("return") == KeySpec(modifiers: [], key: "return"))
+        #expect(try KeySpec.parse("enter").keyCode == 0x24)
+        #expect(try KeySpec.parse("ctrl+F2") == KeySpec(modifiers: [.control], key: "f2"))
+        #expect(try KeySpec.parse("cmd++") == KeySpec(modifiers: [.command], key: "="))
+        #expect(try KeySpec.parse("cmd+minus") == KeySpec(modifiers: [.command], key: "-"))
         #expect(try KeySpec.parse("cmd+plus") == KeySpec.parse("cmd++"))
         #expect(try KeySpec.parse("cmd+minus") == KeySpec.parse("cmd+-"))
         #expect(try KeySpec.parse("cmd+Comma") == KeySpec.parse("cmd+,"))
@@ -547,5 +550,39 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         let node = SnapshotNode(ref: 1, attributes: ElementAttributes(platform: .linux, role: "push button", title: "OK"), scale: PixelScale(1))
         #expect(node.role == "button")
         #expect(node.nativeRole == "push button")
+    }
+}
+
+@Suite struct AppMatchingTests {
+    let notepad = RunningApp(identity: AppIdentity(name: "Notepad", id: "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", pid: 10), aliases: ["notepad"])
+    let editor = RunningApp(identity: AppIdentity(name: "Text Editor", id: "org.gnome.TextEditor", pid: 11))
+    let files = RunningApp(identity: AppIdentity(name: "Files", id: "org.gnome.Nautilus", pid: 12))
+    let otherFiles = RunningApp(identity: AppIdentity(name: "Files", id: "com.example.Files", pid: 13))
+
+    func find(_ spec: String?, frontmost: RunningApp? = nil) throws -> Int32 {
+        try RunningApp.find(spec, in: [notepad, editor, files, otherFiles], frontmost: frontmost).identity.pid
+    }
+
+    @Test func byIDAliasNameOrPidIgnoringCase() throws {
+        #expect(try find("org.gnome.texteditor") == 11)
+        #expect(try find("NOTEPAD") == 10)
+        #expect(try find("text editor") == 11)
+        #expect(try find("pid:12") == 12)
+        #expect(try find(nil, frontmost: editor) == 11)
+    }
+
+    @Test func anAmbiguousNameFailsListingEach() {
+        #expect {
+            try find("Files")
+        } throws: { error in
+            let message = String(describing: error)
+            return message.contains("org.gnome.Nautilus") && message.contains("com.example.Files") && message.contains("pid:<n>")
+        }
+    }
+
+    @Test func nothingMatchingFails() {
+        #expect(throws: UIError.self) { try find("Paint") }
+        #expect(throws: UIError.self) { try find("pid:99") }
+        #expect(throws: UIError.self) { try find(nil) }
     }
 }

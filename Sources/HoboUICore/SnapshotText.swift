@@ -64,19 +64,21 @@ public struct AppSnapshot: Codable, Equatable, Sendable {
 /// Which app a command acted on.
 public struct AppIdentity: Codable, Equatable, Sendable {
     public var name: String
-    public var bundleID: String?
+    /// What names the app across launches: a macOS bundle ID, a Linux desktop app ID
+    /// (`org.gnome.TextEditor`), a Windows AUMID or exe name.
+    public var id: String?
     public var pid: Int32
 
-    public init(name: String, bundleID: String?, pid: Int32) {
+    public init(name: String, id: String?, pid: Int32) {
         self.name = name
-        self.bundleID = bundleID
+        self.id = id
         self.pid = pid
     }
 
     public var header: String {
-        "app \(name)\(bundleID.map { " (\($0))" } ?? "") pid \(pid)"
+        "app \(name)\(id.map { " (\($0))" } ?? "") pid \(pid)"
     }
 
-    /// Whose `RefMap` file: by bundle ID, so refs outlive a relaunch.
-    public var storeKey: String { bundleID ?? "pid-\(pid)" }
+    /// Whose `RefMap` file: by ID, so refs outlive a relaunch.
+    public var storeKey: String { id ?? "pid-\(pid)" }
 }
