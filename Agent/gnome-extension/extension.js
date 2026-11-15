@@ -63,6 +63,7 @@ export default class HoboExtension extends Extension {
                 opacity: actor ? actor.opacity / 255 : 1,
                 focused: w === focus,
                 menu: MENU_TYPES.has(w.get_window_type()),
+                transient: w.get_transient_for() !== null,
             };
         }));
     }

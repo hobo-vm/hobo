@@ -544,12 +544,38 @@ public struct UIDriver<Backend: UIBackend> {
         let app = try app(c.target.app)
         backend.bringForward(found, of: app.running)
         let field: Element
-        if linux {
-            backend.key(KeySpec(modifiers: [.control], key: "l"))
-            guard let entry = poll(3, { fileDialog(c.target.app).flatMap(focusedTextbox) }) else {
-                throw UIError.failed("the file dialog's location field didn't open")
+        var typed = c.path
+        if linux, descendant(of: found, identifiedBy: ["filename_widget"]) != nil {
+            // Nautilus's save chooser: its location bar only goes to folders, and its File Name box
+            // takes no slashes, so go to the folder, then name the file.
+            let url = URL(fileURLWithPath: c.path)
+            try typeInLocationBar(url.deletingLastPathComponent().path + "/", spec: c.target.app)
+            backend.key(KeySpec(modifiers: [], key: "return"))
+            guard waitUntil(3, { fileDialog(c.target.app).flatMap(focusedTextbox) == nil }) else {
+                throw UIError.failed("the file dialog's location field didn't go to \(url.deletingLastPathComponent().path): is it a folder in the guest?")
             }
+            // A click as the location bar closes can go nowhere, so click until the box opens.
+            // Looked up afresh each time: the dialog's tree as it first showed may not have it yet.
+            func nameButton() -> Element? {
+                fileDialog(c.target.app)
+                    .flatMap { descendant(of: $0, identifiedBy: ["filename_widget"]) }
+                    .flatMap { descendant(of: $0, where: { $0.role == "button" }) }
+            }
+            var entry: Element?
+            for _ in 0..<3 where entry == nil {
+                if let button = nameButton() {
+                    guard let point = try? hitPoint(button, node: describe(button, ref: 0)) else {
+                        throw UIError.failed("something covers the file dialog's File Name button; take a snapshot to see what")
+                    }
+                    backend.click(at: point, right: false, count: 1, modifiers: [])
+                }
+                entry = poll(1, { fileDialog(c.target.app).flatMap(focusedTextbox) })
+            }
+            guard let entry else { throw UIError.failed("the file dialog's File Name box didn't open") }
             field = entry
+            typed = url.lastPathComponent
+        } else if linux {
+            field = try typeInLocationBar(nil, spec: c.target.app)
         } else {
             guard let box = fileNameBox(in: found) else { throw UIError.failed("the file dialog has no File name box") }
             backend.bringForward(box, of: app.running)
@@ -560,8 +586,8 @@ public struct UIDriver<Backend: UIBackend> {
             field = box
         }
         backend.key(selectAll)
-        backend.type(c.path)
-        guard waitUntil(2, { backend.current(field)?.value == c.path }) else {
+        backend.type(typed)
+        guard waitUntil(2, { backend.current(field)?.value == typed }) else {
             throw UIError.failed("the file dialog's field has \(AppSnapshot.quoted(backend.current(field)?.value ?? "")), not the path typed")
         }
         backend.pause(0.3)
@@ -572,11 +598,43 @@ public struct UIDriver<Backend: UIBackend> {
         return Outcome(text: "chose \(c.path) in the file dialog")
     }
 
+    /// Opens a GTK file chooser's location bar with Ctrl-L and gives it, after typing `text` there
+    /// when there is some.
+    @discardableResult
+    func typeInLocationBar(_ text: String?, spec: String?) throws -> Element {
+        backend.key(KeySpec(modifiers: [.control], key: "l"))
+        guard let entry = poll(3, { fileDialog(spec).flatMap(focusedTextbox) }) else {
+            throw UIError.failed("the file dialog's location field didn't open")
+        }
+        guard let text else { return entry }
+        backend.key(selectAll)
+        backend.type(text)
+        // GTK completes a path inline, selecting what it adds; Delete drops that.
+        if waitUntil(1, { (backend.current(entry)?.value).map { $0 != text && $0.hasPrefix(text) } == true }) {
+            backend.key(KeySpec(modifiers: [], key: "delete"))
+        }
+        guard waitUntil(2, { backend.current(entry)?.value == text }) else {
+            throw UIError.failed("the file dialog's location field has \(AppSnapshot.quoted(backend.current(entry)?.value ?? "")), not \(AppSnapshot.quoted(text))")
+        }
+        return entry
+    }
+
     /// The file dialog the app is showing: GTK's `file chooser`, or a Windows window with a File
-    /// name box.
+    /// name box. On Linux a sandboxed or GTK 4 app's chooser comes from the file chooser portal, in
+    /// another process (Nautilus on GNOME), so after the app's own tree every app's is searched.
     func fileDialog(_ spec: String?) -> Element? {
         guard let app = try? app(spec) else { return nil }
-        if backend.platform == .linux { return descendant(of: app.root) { $0.nativeRole == "file chooser" } }
+        if backend.platform == .linux {
+            // GTK 3 has a file chooser role; GTK 4 doesn't, and its portal's is Nautilus's window.
+            let isChooser: (ElementAttributes) -> Bool = { $0.nativeRole == "file chooser" || $0.identifier == "NautilusFileChooser" }
+            if let own = descendant(of: app.root, where: isChooser) { return own }
+            let others = ((try? backend.apps()) ?? []).filter { $0.identity.pid != app.running.identity.pid }
+            // A loop, not lazy.compactMap, which runs its transform twice, and the tree can change between.
+            for other in others {
+                if let root = try? backend.root(of: other), let chooser = descendant(of: root, where: isChooser) { return chooser }
+            }
+            return nil
+        }
         return allElements(under: app.root, locator: Locator()).first { element, a, _ in
             ["dialog", "window"].contains(a.role) && fileNameBox(in: element) != nil
         }?.0

@@ -7,3 +7,4 @@ DerivedData/
 .hobo/
 *.box
 *.ipsw
+__pycache__/

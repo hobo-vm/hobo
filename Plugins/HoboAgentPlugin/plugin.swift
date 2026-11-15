@@ -9,10 +9,12 @@ struct HoboAgentPlugin: BuildToolPlugin {
         let source = context.package.directoryURL.appending(path: "Agent")
         let output = context.pluginWorkDirectoryURL.appending(path: "out")
         let scratch = context.pluginWorkDirectoryURL.appending(path: "agent")
-        let inputs = try FileManager.default.contentsOfDirectory(atPath: source.path)
+        let sources = try FileManager.default.contentsOfDirectory(atPath: source.path)
             .filter { ($0.hasSuffix(".go") && !$0.hasSuffix("_test.go")) || $0 == "go.mod" || $0 == "build.sh" }
-            .sorted()
-            .map { source.appending(path: $0) }
+        // What the agent embeds (gnome_linux.go's go:embed) is an input too.
+        let embedded = try FileManager.default.contentsOfDirectory(atPath: source.appending(path: "gnome-extension").path)
+            .map { "gnome-extension/\($0)" }
+        let inputs = (sources + embedded).sorted().map { source.appending(path: $0) }
         return [.buildCommand(
             displayName: "Building hobo-agent",
             executable: URL(filePath: "/bin/sh"),

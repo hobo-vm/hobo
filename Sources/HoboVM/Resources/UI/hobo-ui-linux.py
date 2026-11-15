@@ -27,6 +27,15 @@ class Failure(Exception):
     pass
 
 
+def has(accessible, interface):
+    """Whether the element implements an AT-SPI interface, whose methods are then called as
+    Atspi.<Interface>.<method>(accessible, …)."""
+    try:
+        return interface in accessible.get_interfaces()
+    except GLib.Error:
+        return False
+
+
 # MARK: GNOME Shell
 
 
@@ -121,6 +130,46 @@ class Device:
         self.write(EV_SYN, 0, 0)
 
 
+def wait_until_opened(names, timeout=3):
+    """Waits for gnome-shell, which runs as this user, to open the event devices of the uinput
+    devices `names`: it has them in its fds once libinput has added them."""
+    import glob
+    import os
+    nodes = set()
+    for name_file in glob.glob("/sys/devices/virtual/input/input*/name"):
+        try:
+            with open(name_file) as f:
+                if f.read().strip() not in names:
+                    continue
+        except OSError:
+            continue
+        for event in glob.glob(os.path.join(os.path.dirname(name_file), "event*")):
+            nodes.add("/dev/input/" + os.path.basename(event))
+    shells = []
+    for comm in glob.glob("/proc/[0-9]*/comm"):
+        try:
+            with open(comm) as f:
+                if f.read().strip() == "gnome-shell":
+                    shells.append(os.path.dirname(comm))
+        except OSError:
+            continue
+    deadline = time.time() + timeout
+    while nodes and shells and time.time() < deadline:
+        opened = set()
+        for shell in shells:
+            for fd in glob.glob(shell + "/fd/*"):
+                try:
+                    opened.add(os.readlink(fd))
+                except OSError:
+                    pass
+        if nodes <= opened:
+            time.sleep(0.05)
+            return
+        time.sleep(0.02)
+    # Not seen (an older layout, or no access): the time a new device took on Ubuntu 26.04.
+    time.sleep(0.5)
+
+
 class Input:
     """A uinput absolute pointer and keyboard, made on first use: the kernel hands their events to
     the compositor as hardware's, so Wayland apps get them as a person's."""
@@ -140,8 +189,8 @@ class Input:
         except OSError as error:
             raise Failure("can't make input devices (%s); was this VM's desktop set up by a current hobo init --os "
                           "linux recipe, which gives hobo /dev/uinput?" % error)
-        # The compositor takes a moment to add a new device; events before then are lost.
-        time.sleep(0.5)
+        # Events sent before the compositor has opened a new device are lost.
+        wait_until_opened(["hobo ui pointer", "hobo ui keyboard"])
 
     def move(self, x, y, settle=0.03):
         self.devices()
@@ -233,10 +282,15 @@ class Input:
             elif character in SHIFTED:
                 self.tap(KEYS[SHIFTED[character]], ["shift"])
             else:
+                # IBus takes these keys in turn as it gets to them; ones sent before it has
+                # started or finished the entry go astray (taken as more hex, or typed twice).
                 self.tap(KEYS["u"], ["control", "shift"])
+                time.sleep(0.1)
                 for digit in "%x" % ord(character):
                     self.tap(KEYS[digit])
+                    time.sleep(0.03)
                 self.tap(KEYS["space"])
+                time.sleep(0.15)
             time.sleep(0.008)
         time.sleep(0.05)
 
@@ -276,8 +330,9 @@ class Backend:
             self.window_cache = self.shell.windows()
         return self.window_cache
 
-    # AT-SPI's frames for a window ("frame", "dialog", …) are relative to its surface on Wayland;
-    # the extension's buffer rectangle is where that surface is. A window is matched by its pid
+    # AT-SPI's frames for a window ("frame", "dialog", …) are relative to it on Wayland: to the
+    # frame a person sees, not the surface with its shadow (GTK 4, checked against a screenshot
+    # on Ubuntu 26.04). The extension says where that frame is. A window is matched by its pid
     # and title, else by its pid alone when that pid has one window.
     def window_origin(self, top):
         try:
@@ -290,7 +345,7 @@ class Backend:
         found = named[0] if named else (mine[0] if len(mine) == 1 else None)
         if not found:
             return (0, 0)
-        return (found["buffer"][0], found["buffer"][1])
+        return (found["frame"][0], found["frame"][1])
 
     def top_level(self, accessible):
         """The child of the app that the element is in: its window."""
@@ -307,10 +362,9 @@ class Backend:
 
     def frame(self, accessible, origin=None):
         try:
-            component = accessible.get_component_iface()
-            if component is None:
+            if not has(accessible, "Component"):
                 return None
-            extents = component.get_extents(Atspi.CoordType.WINDOW)
+            extents = Atspi.Component.get_extents(accessible, Atspi.CoordType.WINDOW)
         except GLib.Error:
             return None
         if origin is None:
@@ -324,12 +378,13 @@ class Backend:
         except GLib.Error:
             return None
         node = {"id": self.id(accessible), "role": role}
-        name = accessible.get_name()
+        name = accessible.get_name() or self.labelled_by(accessible)
         if name:
             node["title"] = name
         try:
             identifier = accessible.get_accessible_id()
-            if identifier:
+            # GtkBuilder names the objects a .ui file leaves unnamed ___object_25___: they say nothing.
+            if identifier and not (identifier.startswith("___object_") and identifier.endswith("___")):
                 node["identifier"] = identifier
         except (GLib.Error, AttributeError):
             pass
@@ -378,18 +433,36 @@ class Backend:
                 found.append(node)
         return found
 
+    def labelled_by(self, accessible):
+        """The text of the labels an unnamed element is labelled by: how GTK 4 names a menu item."""
+        try:
+            relations = accessible.get_relation_set()
+        except GLib.Error:
+            return None
+        texts = []
+        for relation in relations or []:
+            if relation.get_relation_type() != Atspi.RelationType.LABELLED_BY:
+                continue
+            for index in range(relation.get_n_targets()):
+                label = relation.get_target(index)
+                try:
+                    text = label.get_name() or (Atspi.Text.get_text(label, 0, TEXT_LIMIT) if has(label, "Text") else "")
+                except GLib.Error:
+                    text = ""
+                if text:
+                    texts.append(text)
+        return " ".join(texts) or None
+
     def value(self, accessible, role):
         try:
-            text = accessible.get_text_iface()
-            if text is not None and role in ("text", "entry", "password text", "editbar", "label", "static", "caption", "paragraph", "heading", "spin button", "combo box"):
-                count = text.get_character_count()
-                content = text.get_text(0, min(count, TEXT_LIMIT))
+            if has(accessible, "Text") and role in ("text", "entry", "password text", "editbar", "label", "static", "caption", "paragraph", "heading", "spin button", "combo box"):
+                count = Atspi.Text.get_character_count(accessible)
+                content = Atspi.Text.get_text(accessible, 0, min(count, TEXT_LIMIT))
                 # A label's text is its name already.
                 if content and content != accessible.get_name():
                     return content
-            value = accessible.get_value_iface()
-            if value is not None:
-                current = value.get_current_value()
+            if has(accessible, "Value"):
+                current = Atspi.Value.get_current_value(accessible)
                 return ("%g" % current)
         except GLib.Error:
             pass
@@ -399,9 +472,7 @@ class Backend:
 
     def apps(self):
         windows = self.windows(fresh=True)
-        by_pid = {}
-        for window in windows:
-            by_pid.setdefault(window["pid"], window)
+        by_pid = self.windows_by_pid(windows)
         desktop = Atspi.get_desktop(0)
         apps = []
         for index in range(desktop.get_child_count()):
@@ -418,10 +489,29 @@ class Backend:
                 # No window: gnome-shell's own tree, daemons, and so on.
                 continue
             aliases = [at_name] if at_name else []
-            apps.append({"name": window.get("appName") or at_name or ("pid %d" % pid), "id": window.get("app"),
-                         "pid": pid, "aliases": aliases})
+            apps.append(dict(self.identity(window, at_name, pid), aliases=aliases))
         focused = next((w["pid"] for w in windows if w["focused"]), None)
         return {"apps": apps, "focused": focused}
+
+    @staticmethod
+    def windows_by_pid(windows):
+        """Each pid's window that names its app: a window of its own over a transient one."""
+        by_pid = {}
+        for window in windows:
+            if window["menu"]:
+                continue
+            if window["pid"] not in by_pid or (by_pid[window["pid"]].get("transient") and not window.get("transient")):
+                by_pid[window["pid"]] = window
+        return by_pid
+
+    @staticmethod
+    def identity(window, at_name, pid):
+        """An app's name and ID. The shell names a transient window's app after its parent's, which
+        for a portal's file chooser is another process's (Text Editor's for Nautilus's), so a pid
+        with only transient windows goes by its AT-SPI name."""
+        if window.get("transient"):
+            return {"name": at_name or ("pid %d" % pid), "id": None, "pid": pid}
+        return {"name": window.get("appName") or at_name or ("pid %d" % pid), "id": window.get("app"), "pid": pid}
 
     def application(self, pid):
         desktop = Atspi.get_desktop(0)
@@ -437,8 +527,8 @@ class Backend:
             pid = app.get_process_id()
         except GLib.Error:
             return None
-        window = next((w for w in self.windows() if w["pid"] == pid), {})
-        return {"name": window.get("appName") or app.get_name() or ("pid %d" % pid), "id": window.get("app"), "pid": pid}
+        window = self.windows_by_pid(self.windows()).get(pid, {})
+        return self.identity(window, app.get_name() or "", pid)
 
     # MARK: Hit-testing
 
@@ -449,23 +539,51 @@ class Backend:
             bx, by, bw, bh = window["frame"]
             if not (bx <= x < bx + bw and by <= y < by + bh):
                 continue
+            if window["menu"]:
+                # A popover is a window of its own to the shell, but its elements are in its
+                # parent window's tree, where hit-testing from the window doesn't reach them.
+                return self.in_menus(window["pid"], x, y)
             top = self.window_accessible(window)
             if top is None:
                 return None
-            ox, oy = window["buffer"][0], window["buffer"][1]
+            ox, oy = window["frame"][0], window["frame"][1]
             found = top
             for _ in range(100):
-                component = found.get_component_iface()
-                if component is None:
+                if not has(found, "Component"):
                     break
                 try:
-                    inner = component.get_accessible_at_point(int(x - ox), int(y - oy), Atspi.CoordType.WINDOW)
+                    inner = Atspi.Component.get_accessible_at_point(found, int(x - ox), int(y - oy), Atspi.CoordType.WINDOW)
                 except GLib.Error:
                     break
                 if inner is None or inner == found:
                     break
                 found = inner
             return found
+        return None
+
+    def in_menus(self, pid, x, y):
+        """The deepest element at a point in the app's open menus, by their frames."""
+        try:
+            app = self.application(pid)
+        except Failure:
+            return None
+        def contains(accessible):
+            frame = self.frame(accessible)
+            return frame is not None and frame[0] <= x < frame[0] + frame[2] and frame[1] <= y < frame[1] + frame[3]
+        def deepest(accessible):
+            for child in self.kids(accessible):
+                if contains(child):
+                    return deepest(child)
+            return accessible
+        def menus(accessible, depth):
+            if accessible.get_role() == Atspi.Role.MENU and accessible.get_state_set().contains(Atspi.StateType.SHOWING):
+                yield accessible
+            elif depth > 0:
+                for child in self.kids(accessible):
+                    yield from menus(child, depth - 1)
+        for menu in menus(app, 30):
+            if contains(menu):
+                return deepest(menu)
         return None
 
     def window_accessible(self, window):
@@ -509,7 +627,11 @@ class Backend:
             return self.app_of(self.get(request))
         if op == "raise":
             top = self.top_level(self.get(request))
-            pid = request.get("pid")
+            # The element's own process, which for a portal's dialog isn't the app asked about.
+            try:
+                pid = top.get_application().get_process_id()
+            except GLib.Error:
+                pid = request.get("pid")
             windows = [w for w in self.windows(fresh=True) if w["pid"] == pid and not w["menu"]]
             title = top.get_name() or ""
             chosen = next((w for w in windows if w["title"] == title), windows[0] if windows else None)
@@ -538,16 +660,15 @@ class Backend:
             return None
         if op == "press":
             accessible = self.get(request)
-            action = accessible.get_action_iface()
-            if action is None or action.get_n_actions() == 0:
+            if not has(accessible, "Action") or Atspi.Action.get_n_actions(accessible) == 0:
                 raise Failure("it has no action to press")
-            if not action.do_action(0):
-                raise Failure("its %s action failed" % action.get_action_name(0))
+            if not Atspi.Action.do_action(accessible, 0):
+                raise Failure("its %s action failed" % Atspi.Action.get_action_name(accessible, 0))
             return None
         if op == "scroll_to":
-            component = self.get(request).get_component_iface()
+            accessible = self.get(request)
             try:
-                return bool(component and component.scroll_to(Atspi.ScrollType.ANYWHERE))
+                return has(accessible, "Component") and bool(Atspi.Component.scroll_to(accessible, Atspi.ScrollType.ANYWHERE))
             except GLib.Error:
                 return False
         if op == "menubar":
@@ -603,9 +724,8 @@ class Backend:
         states = accessible.get_state_set()
         role = accessible.get_role()
         shortcut = None
-        action = accessible.get_action_iface()
-        if action is not None and action.get_n_actions() > 0:
-            binding = action.get_key_binding(0) or ""
+        if has(accessible, "Action") and Atspi.Action.get_n_actions(accessible) > 0:
+            binding = Atspi.Action.get_key_binding(accessible, 0) or ""
             # "<Control>s", or "m;<Alt>f;<Control>s": the last part is the accelerator.
             accelerator = binding.split(";")[-1]
             if accelerator:
@@ -617,7 +737,7 @@ class Backend:
                 if accelerator:
                     shortcut = "+".join(parts + [accelerator.lower()])
         return {
-            "title": accessible.get_name() or "",
+            "title": accessible.get_name() or self.labelled_by(accessible) or "",
             "enabled": states.contains(Atspi.StateType.SENSITIVE) or states.contains(Atspi.StateType.ENABLED),
             "checked": states.contains(Atspi.StateType.CHECKED),
             "shortcut": shortcut,
