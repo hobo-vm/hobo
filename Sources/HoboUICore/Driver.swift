@@ -184,7 +184,7 @@ public struct UIDriver<Backend: UIBackend> {
     /// The top-level window an element is in (a sheet's parent window, not the sheet), or the
     /// element itself outside one.
     func window(of element: Element) -> Element {
-        lineage(element).last { ["window", "dialog", "alertdialog"].contains(attributes($0).role) } ?? element
+        lineage(element).last { UIRole.windows.contains(attributes($0).role) } ?? element
     }
 
     /// The element's centre, if a click there would reach it, once the windows over the element's
@@ -546,34 +546,7 @@ public struct UIDriver<Backend: UIBackend> {
         let field: Element
         var typed = c.path
         if linux, descendant(of: found, identifiedBy: ["filename_widget"]) != nil {
-            // Nautilus's save chooser: its location bar only goes to folders, and its File Name box
-            // takes no slashes, so go to the folder, then name the file.
-            // As strings: a guest path, perhaps from ~, that the host's file system knows nothing of.
-            let folder = (c.path as NSString).deletingLastPathComponent + "/"
-            try typeInLocationBar(folder, spec: c.target.app)
-            backend.key(KeySpec(modifiers: [], key: "return"))
-            guard waitUntil(3, { fileDialog(c.target.app).flatMap(focusedTextbox) == nil }) else {
-                throw UIError.failed("the file dialog's location field didn't go to \(folder): is it a folder in the guest?")
-            }
-            // A click as the location bar closes can go nowhere, so click until the box opens.
-            // Looked up afresh each time: the dialog's tree as it first showed may not have it yet.
-            func nameButton() -> Element? {
-                fileDialog(c.target.app)
-                    .flatMap { descendant(of: $0, identifiedBy: ["filename_widget"]) }
-                    .flatMap { descendant(of: $0, where: { $0.role == "button" }) }
-            }
-            var entry: Element?
-            for _ in 0..<3 where entry == nil {
-                if let button = nameButton() {
-                    guard let point = try? hitPoint(button, node: describe(button, ref: 0)) else {
-                        throw UIError.failed("something covers the file dialog's File Name button; take a snapshot to see what")
-                    }
-                    backend.click(at: point, right: false, count: 1, modifiers: [])
-                }
-                entry = poll(1, { fileDialog(c.target.app).flatMap(focusedTextbox) })
-            }
-            guard let entry else { throw UIError.failed("the file dialog's File Name box didn't open") }
-            field = entry
+            field = try nautilusFileNameBox(goingTo: c.path, spec: c.target.app)
             typed = (c.path as NSString).lastPathComponent
         } else if linux {
             field = try typeInLocationBar(nil, spec: c.target.app)
@@ -597,6 +570,35 @@ public struct UIDriver<Backend: UIBackend> {
             throw UIError.failed("pressed Return with \(c.path), but the file dialog is still open: is the path there in the guest? Take a snapshot to see why")
         }
         return Outcome(text: "chose \(c.path) in the file dialog")
+    }
+
+    /// Nautilus's save chooser, whose location bar only goes to folders and whose File Name box
+    /// takes no slashes: goes to `path`'s folder, then opens the File Name box and gives it.
+    func nautilusFileNameBox(goingTo path: String, spec: String?) throws -> Element {
+        // As strings: a guest path, perhaps from ~, that the host's file system knows nothing of.
+        let folder = (path as NSString).deletingLastPathComponent + "/"
+        try typeInLocationBar(folder, spec: spec)
+        backend.key(KeySpec(modifiers: [], key: "return"))
+        guard waitUntil(3, { fileDialog(spec).flatMap(focusedTextbox) == nil }) else {
+            throw UIError.failed("the file dialog's location field didn't go to \(folder): is it a folder in the guest?")
+        }
+        // Looked up afresh each time: the dialog's tree as it first showed may not have it yet.
+        func nameButton() -> Element? {
+            fileDialog(spec)
+                .flatMap { descendant(of: $0, identifiedBy: ["filename_widget"]) }
+                .flatMap { descendant(of: $0, where: { $0.role == "button" }) }
+        }
+        // A click as the location bar closes can go nowhere, so click until the box opens.
+        for _ in 0..<3 {
+            if let button = nameButton() {
+                guard let point = try? hitPoint(button, node: describe(button, ref: 0)) else {
+                    throw UIError.failed("something covers the file dialog's File Name button; take a snapshot to see what")
+                }
+                backend.click(at: point, right: false, count: 1, modifiers: [])
+            }
+            if let entry = poll(1, { fileDialog(spec).flatMap(focusedTextbox) }) { return entry }
+        }
+        throw UIError.failed("the file dialog's File Name box didn't open")
     }
 
     /// Opens a GTK file chooser's location bar with Ctrl-L and gives it, after typing `text` there
@@ -693,7 +695,7 @@ public struct UIDriver<Backend: UIBackend> {
             }
             return Found(present: false)
         }
-        let windows = app.root.children().filter { ["window", "dialog", "alertdialog"].contains($0.attributes().role) }
+        let windows = app.root.children().filter { UIRole.windows.contains($0.attributes().role) }
         return Found(present: !windows.isEmpty)
     }
 

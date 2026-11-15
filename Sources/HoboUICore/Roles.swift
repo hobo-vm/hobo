@@ -34,6 +34,8 @@ public enum UIRole {
     public static let layout: Set<String> = ["group", "generic"]
     /// Roles whose element is on or off (`checked`).
     public static let checkable: Set<String> = ["checkbox", "radio", "switch", "menuitemcheckbox", "menuitemradio"]
+    /// The roles of a window: an app's own, or a dialog of one.
+    public static let windows: Set<String> = ["window", "dialog", "alertdialog"]
     /// What a covering element is named by in a click's failure: the window, sheet, popover or
     /// menu it belongs to.
     public static let containers: Set<String> = ["window", "dialog", "alertdialog", "menu"]
