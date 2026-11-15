@@ -27,6 +27,12 @@ class Failure(Exception):
     pass
 
 
+def inside(frame, x, y):
+    """Whether the point is in the [x, y, w, h] frame."""
+    fx, fy, fw, fh = frame
+    return fx <= x < fx + fw and fy <= y < fy + fh
+
+
 def has(accessible, interface):
     """Whether the element implements an AT-SPI interface, whose methods are then called as
     Atspi.<Interface>.<method>(accessible, …)."""
@@ -414,10 +420,10 @@ class Backend:
         if states.contains(Atspi.StateType.CHECKABLE) or role in ("check box", "radio button", "check menu item", "radio menu item", "switch", "toggle button"):
             node["checked"] = states.contains(Atspi.StateType.CHECKED) or states.contains(Atspi.StateType.PRESSED)
         if depth is not None:
-            node["children"] = self.children(accessible, depth, budget, origin if role != "application" else None)
+            node["children"] = self.child_nodes(accessible, depth, budget, origin if role != "application" else None)
         return node
 
-    def children(self, accessible, depth, budget, origin):
+    def child_nodes(self, accessible, depth, budget, origin):
         found = []
         try:
             count = accessible.get_child_count()
@@ -543,8 +549,7 @@ class Backend:
         """What's at a point: the topmost window there, then AT-SPI's hit-testing down from its
         window, in that window's coordinates."""
         for window in self.windows(fresh=True):
-            bx, by, bw, bh = window["frame"]
-            if not (bx <= x < bx + bw and by <= y < by + bh):
+            if not inside(window["frame"], x, y):
                 continue
             if window["menu"]:
                 # A popover is a window of its own to the shell, but its elements are in its
@@ -576,9 +581,9 @@ class Backend:
             return None
         def contains(accessible):
             frame = self.frame(accessible)
-            return frame is not None and frame[0] <= x < frame[0] + frame[2] and frame[1] <= y < frame[1] + frame[3]
+            return frame is not None and inside(frame, x, y)
         def deepest(accessible):
-            for child in self.kids(accessible):
+            for child in self.children(accessible):
                 if contains(child):
                     return deepest(child)
             return accessible
@@ -586,7 +591,7 @@ class Backend:
             if accessible.get_role() == Atspi.Role.MENU and accessible.get_state_set().contains(Atspi.StateType.SHOWING):
                 yield accessible
             elif depth > 0:
-                for child in self.kids(accessible):
+                for child in self.children(accessible):
                     yield from menus(child, depth - 1)
         for menu in menus(app, 30):
             if contains(menu):
@@ -618,7 +623,7 @@ class Backend:
             return self.node(app, depth=0, budget=[TREE_LIMIT])
         if op == "children":
             accessible = self.get(request)
-            return self.children(accessible, 0, [TREE_LIMIT], None if accessible.get_role() == Atspi.Role.APPLICATION else self.window_origin(self.top_level(accessible)))
+            return self.child_nodes(accessible, 0, [TREE_LIMIT], None if accessible.get_role() == Atspi.Role.APPLICATION else self.window_origin(self.top_level(accessible)))
         if op == "node":
             return self.node(self.get(request))
         if op == "parent":
@@ -633,39 +638,11 @@ class Backend:
         if op == "app_of":
             return self.app_of(self.get(request))
         if op == "raise":
-            top = self.top_level(self.get(request))
-            # The element's own process, which for a portal's dialog isn't the app asked about.
-            try:
-                pid = top.get_application().get_process_id()
-            except GLib.Error:
-                pid = request.get("pid")
-            windows = [w for w in self.windows(fresh=True) if w["pid"] == pid and not w["menu"]]
-            title = top.get_name() or ""
-            chosen = next((w for w in windows if w["title"] == title), windows[0] if windows else None)
-            if chosen and not chosen["focused"]:
-                self.shell.activate(chosen["id"])
-                time.sleep(0.15)
-            self.window_cache = None
-            return None
+            return self.raise_window(self.get(request), request.get("pid"))
         if op == "windows":
-            ax, ay, aw, ah = request["area"]
-            found = []
-            for window in self.windows(fresh=True):
-                x, y, w, h = window["drawn"]
-                if x < ax + aw and ax < x + w and y < ay + ah and ay < y + h:
-                    found.append({"id": window["id"], "bounds": window["drawn"], "alpha": window["opacity"]})
-            return found
+            return self.windows_over(request["area"])
         if op == "open_menu":
-            # A point in a submenu is in a menu, though its parent menu is elsewhere.
-            x, y = request["x"], request["y"]
-            menus = [w for w in self.windows(fresh=True) if w["menu"]]
-            for window in menus:
-                fx, fy, fw, fh = window["frame"]
-                if fx <= x < fx + fw and fy <= y < fy + fh:
-                    return None
-            if not menus:
-                return None
-            return "a menu of %s" % (menus[0].get("appName") or "pid %d" % menus[0]["pid"])
+            return self.open_menu(request["x"], request["y"])
         if op == "press":
             accessible = self.get(request)
             if not has(accessible, "Action") or Atspi.Action.get_n_actions(accessible) == 0:
@@ -683,7 +660,7 @@ class Backend:
             return self.menubar(self.get(request))
         if op == "menu_items":
             accessible = self.get(request)
-            return [n for n in (self.node(c) for c in self.kids(accessible)) if n]
+            return [n for n in (self.node(c) for c in self.children(accessible)) if n]
         if op == "menu_item":
             return self.menu_item(self.get(request))
         if op == "click":
@@ -704,7 +681,41 @@ class Backend:
             return None
         raise Failure("unknown request %r" % op)
 
-    def kids(self, accessible):
+    def raise_window(self, accessible, pid):
+        """Brings the element's window forward, if it isn't already."""
+        top = self.top_level(accessible)
+        # The element's own process, which for a portal's dialog isn't the app asked about.
+        try:
+            pid = top.get_application().get_process_id()
+        except GLib.Error:
+            pass
+        windows = [w for w in self.windows(fresh=True) if w["pid"] == pid and not w["menu"]]
+        title = top.get_name() or ""
+        chosen = next((w for w in windows if w["title"] == title), windows[0] if windows else None)
+        if chosen and not chosen["focused"]:
+            self.shell.activate(chosen["id"])
+            time.sleep(0.15)
+        self.window_cache = None
+
+    def windows_over(self, area):
+        """The windows drawn over the [x, y, w, h] area, as they are mid-animation."""
+        ax, ay, aw, ah = area
+        found = []
+        for window in self.windows(fresh=True):
+            x, y, w, h = window["drawn"]
+            if x < ax + aw and ax < x + w and y < ay + ah and ay < y + h:
+                found.append({"id": window["id"], "bounds": window["drawn"], "alpha": window["opacity"]})
+        return found
+
+    def open_menu(self, x, y):
+        """A menu that is open, described, when the point isn't in any open menu: a point in a
+        submenu is in a menu, though its parent menu is elsewhere."""
+        menus = [w for w in self.windows(fresh=True) if w["menu"]]
+        if not menus or any(inside(w["frame"], x, y) for w in menus):
+            return None
+        return "a menu of %s" % (menus[0].get("appName") or "pid %d" % menus[0]["pid"])
+
+    def children(self, accessible):
         try:
             return [c for c in (accessible.get_child_at_index(i) for i in range(accessible.get_child_count())) if c is not None]
         except GLib.Error:
@@ -717,12 +728,12 @@ class Backend:
                 return accessible
             if depth == 0:
                 return None
-            for child in self.kids(accessible):
+            for child in self.children(accessible):
                 found = search(child, depth - 1)
                 if found:
                     return found
             return None
-        for top in self.kids(app):
+        for top in self.children(app):
             found = search(top, 6)
             if found:
                 return self.node(found)
