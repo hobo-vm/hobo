@@ -73,23 +73,32 @@ final class VMWindow: NSObject, NSWindowDelegate {
 
     /// Shows the window in front and tries to take focus. A process launchd started can't always
     /// take focus from the active app (cooperative activation), so the window may need a click.
-    func show() {
+    /// Without `activate` (an integration test's `view`, a restore bringing a window back) it
+    /// takes nothing from the person at the Mac: hobo stays out of the Dock and the window goes
+    /// behind every other.
+    func show(activate: Bool = true) {
         // The guest display follows the window's size while it shows: in Retina pixels by VZ (turning
         // this on resizes it), or in points by `followWindowInPoints`.
         view.automaticallyReconfiguresDisplay = displayFollowsWindow && hiDPI
         hidesAfterFullScreen = false
         // An `.accessory` app never owns the menu bar, so clicking it sent the window behind the
         // active app, and it had no ⌘Tab entry or full-screen Space.
-        NSApp.setActivationPolicy(.regular)
-        // After the policy change: the Dock keeps the generic icon if this is set before it.
-        NSApp.applicationIconImage = icon
+        if activate {
+            NSApp.setActivationPolicy(.regular)
+            // After the policy change: the Dock keeps the generic icon if this is set before it.
+            NSApp.applicationIconImage = icon
+        }
         // Rebuilt on every show: its items target this window, and a process can show more than
         // one over its life (create's recoveryOS step opens a new one on each try).
         NSApp.mainMenu = makeMenu()
-        if window.isMiniaturized { window.deminiaturize(nil) }
-        window.makeKeyAndOrderFront(nil)
-        window.orderFrontRegardless()
-        NSApp.activate()
+        if activate {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+            NSApp.activate()
+        } else if !window.isVisible {
+            window.orderBack(nil)
+        }
         isShown = true
         followWindowInPoints()
         clipboard?.start()

@@ -370,7 +370,7 @@ import Testing
         }
         defer { server.close() }
         try await lifecycle.view("dev")
-        #expect(requests.withLock { $0 } == [.view])
+        #expect(requests.withLock { $0 } == [.view()])
     }
 
     @Test func viewReportsARefusal() async throws {
@@ -402,7 +402,7 @@ import Testing
         }
         defer { server.close() }
         #expect(try await lifecycle.start("dev", gui: gui) == .alreadyRunning(status))
-        #expect(requests.withLock { $0 } == (gui ? [.view, .renew] : [.renew]))
+        #expect(requests.withLock { $0 } == (gui ? [.view(), .renew] : [.renew]))
     }
 
     @Test func sharesCantBeAddedToARunningVM() async throws {
@@ -546,6 +546,8 @@ import Testing
     func onlyGUIStartsAskTheVMProcessForAWindow(gui: Bool) {
         let arguments = VMLifecycle.runArguments(executable: URL(filePath: "/bin/hobo"), name: "dev", gui: gui)
         #expect(arguments == ["/bin/hobo", "_vm-run", "dev"] + (gui ? ["--gui"] : []))
+        let quiet = VMLifecycle.runArguments(executable: URL(filePath: "/bin/hobo"), name: "dev", gui: gui, activate: false)
+        #expect(quiet == ["/bin/hobo", "_vm-run", "dev"] + (gui ? ["--gui", "--no-activate"] : []))
     }
 }
 

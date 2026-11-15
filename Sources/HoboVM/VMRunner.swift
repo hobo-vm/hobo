@@ -23,6 +23,8 @@ public final class VMRunner {
     let name: String
     /// Whether to show the window once the guest is ready (`start --gui`).
     let gui: Bool
+    /// Whether showing it then activates hobo: not for a restore bringing a window back.
+    let activateWindow: Bool
     /// `start --share`: shares for this run only, on top of `config.json`'s.
     let runShares: [VMShare]
     /// `start --idle-timeout`, in place of the standard one. Only an ephemeral VM has one.
@@ -49,12 +51,13 @@ public final class VMRunner {
     private var idleTimer: IdleTimer?
 
     public init(
-        store: VMStore = .standard(), name: String, gui: Bool = false, runShares: [VMShare] = [], idleTimeout: IdleTimeout? = nil,
+        store: VMStore = .standard(), name: String, gui: Bool = false, activateWindow: Bool = true, runShares: [VMShare] = [], idleTimeout: IdleTimeout? = nil,
         log: @escaping @Sendable (String) -> Void
     ) {
         self.store = store
         self.name = name
         self.gui = gui
+        self.activateWindow = activateWindow
         self.runShares = runShares
         self.idleTimeout = idleTimeout
         self.log = log
@@ -133,7 +136,7 @@ public final class VMRunner {
             startIdleCountdown()
             // Only once the guest answers: its login prompt or login window shows well before
             // it is usable. After a timeout it shows anyway, so a stuck boot can be looked at.
-            if gui, status.state != .stopping { showWindow(guest) }
+            if gui, status.state != .stopping { showWindow(guest, activate: activateWindow) }
         }
     }
 
@@ -292,10 +295,10 @@ public final class VMRunner {
             return await beginSuspend(reply: reply)
         case .snapshot(let tag):
             return await beginSnapshot(tag)
-        case .view:
+        case .view(let activate):
             guard status.state != .stopping else { return .error("\(name) is shutting down") }
             guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
-            showWindow(guest)
+            showWindow(guest, activate: activate)
             return .accepted
         case .exec(let command, let gui):
             guard let guest else { return .error("\(name) hasn't booted yet; try again in a moment") }
@@ -351,7 +354,7 @@ public final class VMRunner {
         }
     }
 
-    private func showWindow(_ guest: GuestVM) {
+    private func showWindow(_ guest: GuestVM, activate: Bool) {
         if window == nil {
             let window = VMWindow(guest: guest, vmName: name, title: name, log: log)
             window.onShutDown = { [weak self] in self?.beginStop(force: false) }
@@ -369,7 +372,7 @@ public final class VMRunner {
             }
             self.window = window
         }
-        window?.show()
+        window?.show(activate: activate)
     }
 
     /// `suspend` from a client or the window's close dialog (which has no client to answer).

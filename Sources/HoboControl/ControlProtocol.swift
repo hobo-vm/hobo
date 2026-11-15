@@ -38,8 +38,10 @@ public enum ControlRequest: Codable, Equatable, Sendable {
     /// Pauses the VM, saves its state and clones its disk to the snapshot `tag`, and resumes it,
     /// answering once it is running again (or with what stopped it).
     case snapshot(tag: String)
-    /// Shows the VM's window, creating it the first time, and brings it to the front.
-    case view
+    /// Shows the VM's window, creating it the first time, and brings it to the front: activating
+    /// hobo, as a person asking for it wants. With `activate` false (integration tests) it opens
+    /// behind every other window, out of the Dock, taking nothing from whoever is at the Mac.
+    case view(activate: Bool = true)
 
     /// Whether this request holds the VM's idle timeout while it runs: all but `status`, which isn't
     /// use, and `renew`, which only restarts it.

@@ -482,7 +482,11 @@ global VMs on 2026-11-01.
       looked ready when it wasn't), or after the SSH wait times out, so a stuck boot can be looked
       at; on a running VM it sends `view`. `status` reports whether the window is showing.
     - Showing the window brings it to the front and asks for focus, since a human asked for it;
-      cooperative activation may still leave focus with the terminal. It captures system keys
+      cooperative activation may still leave focus with the terminal. `view` with `activate: false`
+      (2026-11-15) opens it behind every other window with hobo kept out of the Dock, taking
+      nothing from the person at the Mac: integration tests use it, since hobo's point is testing
+      without interrupting them, and so does a snapshot restore bringing back a window that was
+      showing (`_vm-run --gui --no-activate`), which nobody asked to look at. It captures system keys
       (⌘Tab, ⌘Space go to the guest). While the window shows, the process switches to `.regular`
       (Dock, ⌘Tab, its own menu bar, a full-screen Space): as `.accessory` it never owned the menu
       bar, so clicking it sent the window behind the active app. Hidden, it goes back to `.accessory`.

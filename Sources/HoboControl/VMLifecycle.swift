@@ -32,8 +32,8 @@ public struct VMLifecycle: Sendable {
     /// shares it had. `idleTimeout` is for this run of an ephemeral VM, in place of the standard one;
     /// a normal VM can't have one, and a running VM's can't change.
     public func start(
-        _ name: String, gui: Bool = false, cold: Bool = false, shares: [VMShare] = [], idleTimeout: IdleTimeout? = nil,
-        timeout: Duration = .seconds(10 * 60)
+        _ name: String, gui: Bool = false, activate: Bool = true, cold: Bool = false, shares: [VMShare] = [],
+        idleTimeout: IdleTimeout? = nil, timeout: Duration = .seconds(10 * 60)
     ) async throws -> StartResult {
         let vm = try store.find(name)
         let job = store.job(for: vm.name)
@@ -45,7 +45,7 @@ public struct VMLifecycle: Sendable {
             if idleTimeout != nil {
                 throw stored.ephemeral ? LifecycleError.idleTimeoutNeedsStop(vm.name) : LifecycleError.idleTimeoutNeedsEphemeral(vm.name)
             }
-            if gui { try await view(vm.name) }
+            if gui { try await view(vm.name, activate: activate) }
             return .alreadyRunning(try? await ControlClient.renew(at: job.socket))
         case .suspended(let stored, let saved):
             config = stored
@@ -86,7 +86,9 @@ public struct VMLifecycle: Sendable {
         try? FileManager.default.removeItem(at: job.log)
         let plist = try Launchd.plist(
             label: job.label,
-            arguments: Self.runArguments(executable: executable, name: vm.name, gui: gui, shares: shares, idleTimeout: idleTimeout),
+            arguments: Self.runArguments(
+                executable: executable, name: vm.name, gui: gui, activate: activate, shares: shares, idleTimeout: idleTimeout
+            ),
             environment: ["HOBO_VMS": store.directory.path, "HOBO_HOME": store.home.root.path],
             log: job.log
         )
@@ -98,18 +100,20 @@ public struct VMLifecycle: Sendable {
     }
 
     /// The VM process's command line, as launchd runs it.
-    static func runArguments(executable: URL, name: String, gui: Bool, shares: [VMShare] = [], idleTimeout: IdleTimeout? = nil) -> [String] {
-        [executable.path, "_vm-run", name] + (gui ? ["--gui"] : []) + shares.flatMap { ["--share", $0.argument] }
+    static func runArguments(
+        executable: URL, name: String, gui: Bool, activate: Bool = true, shares: [VMShare] = [], idleTimeout: IdleTimeout? = nil
+    ) -> [String] {
+        [executable.path, "_vm-run", name] + (gui ? ["--gui"] : []) + (gui && !activate ? ["--no-activate"] : []) + shares.flatMap { ["--share", $0.argument] }
             + (idleTimeout.map { ["--idle-timeout", $0.description] } ?? [])
     }
 
     /// Shows the window of a running (or booting) VM and brings it to the front.
-    public func view(_ name: String) async throws {
+    public func view(_ name: String, activate: Bool = true) async throws {
         let vm = try store.find(name)
         guard vm.job?.pid != nil else { throw LifecycleError.notRunning(vm.name) }
         let response: ControlResponse
         do {
-            response = try await ControlClient.send(.view, to: store.job(for: vm.name).socket)
+            response = try await ControlClient.send(.view(activate: activate), to: store.job(for: vm.name).socket)
         } catch {
             throw LifecycleError.unresponsive(vm.name, String(describing: error))
         }

@@ -800,6 +800,8 @@ struct VMRun: ParsableCommand {
 
     @Argument var name: String
     @Flag var gui = false
+    /// With --gui: show the window without activating hobo (a restore bringing it back).
+    @Flag(name: .customLong("no-activate")) var noActivate = false
     /// `start --share`, as `VMShare.argument` wrote them: absolute paths.
     @Option(name: .customLong("share")) var shares: [String] = []
     /// `start --idle-timeout`, as `IdleTimeout.description` wrote it.
@@ -808,6 +810,7 @@ struct VMRun: ParsableCommand {
     func run() throws {
         let name = name
         let gui = gui
+        let activateWindow = !noActivate
         let idleTimeout = idleTimeout
         let runShares = try shares.map { try VMShare.parse($0, currentDirectory: URL(filePath: "/")) }
         // `Entry` calls this on the main thread, before anything else is running.
@@ -816,7 +819,7 @@ struct VMRun: ParsableCommand {
             // Never in the Dock, and takes focus only when `hobo view` or `--gui` shows the window.
             app.setActivationPolicy(.accessory)
             Task {
-                await VMRunner(name: name, gui: gui, runShares: runShares, idleTimeout: idleTimeout) { line in
+                await VMRunner(name: name, gui: gui, activateWindow: activateWindow, runShares: runShares, idleTimeout: idleTimeout) { line in
                     print("\(Date.now.formatted(.iso8601)) \(line)")
                     fflush(stdout)
                 }.start()

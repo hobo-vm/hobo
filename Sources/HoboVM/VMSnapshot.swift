@@ -98,7 +98,7 @@ extension VMLifecycle {
         store.launchd.bootout(store.job(for: vm.name).label)
         log("Restored \(vm.name) to \(snapshot.tag)")
         guard snapshot.isLive else { return .stopped }
-        return .started(try await start(vm.name, gui: windowWasShown, timeout: timeout))
+        return .started(try await start(vm.name, gui: windowWasShown, activate: false, timeout: timeout))
     }
 }
 

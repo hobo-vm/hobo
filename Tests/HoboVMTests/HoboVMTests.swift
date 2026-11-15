@@ -115,14 +115,14 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["delete", "itest", "--yes"], in: work, environment: env) != 0, "running")
         #expect(try output(hobo, ["start", "itest"], environment: env).contains("already running"))
 
-        // The window opens on demand, while the VM keeps running. It briefly appears on screen.
+        // The window opens on demand, while the VM keeps running.
         let socket = VMStore(directory: vms).job(for: "itest").socket
         func windowShown() throws -> Bool? {
             guard case .status(let status) = try ControlClient.send(.status, to: socket) else { return nil }
             return status.windowShown
         }
         #expect(try windowShown() == false)
-        #expect(try run(hobo, ["view", "itest"], in: work, environment: env) == 0)
+        try quietView("itest", env: env)
         #expect(try windowShown() == true)
         #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+running \(window\)/))
 
@@ -318,7 +318,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
             "litest", hobo: hobo, work: work, env: env,
             nicDown: ["sudo", "-n", "ip", "link", "set", "enp0s1", "down"], nicUp: ["sudo", "-n", "ip", "link", "set", "enp0s1", "up"]
         )
-        #expect(try run(hobo, ["view", "litest"], in: work, environment: env) == 0)
+        try quietView("litest", env: env)
         #expect(try String(contentsOf: bundle.appending(path: "console.log"), encoding: .utf8).contains("litest login:"))
 
         // hobo has the host user's uid, so shared files are its own, and what it writes is the host user's.
@@ -628,7 +628,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
             try output(hobo, ["list"], environment: env).contains(Regex("\(vm)\\s+running \\(window\\)"))
         }
         #expect(try !windowShown())
-        #expect(try run(hobo, ["view", vm], in: work, environment: env) == 0)
+        try quietView(vm, env: env)
         #expect(try output(hobo, ["snapshot", "restore", "--force", vm, "live"], environment: env).contains("\(vm) is running"))
         let deadline = Date.now.addingTimeInterval(30)
         while try !windowShown(), Date.now < deadline {
@@ -739,6 +739,14 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try ui(["drag", file.ref, folder.ref, "--app", "org.gnome.Nautilus"]) == 0)
         #expect(try ui(["wait", "--ref", file.ref, "--gone", "--app", "org.gnome.Nautilus"]) == 0)
         #expect(try run(hobo, ["exec", vm, "--", "test", "-f", "DragTest/Folder/a.txt"], in: work, environment: env) == 0)
+    }
+
+    /// What `hobo view` does, but behind every other window and without activating hobo: these
+    /// tests run while someone works at the Mac, and must take nothing from them.
+    private func quietView(_ vm: String, env: [String: String]) throws {
+        let vms = URL(filePath: try #require(env["HOBO_VMS"]))
+        let reply = try ControlClient.send(.view(activate: false), to: VMStore(directory: vms).job(for: vm).socket)
+        #expect(reply == .accepted, "\(reply)")
     }
 
     private func uiSnapshot(_ vm: String, app: String, hobo: String, env: [String: String]) throws -> [SnapshotNode] {

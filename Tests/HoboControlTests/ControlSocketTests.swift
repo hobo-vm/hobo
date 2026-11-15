@@ -54,7 +54,7 @@ import Synchronization
         #expect(try await ControlClient.send(.status, to: socket) == .status(VMRunStatus(state: .running, pid: 7, ipAddress: "192.168.64.5")))
         #expect(try await ControlClient.send(.stop(force: true), to: socket) == .accepted)
         #expect(try await ControlClient.send(.stop(force: false), to: socket) == .error("not forced"))
-        #expect(try await ControlClient.send(.view, to: socket) == .accepted)
+        #expect(try await ControlClient.send(.view(), to: socket) == .accepted)
     }
 
     @Test func idleTimeoutFieldsRoundTripAndAreAbsentWithoutOne() throws {
@@ -69,7 +69,7 @@ import Synchronization
     @Test func everyRequestButStatusAndRenewHoldsTheIdleTimeout() {
         let copy = GuestCopy(direction: .toGuest, sources: ["/a"], destination: "/tmp/")
         #expect(!ControlRequest.status.holdsIdleTimeout && !ControlRequest.renew.holdsIdleTimeout)
-        let requests: [ControlRequest] = [.stop(force: false), .exec(command: ["true"]), .copy(copy), .suspend, .snapshot(tag: "a"), .view]
+        let requests: [ControlRequest] = [.stop(force: false), .exec(command: ["true"]), .copy(copy), .suspend, .snapshot(tag: "a"), .view()]
         for request in requests { #expect(request.holdsIdleTimeout, "\(request)") }
     }
 
