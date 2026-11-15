@@ -586,3 +586,78 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(throws: UIError.self) { try find(nil) }
     }
 }
+
+/// A Linux guest's backend, answering from a fixed tree, that records what it was asked.
+final class FakeGuest: UITransport {
+    var calls: [[String: Any]] = []
+    let tree: [String: Any] = [
+        "id": 1, "role": "application", "title": "Text Editor", "children": [
+            ["id": 2, "role": "frame", "title": "Untitled", "frame": [0, 0, 800, 600], "children": [
+                ["id": 3, "role": "panel", "children": [
+                    ["id": 4, "role": "push button", "title": "Save", "frame": [10, 10, 80, 30], "children": []],
+                ]],
+                ["id": 5, "role": "check box", "title": "Wrap", "checked": true, "frame": [10, 50, 80, 30], "children": []],
+            ]],
+        ],
+    ]
+
+    func send(_ line: Data) throws -> Data {
+        let request = try JSONSerialization.jsonObject(with: line) as! [String: Any]
+        calls.append(request)
+        let ok: Any = switch request["op"] as! String {
+        case "hello": ["platform": "linux", "scale": 2.0, "screen": [0, 0, 800, 600]]
+        case "apps": ["apps": [["name": "Text Editor", "id": "org.gnome.TextEditor", "pid": 42]], "focused": 42]
+        case "tree": tree
+        case "node": ["id": 4, "role": "push button", "title": "Save", "frame": [10, 10, 80, 30]]
+        case "at": ["id": 4, "role": "push button", "title": "Save", "frame": [10, 10, 80, 30]]
+        case "parent": NSNull()
+        case "windows": [[String: Any]]()
+        default: NSNull()
+        }
+        return try JSONSerialization.data(withJSONObject: ["ok": ok])
+    }
+
+    var ops: [String] { calls.map { $0["op"] as! String } }
+}
+
+@Suite struct RemoteBackendTests {
+    func driver(_ guest: FakeGuest) throws -> UIDriver<RemoteBackend> {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-ui-tests-\(UUID().uuidString)")
+        return UIDriver(backend: try RemoteBackend(transport: guest), store: RefStore(directory: directory))
+    }
+
+    @Test func snapshotsAGuestsTreeInARIARolesAndScreenshotPixels() throws {
+        let guest = FakeGuest()
+        let outcome = try driver(guest).run(try HoboUI.parseAsRoot(["snapshot", "--app", "org.gnome.TextEditor"]))
+        #expect(outcome.text == """
+            app Text Editor (org.gnome.TextEditor) pid 42
+            scale 2
+            - window "Untitled" [e1] (0,0 1600×1200)
+              - button "Save" [e2] (20,20 160×60)
+              - checkbox "Wrap" [e3] (20,100 160×60) checked
+            """)
+        #expect(guest.ops.filter { $0 == "tree" }.count == 1)
+    }
+
+    @Test func clicksTheElementsCentreWhenItsWhatsThere() throws {
+        let guest = FakeGuest()
+        let outcome = try driver(guest).run(try HoboUI.parseAsRoot(["click", "--text", "Save"]))
+        #expect(outcome.text == #"clicked button "Save" [e1] (20,20 160×60)"#)
+        let click = try #require(guest.calls.first { $0["op"] as? String == "click" })
+        #expect(click["x"] as? Double == 50)
+        #expect(click["y"] as? Double == 25)
+        #expect(guest.ops.contains("raise"))
+    }
+
+    @Test func aGuestErrorBecomesTheCommandsFailure() throws {
+        final class Refusing: UITransport {
+            func send(_ line: Data) throws -> Data {
+                let op = (try JSONSerialization.jsonObject(with: line) as! [String: Any])["op"] as! String
+                if op == "hello" { return Data(#"{"ok":{"platform":"windows","access":"the desktop isn't up"}}"#.utf8) }
+                return Data(#"{"error":"no"}"#.utf8)
+            }
+        }
+        let driver = UIDriver(backend: try RemoteBackend(transport: Refusing()), store: RefStore(directory: URL(filePath: "/tmp/unused")))
+        #expect(throws: UIError.self) { try driver.run(try HoboUI.parseAsRoot(["key", "return"])) }
+    }
+}
