@@ -13,8 +13,9 @@ public struct HoboUI: ParsableCommand {
             A ref keeps its number across snapshots while the element is there; one that has gone fails as stale. \
             Coordinates and frames are screenshot pixels, the same as in a hobo screenshot PNG. \
             Clicks, drags, scrolls and keys are real input events, as a person's would be. \
-            --app takes an app ID (a macOS bundle ID, a Linux desktop app ID such as org.gnome.TextEditor), \
-            a name or pid:<n>, and defaults to the frontmost app. Shortcuts are the guest's own: cmd+s on macOS, ctrl+s on Linux.
+            --app takes an app ID (a macOS bundle ID, a Linux desktop app ID such as org.gnome.TextEditor, a \
+            Windows AUMID or exe name such as notepad), a name or pid:<n>, and defaults to the frontmost app. \
+            Shortcuts are the guest's own: cmd+s on macOS, ctrl+s on Linux and Windows.
             """,
         subcommands: [Snapshot.self, At.self, Click.self, Drag.self, Scroll.self, TypeText.self, Key.self, Menu.self, Choose.self, Wait.self]
     )
@@ -22,7 +23,7 @@ public struct HoboUI: ParsableCommand {
     public init() {}
 
     public struct AppOption: ParsableArguments {
-        @Option(help: ArgumentHelp("The app: an ID (bundle ID, desktop app ID), a name, or pid:<n>. Default: the frontmost app.", valueName: "app"))
+        @Option(help: ArgumentHelp("The app: an ID (bundle ID, desktop app ID, AUMID or exe name), a name, or pid:<n>. Default: the frontmost app.", valueName: "app"))
         public var app: String?
 
         @Flag(help: "Print the result as JSON.")
@@ -79,7 +80,7 @@ public struct HoboUI: ParsableCommand {
                 can be there to accessibility before it's there to click, and gone from it before it stops taking clicks. \
                 --text clicks the one element showing exactly that text, e.g. click --text Remove --role menuitem, \
                 and fails listing them if several do; with --contains, the one showing it as part of its text, \
-                for a label that carries more, such as a photo cell's capture time. --press performs the element's default action instead (AXPress, AT-SPI's first action), with no mouse.
+                for a label that carries more, such as a photo cell's capture time. --press performs the element's default action instead (AXPress, AT-SPI's first action, UI Automation's Invoke), with no mouse.
                 """
         )
         @OptionGroup public var target: AppOption
@@ -242,15 +243,17 @@ public struct HoboUI: ParsableCommand {
                 button, failing if the panel is still there afterwards. In a save panel the path is the file to save. \
                 (A path typed into a panel loses the character after its first /, while that sheet opens.) \
                 On Linux it goes through the file chooser's location bar (Ctrl-L), and in GNOME's save dialog \
-                names the file in its File Name box.
+                names the file in its File Name box. On Windows it types the path into the dialog's File name box.
                 """
         )
         @OptionGroup public var target: AppOption
-        @Argument(help: ArgumentHelp("The file or folder in the guest, from / or ~.", valueName: "path")) public var path: String
+        @Argument(help: ArgumentHelp("The file or folder in the guest, from / or ~, or a drive (C:\\…) on Windows.", valueName: "path")) public var path: String
         public init() {}
 
         public func validate() throws {
-            if !path.hasPrefix("/") && !path.hasPrefix("~") { throw ValidationError("give a path in the guest from / or ~, not \(path)") }
+            if !path.hasPrefix("/") && !path.hasPrefix("~") && path.wholeMatch(of: /[A-Za-z]:[\\\/].*/) == nil {
+                throw ValidationError("give a path in the guest from / or ~, or from a drive on Windows, not \(path)")
+            }
         }
     }
 

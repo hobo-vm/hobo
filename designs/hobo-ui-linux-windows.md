@@ -51,7 +51,14 @@
 - The driver runs in the VM process (`GuestUI`), not a separate host process; refs for Linux and
   Windows guests live in `VMJob.uiState`, kept across a resume and cleared by a fresh boot.
 - The Windows backend targets .NET Framework 4.8.1 (in every Windows 11), not NativeAOT: a
-  self-contained exe with no runtime to ship, built by `make windows-ui` with `dotnet build`.
+  28 KB exe with no runtime to ship, built by `make windows-ui` with `dotnet build` in an
+  ephemeral clone of a Windows VM provisioned with `UIWindows/install-dotnet.ps1`.
+- A WinUI menu (Notepad's) opens its items in an unnamed menu in a popup of the app's own window,
+  so `menu` takes whichever menu wasn't open before it expanded the item.
+- File Explorer's folder windows and its shell are both `explorer.exe`, so `--app explorer` is
+  ambiguous there and a test gives the window's pid.
+- Windows' integration test (`windowsUI`) runs in an ephemeral clone of the VM
+  `HOBO_WINDOWS_VM` names, and is skipped without one: the test can't download an ISO.
 - The Linux backend writes uinput itself (ioctls and `input_event` structs) rather than through
   python3-evdev, which Ubuntu 26.04 doesn't package for arm64; it waits until gnome-shell has
   opened the new devices, since events before then are lost.

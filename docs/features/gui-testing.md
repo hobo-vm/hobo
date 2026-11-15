@@ -52,8 +52,8 @@ grants goes to `hobo-agent`.
 
 ## Drive an app with hobo ui
 
-`hobo ui` drives a macOS or Linux guest's apps through accessibility, from the host, with nothing
-to install in the guest. `snapshot` prints an app's windows as a tree, each element with a ref to act
+`hobo ui` drives a macOS, Linux or Windows guest's apps through accessibility, from the host, with
+nothing to install in the guest. `snapshot` prints an app's windows as a tree, each element with a ref to act
 on:
 
 ```console
@@ -82,6 +82,15 @@ $ hobo ui ubuntu key ctrl+shift+s --app org.gnome.TextEditor
 $ hobo ui ubuntu choose ~/Documents/hello.txt --app org.gnome.TextEditor
 ```
 
+And a Windows guest, against its apps:
+
+```console
+$ hobo exec win --gui -- powershell.exe -Command 'Start-Process notepad'
+$ hobo ui win type "Hello" --app notepad
+$ hobo ui win menu "File > Save as" --app notepad
+$ hobo ui win choose 'C:\Users\hobo\Documents\hello.txt' --app notepad
+```
+
 | Command | Does |
 | --- | --- |
 | `snapshot` | Prints the tree. `--all` adds offscreen elements and long lists in full, `--root e12` one subtree, `--depth N` fewer levels |
@@ -92,7 +101,7 @@ $ hobo ui ubuntu choose ~/Documents/hello.txt --app org.gnome.TextEditor
 | `type <text> [--into ref]` | Types text where the cursor is, whatever the keyboard layout. `--replace` selects all first, so the text replaces what the field had |
 | `key <cmd+k>` | Presses a key with modifiers. Keys are named as typed or by name: `cmd+-` or `cmd+minus`, `cmd++` or `cmd+plus`, `return`, `escape`, `left`, `f5` |
 | `menu "File > Save"` | Chooses a menu item, failing if it's disabled; `menu File` lists the items with their shortcuts |
-| `choose <path>` | Chooses a file or folder in the open or save panel an app is showing: goes to the path, then clicks Open or Save. On Linux it uses the file chooser's location bar, including GNOME's save dialog, which runs in Files' process |
+| `choose <path>` | Chooses a file or folder in the open or save panel an app is showing: goes to the path, then clicks Open or Save. On Linux it uses the file chooser's location bar, including GNOME's save dialog, which runs in Files' process; on Windows the dialog's File name box |
 | `wait` | Waits for `--ref`, `--text` or `--app`, or with `--gone` for it to go. On a timeout it prints the snapshot |
 
 - **Refs** keep their numbers across snapshots while the element is there, so `e12` from an earlier
@@ -104,11 +113,13 @@ $ hobo ui ubuntu choose ~/Documents/hello.txt --app org.gnome.TextEditor
   platform's own role (`AXTextArea`).
 - **Coordinates** are screenshot pixels, the same as in a `hobo screenshot` PNG.
 - `--app` takes an app ID (a bundle ID such as `com.apple.TextEdit`, a desktop app ID such as
-  `org.gnome.TextEditor`), a name or `pid:<n>`; without it, the frontmost app.
-- **Shortcuts** are the guest's own: `cmd+s` on macOS, `ctrl+s` on Linux.
+  `org.gnome.TextEditor`, a Windows AUMID or exe name such as `notepad`), a name or `pid:<n>`;
+  without it, the frontmost app. File Explorer's folder windows and its shell are both `explorer`,
+  so give the window's `pid:<n>`.
+- **Shortcuts** are the guest's own: `cmd+s` on macOS, `ctrl+s` on Linux and Windows.
 - `--json` prints any command's result as JSON, failures included.
 - Each call takes about a third of a second. A macOS VM needs `[gui_testing]`; a Linux desktop VM
-  is set up for it by its recipe's desktop step.
+  is set up for it by its recipe's desktop step, and a Windows VM needs nothing.
 - GTK 4 lists build rows only for what's on screen, so in a Linux snapshot a long list's rows come
   and go as it scrolls.
 - To launch an app with environment variables or arguments, use `hobo exec dev -- open -n --env
@@ -131,7 +142,7 @@ $ hobo ui ubuntu choose ~/Documents/hello.txt --app org.gnome.TextEditor
 
 - **Linux:** the desktop has accessibility on for AT-SPI, with the Python bindings installed, and
   the `hobo` user can send input through `/dev/uinput`, which `hobo ui` uses.
-- **Windows:** UI Automation, through `powershell.exe` in the desktop session.
+- **Windows:** UI Automation, which `hobo ui` uses, and from `powershell.exe` in the desktop session.
 
 ## Test in a clean copy every time
 

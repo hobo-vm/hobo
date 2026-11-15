@@ -15,7 +15,10 @@ working tree; `bd dolt push` backs it up to origin's `refs/dolt/data`, and `bd b
   its payloads in `share/hobo`. `make sign` stages that in `.build/hobo` and signs it, and
   `make install` copies it under `/usr/local` (`PREFIX`). The CLI needs the
   `com.apple.security.virtualization` entitlement (`entitlements.plist`) to create VMs, so anything that boots a VM must use a signed build.
-- VM-booting tests live in `Tests/HoboVMTests` and run only with `HOBO_INTEGRATION=1` (`make integration-test`).
+- VM-booting tests live in `Tests/HoboVMTests` and run only with `HOBO_INTEGRATION=1` (`make integration-test`);
+  the Windows one also needs `HOBO_WINDOWS_VM` naming a Windows VM to clone (`scripts/windows-ui.sh` says how to make one).
+- `make windows-ui` rebuilds `hobo-ui-windows.exe` from `UIWindows/` in that VM; `make test` fails while the
+  committed exe is older than its sources.
 - `make integration-test` holds a host-wide lock, so runs from different worktrees queue.
 - Feature docs live in `docs/features/*.md`, one file per feature; README.md's feature tour is
   generated from them (`make readme`), and `make test` fails if it's stale. Update the feature's

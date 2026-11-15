@@ -32,7 +32,7 @@ check)
     fi
     ;;
 build)
-    if ! "$hobo" list --json | jq -e --arg name "$vm_name" '.[] | select(.name == $name)' >/dev/null; then
+    if ! "$hobo" list --json | jq -e --arg name "$vm_name" '.vms[] | select(.name == $name)' >/dev/null; then
         echo "error: no VM $vm_name to build in; see the top of $0 for making one" >&2
         exit 1
     fi

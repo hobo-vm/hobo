@@ -62,10 +62,9 @@ public enum AgentGuidance {
         `exec` runs a command, `cp` copies files in and out.
         - Never drive the VM's window from the host: don't click, type or take host screenshots of \
         it, or script it with AppleScript or computer use. `view` and `start --gui` are for a person \
-        to watch. To drive the guest's UI, run the automation inside the guest (`hobo ui` on macOS \
-        and Linux; UI Automation on Windows) and look with `screenshot`, \
+        to watch. To drive the guest's UI, run the automation inside the guest (`hobo ui`) and look with `screenshot`, \
         which fails rather than leave windows out if a macOS VM lacks the Screen Recording grant.
-        - On a macOS or Linux guest, drive apps with `hobo ui <vm>`: `snapshot --app <name>` prints the app's \
+        - Drive a guest's apps with `hobo ui <vm>`, on macOS, Linux and Windows alike: `snapshot --app <name>` prints the app's \
         elements as a tree, each with a ref such as `e12`; `click`, `drag`, `scroll`, `type --into` and \
         `menu "File > Save"` (a GNOME app's menus are behind a header-bar button instead: \
         `click --text`) act on them with real input events, and `wait --text`, `--ref` or `--app` \
@@ -91,10 +90,9 @@ public enum AgentGuidance {
         - On a Windows guest, `exec` runs a program or a PowerShell command as `hobo`, an elevated \
         administrator, in session 0, which has no desktop; `cp` takes guest paths like \
         `dev:C:/Users/hobo/file`. For a pipeline or anything else needing a shell, run \
-        `powershell.exe -Command '...'`. `exec --gui` runs it on the desktop, where it can drive apps \
-        with no grant: from PowerShell, Windows' UI Automation (`Add-Type -AssemblyName \
-        UIAutomationClient, UIAutomationTypes`, then `[Windows.Automation.AutomationElement]::RootElement` \
-        and `FindFirst`, or `GetCurrentPattern` to act on what it finds). Shares are at `Z:\\<name>`.
+        `powershell.exe -Command '...'`. `exec --gui` runs it on the desktop: start apps with it \
+        (`Start-Process notepad`), and drive them with `hobo ui`, whose `--app` takes the exe name \
+        (`notepad`) and whose shortcuts use `ctrl`; `choose` takes a `C:\\` path. Shares are at `Z:\\<name>`.
 
         ## Capacity
 

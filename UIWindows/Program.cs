@@ -370,40 +370,57 @@ namespace Hobo
             foreach (var window in TopWindows(app.Pid))
             {
                 var bars = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuBar));
-                // Win32 windows have the system menu's bar too, named System.
+                // Win32 windows have the system menu's bar too, named System (System Menu Bar on Windows 11).
                 foreach (AutomationElement bar in bars)
-                    if (bar.Current.Name != "System") return Node(bar.GetUpdatedCache(Properties));
+                    if (!bar.Current.Name.StartsWith("System")) return Node(bar.GetUpdatedCache(Properties));
             }
             return null;
         }
 
-        /// A menu bar's items, or what a menu item opens, expanding it first. A Win32 menu opens as
-        /// a top-level menu window named after its item; a XAML flyout's items come under the item.
+        /// A menu bar's items, or what a menu item opens, expanding it first. What opens is a menu
+        /// that wasn't open before: a Win32 menu is a top-level window of its own, a WinUI flyout an
+        /// unnamed menu in a popup of the app's window, and some XAML menus put the items under the item.
         object MenuItems(AutomationElement element)
         {
             var itemCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem);
-            if (element.Current.ControlType == ControlType.MenuBar)
-                return element.FindAll(TreeScope.Children, itemCondition).Cast<AutomationElement>().Select(e => (object)Node(e.GetUpdatedCache(Properties))).ToList();
+            List<object> Items(AutomationElementCollection items) =>
+                items.Cast<AutomationElement>().Select(e => (object)Node(e.GetUpdatedCache(Properties))).ToList();
+            if (element.Current.ControlType == ControlType.MenuBar) return Items(element.FindAll(TreeScope.Children, itemCondition));
+            var window = TopLevel(element);
+            var before = new HashSet<string>(OpenMenus(window).Select(Key));
             if (element.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var pattern))
             {
                 var expand = (ExpandCollapsePattern)pattern;
                 if (expand.Current.ExpandCollapseState == ExpandCollapseState.LeafNode) return new List<object>();
                 if (expand.Current.ExpandCollapseState != ExpandCollapseState.Expanded) expand.Expand();
             }
-            var name = element.Current.Name;
             var deadline = DateTime.Now.AddSeconds(2);
             while (DateTime.Now < deadline)
             {
                 var under = element.FindAll(TreeScope.Descendants, itemCondition);
-                if (under.Count > 0) return under.Cast<AutomationElement>().Select(e => (object)Node(e.GetUpdatedCache(Properties))).ToList();
-                var menu = AutomationElement.RootElement.FindFirst(TreeScope.Descendants, new AndCondition(
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Menu),
-                    new PropertyCondition(AutomationElement.NameProperty, name)));
-                if (menu != null)
-                    return menu.FindAll(TreeScope.Children, itemCondition).Cast<AutomationElement>().Select(e => (object)Node(e.GetUpdatedCache(Properties))).ToList();
+                if (under.Count > 0) return Items(under);
+                var opened = OpenMenus(window).FirstOrDefault(menu => !before.Contains(Key(menu)));
+                if (opened != null)
+                {
+                    var items = opened.FindAll(TreeScope.Descendants, itemCondition);
+                    if (items.Count > 0) return Items(items);
+                }
                 Thread.Sleep(50);
             }
             return new List<object>();
+        }
+
+        /// The menus showing in `window` and as top-level windows (Win32 pop-up menus).
+        static IEnumerable<AutomationElement> OpenMenus(AutomationElement window)
+        {
+            var menuCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Menu);
+            IEnumerable<AutomationElement> Find(AutomationElement root, TreeScope scope)
+            {
+                try { return root.FindAll(scope, menuCondition).Cast<AutomationElement>().ToList(); }
+                catch (ElementNotAvailableException) { return Enumerable.Empty<AutomationElement>(); }
+            }
+            return Find(window, TreeScope.Descendants).Concat(Find(AutomationElement.RootElement, TreeScope.Children))
+                .Where(menu => { try { return !menu.Current.IsOffscreen; } catch (ElementNotAvailableException) { return false; } });
         }
 
         static object MenuItem(AutomationElement element)

@@ -847,8 +847,10 @@ global VMs on 2026-11-01.
         settings don't change the first commit; and restarting the display device makes VZ stop the
         VM, as uninstalling the driver does, so the driver goes in at create.
     - **Exec.** hobo-agent starts plain `exec` in session 0 and `exec --gui` (and `screenshot`) in
-      `hobo`'s desktop session (decision 15). UI driving uses Windows' built-in UI Automation
-      from PowerShell, in the guest; no WinAppDriver, which Microsoft no longer develops.
+      `hobo`'s desktop session (decision 15). UI driving uses Windows' built-in UI Automation,
+      through `hobo ui` (2026-11-15: `hobo-ui-windows.exe`, a .NET Framework 4.8.1 backend that
+      `make windows-ui` builds in a Windows VM and the repo commits with its sources' digest); no
+      WinAppDriver, which Microsoft no longer develops.
       `[security]` and `[gui_testing]` are rejected, since no grant is needed; `privileged = false`
       too, since the agent runs everything elevated, as SSH did.
     - **Network after a restore.** The virtio NIC doesn't pass traffic after a VM restore, and

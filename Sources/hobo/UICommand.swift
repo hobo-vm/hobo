@@ -11,7 +11,7 @@ struct UICommand: AsyncParsableCommand, JSONPassthrough {
         commandName: "ui",
         abstract: "Drive a guest's apps: snapshot, at, click, drag, scroll, type, key, menu, choose, wait.",
         discussion: HoboUI.configuration.discussion + " " + """
-            A macOS VM needs a recipe with [gui_testing]; a Linux desktop VM needs nothing more. Commands: \(Self.commandList). \
+            A macOS VM needs a recipe with [gui_testing]; Linux desktop and Windows VMs need nothing more. Commands: \(Self.commandList). \
             hobo ui <vm> <command> --help describes one. With --json a command prints JSON, failures included.
             """
     )

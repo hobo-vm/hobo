@@ -10,7 +10,7 @@ import Testing
     }
 
     @Test func theFetchPortServesEveryNameItKnows() throws {
-        for platform in ["linux-arm64", "darwin-arm64", "windows-arm64", "ui-darwin-arm64"] {
+        for platform in ["linux-arm64", "darwin-arm64", "windows-arm64", "ui-darwin-arm64", "ui-linux-arm64", "ui-windows-arm64"] {
             #expect(try AgentFetchServer.binary(for: platform)?.isEmpty == false, "\(platform)")
         }
         #expect(try AgentFetchServer.binary(for: "plan9-arm64") == nil)

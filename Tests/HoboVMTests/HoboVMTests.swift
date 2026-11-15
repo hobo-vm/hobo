@@ -522,6 +522,65 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["delete", "ldesk", "--yes"], in: work, environment: env) == 0)
     }
 
+    /// `hobo ui` on a Windows guest (designs/hobo-ui-linux-windows.md), in an ephemeral clone of the
+    /// Windows VM `HOBO_WINDOWS_VM` names (in the real store: building one needs an ISO the test
+    /// can't download), against Notepad and File Explorer, checked through their files. Skipped
+    /// without one.
+    @Test(.enabled(if: environment["HOBO_WINDOWS_VM"] != nil), .timeLimit(.minutes(20)))
+    func windowsUI() throws {
+        let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
+        let source = try #require(environment["HOBO_WINDOWS_VM"])
+        let work = FileManager.default.temporaryDirectory.appending(path: "hobo-windows-ui-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: work) }
+        let started = try output(hobo, ["start", source, "--ephemeral"], environment: [:])
+        let vm = String(try #require(started.firstMatch(of: /(\S+-[0-9a-f]{4}) is running/)?.1, "\(started)"))
+        defer { _ = try? run(hobo, ["stop", "--force", vm], in: work) }
+        func ui(_ arguments: [String]) throws -> Int32 { try run(hobo, ["ui", vm] + arguments, in: work) }
+        func snapshot(_ app: String) throws -> [SnapshotNode] { try uiSnapshot(vm, app: app, hobo: hobo, env: [:]) }
+        func powershell(_ command: String, gui: Bool = false) throws -> String {
+            try output(hobo, ["exec", vm] + (gui ? ["--gui"] : []) + ["--", "powershell.exe", "-NoProfile", "-Command", command], environment: [:])
+        }
+        let find = Self.find
+
+        // Notepad: type past the keyboard layout, a real menu bar, Save As through choose.
+        _ = try powershell("Start-Process notepad", gui: true)
+        #expect(try ui(["wait", "--app", "notepad", "--timeout", "30"]) == 0)
+        let text = try #require(find(try snapshot("notepad")) { $0.role == "document" })
+        let typed = "Hello, café ✓"
+        #expect(try ui(["type", typed, "--into", text.ref, "--app", "notepad"]) == 0)
+        #expect(try ui(["wait", "--text", typed, "--app", "notepad", "--timeout", "5"]) == 0)
+        #expect(try output(hobo, ["ui", vm, "menu", "File", "--app", "notepad"], environment: [:]).contains(#""Save as" ctrl+shift+s"#))
+        #expect(try ui(["key", "escape", "--app", "notepad"]) == 0)
+        #expect(try ui(["scroll", text.ref, "down", "3", "--app", "notepad"]) == 0)
+        #expect(try ui(["menu", "File > Save as", "--app", "notepad"]) == 0)
+        #expect(try ui(["choose", #"C:\Users\hobo\Documents\hello.txt"#, "--app", "notepad"]) == 0)
+        #expect(try powershell(#"Get-Content -Encoding UTF8 C:\Users\hobo\Documents\hello.txt"#) == typed + "\r\n")
+        #expect(try ui(["click", "--text", "Settings", "--role", "button", "--press", "--app", "notepad"]) == 0)
+
+        // File Explorer, whose folder window is a process of its own beside the shell's: drag a file
+        // onto a folder, and find it moved on disk.
+        _ = try powershell(#"New-Item -ItemType Directory -Force C:\Users\hobo\DragTest\Folder | Out-Null; Set-Content C:\Users\hobo\DragTest\a.txt x"#)
+        _ = try powershell(#"Start-Process explorer C:\Users\hobo\DragTest"#, gui: true)
+        #expect(try ui(["snapshot", "--app", "explorer"]) == 1, "the shell's explorer and the window's: ambiguous")
+        let pid = try powershell("""
+            foreach ($i in 1..30) {
+                $id = (Get-Process explorer | Where-Object MainWindowTitle -like 'DragTest*').Id
+                if ($id) { $id; break }
+                Start-Sleep 1
+            }
+            """, gui: true)  // In the desktop session: from session 0, MainWindowTitle is empty.
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let explorer = "pid:\(pid)"
+        #expect(try ui(["wait", "--text", "a", "--app", explorer, "--timeout", "15"]) == 0)
+        let files = try snapshot(explorer)
+        let file = try #require(find(files) { $0.role == "listitem" && $0.name == "a" })
+        let folder = try #require(find(files) { $0.role == "listitem" && $0.name == "Folder" })
+        #expect(try ui(["drag", file.ref, folder.ref, "--app", explorer]) == 0)
+        #expect(try ui(["wait", "--ref", file.ref, "--gone", "--app", explorer]) == 0)
+        #expect(try powershell(#"Test-Path C:\Users\hobo\DragTest\Folder\a.txt"#) == "True\r\n")
+    }
+
     /// Decision 18 on a real clone of the stopped VM `litest`: a renewal restarts the timeout, a request
     /// outlasting it holds it, `list` shows the countdown without renewing it, and expiry stops and
     /// deletes the clone. `set --keep`, an unreadable `config.json` and `off` each spare a clone past a
