@@ -196,9 +196,11 @@ class Input:
         if self.pointer:
             return
         try:
-            self.pointer = Device("hobo ui pointer", keys=(BTN_LEFT, BTN_RIGHT, BTN_MIDDLE),
-                                  relative=(REL_WHEEL, REL_HWHEEL, REL_WHEEL_HI_RES, REL_HWHEEL_HI_RES), absolute=(ABS_X, ABS_Y))
-            self.keyboard = Device("hobo ui keyboard", keys=sorted(set(KEYS.values()) | set(MODIFIERS.values())))
+            pointer = Device("hobo ui pointer", keys=(BTN_LEFT, BTN_RIGHT, BTN_MIDDLE),
+                             relative=(REL_WHEEL, REL_HWHEEL, REL_WHEEL_HI_RES, REL_HWHEEL_HI_RES), absolute=(ABS_X, ABS_Y))
+            keyboard = Device("hobo ui keyboard", keys=sorted(set(KEYS.values()) | set(MODIFIERS.values())))
+            # Both or neither, so a later request doesn't find a pointer and no keyboard.
+            self.pointer, self.keyboard = pointer, keyboard
         except OSError as error:
             raise Failure("can't make input devices (%s); was this VM's desktop set up by a current hobo init --os "
                           "linux recipe, which gives hobo /dev/uinput?" % error)
