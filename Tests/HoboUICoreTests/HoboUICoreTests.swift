@@ -681,4 +681,17 @@ final class FakeGuest: UITransport {
         let driver = UIDriver(backend: try RemoteBackend(transport: Refusing()), store: RefStore(directory: URL(filePath: "/tmp/unused")))
         #expect(throws: UIError.self) { try driver.run(try HoboUI.parseAsRoot(["key", "return"])) }
     }
+
+    @Test func aPidOutOfRangeIsLeftOutRatherThanTrapping() throws {
+        final class Overflowing: UITransport {
+            func send(_ line: Data) throws -> Data {
+                let op = (try JSONSerialization.jsonObject(with: line) as! [String: Any])["op"] as! String
+                if op == "hello" { return Data(#"{"ok":{"platform":"linux"}}"#.utf8) }
+                return Data(#"{"ok":{"apps":[{"name":"Big","pid":4294967296},{"name":"Files","pid":7}],"focused":4294967296}}"#.utf8)
+            }
+        }
+        let backend = try RemoteBackend(transport: Overflowing())
+        #expect(try backend.apps().map(\.identity.name) == ["Files"])
+        #expect(try backend.frontmostApp() == nil)
+    }
 }

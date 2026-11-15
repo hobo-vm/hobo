@@ -81,8 +81,9 @@ public final class RemoteBackend: UIBackend {
     func elements(_ value: Any?) -> [RemoteElement] { (value as? [Any])?.compactMap(element) ?? [] }
 
     static func identity(_ value: Any?) -> AppIdentity? {
-        guard let app = value as? [String: Any], let pid = app["pid"] as? Int else { return nil }
-        return AppIdentity(name: app["name"] as? String ?? "pid \(pid)", id: app["id"] as? String, pid: Int32(pid))
+        // Not trapping on a pid out of Int32's range: the guest's number, in the VM process.
+        guard let app = value as? [String: Any], let number = app["pid"] as? Int, let pid = Int32(exactly: number) else { return nil }
+        return AppIdentity(name: app["name"] as? String ?? "pid \(pid)", id: app["id"] as? String, pid: pid)
     }
 
     static func running(_ value: Any?) -> RunningApp? {
@@ -105,8 +106,8 @@ public final class RemoteBackend: UIBackend {
 
     public func frontmostApp() throws -> RunningApp? {
         let answer = try call("apps") as? [String: Any]
-        guard let focused = answer?["focused"] as? Int else { return nil }
-        return (answer?["apps"] as? [Any])?.compactMap(Self.running).first { $0.identity.pid == Int32(focused) }
+        guard let focused = (answer?["focused"] as? Int).flatMap(Int32.init(exactly:)) else { return nil }
+        return (answer?["apps"] as? [Any])?.compactMap(Self.running).first { $0.identity.pid == focused }
     }
 
     public func root(of app: RunningApp) throws -> RemoteElement {
