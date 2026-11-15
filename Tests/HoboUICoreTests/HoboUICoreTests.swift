@@ -39,12 +39,12 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 
     @Test func resolvesAPathItWalked() {
-        let locator = Locator([.init(role: "AXWindow", name: "Main", index: 0), .init(role: "AXButton", name: nil, index: 1)])
+        let locator = Locator([.init(role: "window", name: "Main", index: 0), .init(role: "button", name: nil, index: 1)])
         #expect(locator.resolve(from: app)?.a == app.kids[1].kids[2].a)
     }
 
     @Test func aNamedElementSurvivesASiblingInsertedBeforeIt() {
-        let locator = Locator([.init(role: "AXWindow", name: "Main", index: 0), .init(role: "AXButton", name: "OK", index: 1)])
+        let locator = Locator([.init(role: "window", name: "Main", index: 0), .init(role: "button", name: "OK", index: 1)])
         var changed = app
         changed.kids[1].kids.insert(Fake("AXButton", "Cancel"), at: 0)
         #expect(locator.resolve(from: changed)?.a.title == "OK")
@@ -52,7 +52,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 
     @Test func isStaleOnceTheElementIsGoneOrRenamed() {
-        let locator = Locator([.init(role: "AXWindow", name: "Main", index: 0), .init(role: "AXButton", name: "OK", index: 1)])
+        let locator = Locator([.init(role: "window", name: "Main", index: 0), .init(role: "button", name: "OK", index: 1)])
         var renamed = app
         renamed.kids[1].kids[3] = Fake("AXButton", "Done")
         #expect(locator.resolve(from: renamed) == nil)
@@ -70,8 +70,8 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
 @Suite struct RefMapTests {
     @Test func keepsANumberPerLocatorAndNeverReusesOne() {
         var map = RefMap()
-        let a = Locator([.init(role: "AXButton", name: "A", index: 0)])
-        let b = Locator([.init(role: "AXButton", name: "B", index: 0)])
+        let a = Locator([.init(role: "button", name: "A", index: 0)])
+        let b = Locator([.init(role: "button", name: "B", index: 0)])
         #expect(map.ref(for: a) == 1)
         #expect(map.ref(for: b) == 2)
         #expect(map.ref(for: a) == 1)
@@ -80,14 +80,14 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
 
     @Test func survivesTheFile() throws {
         var map = RefMap()
-        _ = map.ref(for: Locator([.init(role: "AXWindow", name: "W", index: 0)]))
+        _ = map.ref(for: Locator([.init(role: "window", name: "W", index: 0)]))
         let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-ui-test-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = RefStore(directory: directory)
         try store.save(map, for: "com.example.App")
         var loaded = store.load("com.example.App")
         #expect(loaded == map)
-        #expect(loaded.ref(for: Locator([.init(role: "AXButton", name: nil, index: 0)])) == 2)
+        #expect(loaded.ref(for: Locator([.init(role: "button", name: nil, index: 0)])) == 2)
         #expect(store.load("com.example.Other") == RefMap())
     }
 
@@ -97,7 +97,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = RefStore(directory: directory)
         DispatchQueue.concurrentPerform(iterations: 16) { index in
-            _ = try? store.update("com.example.App") { $0.ref(for: Locator([.init(role: "AXButton", name: "\(index)", index: 0)])) }
+            _ = try? store.update("com.example.App") { $0.ref(for: Locator([.init(role: "button", name: "\(index)", index: 0)])) }
         }
         let refs = store.load("com.example.App").entries.map(\.ref)
         #expect(refs.sorted() == Array(1...16))
@@ -130,7 +130,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
             app Demo (com.example.Demo) pid 7
             - window "Main" [e1] (0,25 800×600)
               - button "Save" [e2] #save (10,40 80×28)
-              - statictext [e3] = "14 photos"
+              - text [e3] = "14 photos"
             """)
     }
 
@@ -195,9 +195,9 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         )
         #expect(AppSnapshot.line(node) == #"checkbox "Wrap" [e5] disabled checked"#)
         node = SnapshotNode(ref: 6, attributes: ElementAttributes(role: "AXTextArea", value: "a \"b\"\nc"), scale: PixelScale(1))
-        #expect(AppSnapshot.line(node) == #"textarea [e6] = "a \"b\"\nc""#)
+        #expect(AppSnapshot.line(node) == #"textbox [e6] = "a \"b\"\nc""#)
         node = SnapshotNode(ref: 7, attributes: ElementAttributes(role: "AXTextArea", value: "a\r\nb\rc"), scale: PixelScale(1))
-        #expect(AppSnapshot.line(node) == #"textarea [e7] = "a\r\nb\rc""#)
+        #expect(AppSnapshot.line(node) == #"textbox [e7] = "a\r\nb\rc""#)
         #expect(AppSnapshot.quoted(String(repeating: "x", count: 81)) == "\"" + String(repeating: "x", count: 80) + "…\"")
     }
 
@@ -235,7 +235,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     @Test func findsTextAnywhere() {
         let app = Fake("AXApplication", [Fake("AXWindow", "Main", [Fake("AXGroup", [Fake("AXStaticText", value: "14 photos")])])])
         let found = allElements(under: app, locator: Locator()).filter { $0.1.contains("photos") }
-        #expect(found.map(\.2.description) == ["AXWindow:Main[0]/AXGroup[0]/AXStaticText[0]"])
+        #expect(found.map(\.2.description) == ["window:Main[0]/group[0]/text[0]"])
     }
 }
 
@@ -258,22 +258,22 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     }
 
     @Test func matchesTheWholeTextOutsideTheMenuBar() {
-        #expect(found("Remove") == ["AXWindow:Main[0]/AXButton:Remove[0]", "AXWindow:Main[0]/AXMenu[0]/AXMenuItem:Remove[0]"])
+        #expect(found("Remove") == ["window:Main[0]/button:Remove[0]", "window:Main[0]/menu[0]/menuitem:Remove[0]"])
         #expect(found("Remov").isEmpty)
-        #expect(found("Save...") == ["AXWindow:Main[0]/AXButton:Save…[0]"])
+        #expect(found("Save...") == ["window:Main[0]/button:Save…[0]"])
     }
 
     @Test func containsMatchesPartOfTheTextOnlyOncePerElement() {
         func partly(_ text: String) -> [String] { elements(showing: text, partial: true, role: nil, under: app).map(\.2.description) }
-        #expect(partly("Remove A") == ["AXWindow:Main[0]/AXButton:Remove All[0]"])
+        #expect(partly("Remove A") == ["window:Main[0]/button:Remove All[0]"])
         #expect(partly("Remov").count == 3)
         // The cell, not its text as well.
-        #expect(partly("NA") == ["AXWindow:Main[0]/AXCell:NAS[0]"])
+        #expect(partly("NA") == ["window:Main[0]/cell:NAS[0]"])
         #expect(elements(showing: "Remov", partial: true, role: "button", under: app).count == 2)
     }
 
     @Test func aCheckboxStateIsNotTextItShows() {
-        #expect(found("1") == ["AXWindow:Main[0]/AXStaticText[0]"])
+        #expect(found("1") == ["window:Main[0]/text[0]"])
     }
 
     /// `wait --text` (part of the text) looks where `click --text` (all of it) does, at the same text.
@@ -284,19 +284,19 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(waited("Save...") == found("Save..."))
         #expect(waited("1") == found("1"))
         #expect(waited("Remov") == [
-            "AXWindow:Main[0]/AXButton:Remove[0]", "AXWindow:Main[0]/AXButton:Remove All[0]", "AXWindow:Main[0]/AXMenu[0]/AXMenuItem:Remove[0]",
+            "window:Main[0]/button:Remove[0]", "window:Main[0]/button:Remove All[0]", "window:Main[0]/menu[0]/menuitem:Remove[0]",
         ])
     }
 
     @Test func aRoleNarrowsToWhatSnapshotCallsIt() {
-        #expect(found("Remove", role: "menuitem") == ["AXWindow:Main[0]/AXMenu[0]/AXMenuItem:Remove[0]"])
+        #expect(found("Remove", role: "menuitem") == ["window:Main[0]/menu[0]/menuitem:Remove[0]"])
         #expect(found("Remove", role: "MenuItem").count == 1)
         #expect(found("Remove", role: "checkbox").isEmpty)
     }
 
     @Test func anElementInsideAnotherMatchIsLeftToTheOuterOne() {
-        #expect(found("NAS") == ["AXWindow:Main[0]/AXCell:NAS[0]"])
-        #expect(found("NAS", role: "statictext") == ["AXWindow:Main[0]/AXCell:NAS[0]/AXStaticText[0]"])
+        #expect(found("NAS") == ["window:Main[0]/cell:NAS[0]"])
+        #expect(found("NAS", role: "text") == ["window:Main[0]/cell:NAS[0]/text[0]"])
     }
 
     @Test func matchesInOneFrameAreOneMatch() {
@@ -308,9 +308,9 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         ])])
         let found = elements(showing: "All Photos", role: nil, under: menu).map(\.2.description)
         #expect(found == [
-            "AXWindow:Main[0]/AXMenu[0]/AXMenuItem:All Photos[0]",
-            "AXWindow:Main[0]/AXMenu[1]/AXMenuItem:All Photos[1]",
-            "AXWindow:Main[0]/AXButton:All Photos[0]",
+            "window:Main[0]/menu[0]/menuitem:All Photos[0]",
+            "window:Main[0]/menu[1]/menuitem:All Photos[1]",
+            "window:Main[0]/button:All Photos[0]",
         ])
     }
 }
@@ -335,7 +335,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
             """)
         // e2 is the Save inside the folded group, not the window's own Save.
         let locator = try #require(refs.locator(for: 2))
-        #expect(locator.description == "AXWindow:Main[0]/AXGroup[0]/AXButton:Save[0]")
+        #expect(locator.description == "window:Main[0]/group[0]/button:Save[0]")
         #expect(locator.resolve(from: app)?.a == save.a)
     }
 
@@ -509,5 +509,43 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(obstruction?.area == 1)
         // Nothing of it on show for a wheel to reach, which scroll --to refuses rather than scroll the outer area.
         #expect(obstruction?.visible.isEmpty == true)
+    }
+}
+
+@Suite struct RoleTests {
+    @Test func mapsEachPlatformsRolesToTheSameARIAName() {
+        #expect(UIRole.aria(.macOS, role: "AXButton") == "button")
+        #expect(UIRole.aria(.linux, role: "push button") == "button")
+        #expect(UIRole.aria(.windows, role: "Button") == "button")
+        #expect(UIRole.aria(.macOS, role: "AXTextField") == "textbox")
+        #expect(UIRole.aria(.linux, role: "entry") == "textbox")
+        #expect(UIRole.aria(.windows, role: "Edit") == "textbox")
+        #expect(UIRole.aria(.macOS, role: "AXStaticText") == "text")
+        #expect(UIRole.aria(.linux, role: "label") == "text")
+        #expect(UIRole.aria(.windows, role: "Text") == "text")
+    }
+
+    @Test func aSubroleCanSayMoreThanItsRole() {
+        #expect(UIRole.aria(.macOS, role: "AXCheckBox", subrole: "AXSwitch") == "switch")
+        #expect(UIRole.aria(.macOS, role: "AXTextField", subrole: "AXSearchField") == "searchbox")
+        #expect(UIRole.aria(.macOS, role: "AXButton", subrole: "AXCloseButton") == "button")
+    }
+
+    @Test func anUnmappedRoleShowsAsItself() {
+        #expect(UIRole.aria(.macOS, role: "AXDateField") == "datefield")
+        #expect(UIRole.aria(.linux, role: "desktop frame") == "desktopframe")
+    }
+
+    @Test func checkedComesFromTheValueOnMacOSAndTheStateElsewhere() {
+        #expect(ElementAttributes(role: "AXCheckBox", value: "1").checked == true)
+        #expect(ElementAttributes(platform: .linux, role: "check box").checked == false)
+        #expect(ElementAttributes(platform: .windows, role: "CheckBox", checked: true).checked == true)
+        #expect(ElementAttributes(platform: .windows, role: "Button", checked: true).checked == nil)
+    }
+
+    @Test func snapshotsKeepTheNativeRole() {
+        let node = SnapshotNode(ref: 1, attributes: ElementAttributes(platform: .linux, role: "push button", title: "OK"), scale: PixelScale(1))
+        #expect(node.role == "button")
+        #expect(node.nativeRole == "push button")
     }
 }

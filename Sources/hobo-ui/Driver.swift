@@ -269,21 +269,19 @@ struct Driver {
         }
     }
 
-    private static let containerRoles: Set<String> = ["AXSheet", "AXWindow", "AXPopover", "AXMenu", "AXDialog"]
-
     /// The sheet, window, popover or menu an element is part of.
     func container(of element: AXElement) -> AXElement? {
-        element.lineage.first { Self.containerRoles.contains($0.attributes().role) }
+        element.lineage.first { UIRole.containers.contains($0.attributes().role) }
     }
 
     /// What's in the way, by the sheet, window, popover or menu it's part of.
     func covering(_ hit: AXElement) -> String {
         let owner = NSRunningApplication(processIdentifier: hit.pid)?.localizedName ?? "pid \(hit.pid)"
         guard let attributes = container(of: hit)?.attributes() else {
-            return "\(SnapshotNode.displayRole(hit.attributes().role)) of \(owner)"
+            return "\(SnapshotNode.shownRole(hit.attributes())) of \(owner)"
         }
         let name = (attributes.displayName ?? attributes.identifier).map { " \"\($0)\"" } ?? ""
-        return "\(SnapshotNode.displayRole(attributes.role))\(name) of \(owner)"
+        return "\(attributes.role)\(name) of \(owner)"
     }
 
     /// The element as it is after an action, or as it was if the action took it away.
@@ -293,7 +291,7 @@ struct Driver {
         // An element on its way out (a button that dismissed its own sheet) can still answer, with
         // no size at the screen's corner: (0,1200 0×0) says nothing about what was clicked.
         let lostItsFrame = attributes.frame?.isEmpty == true && before.frame.map { $0.width > 0 && $0.height > 0 } == true
-        return attributes.role == "AXUnknown" || lostItsFrame ? before : SnapshotNode(ref: ref, attributes: attributes, scale: scale)
+        return attributes.nativeRole == "AXUnknown" || lostItsFrame ? before : SnapshotNode(ref: ref, attributes: attributes, scale: scale)
     }
 
     // MARK: click, drag, scroll
@@ -341,7 +339,7 @@ struct Driver {
         // A menu window's bounds take in its shadow, so ask what's at the point; only if nothing
         // answers, fall back on the bounds.
         if let hit = AXElement.at(point) {
-            if hit.lineage.contains(where: { $0.attributes().role == "AXMenu" }) { return nil }
+            if hit.lineage.contains(where: { $0.attributes().role == "menu" }) { return nil }
         } else if menus.contains(where: { window in
             (window[kCGWindowBounds as String] as? NSDictionary).flatMap { CGRect(dictionaryRepresentation: $0) }?.contains(point) == true
         }) {
@@ -435,7 +433,7 @@ struct Driver {
     func scrollAreas(around element: AXElement) -> [CGRect] {
         element.lineage.dropFirst().compactMap {
             let attributes = $0.attributes()
-            return attributes.role == "AXScrollArea" ? attributes.frame : nil
+            return attributes.role == "scrollarea" ? attributes.frame : nil
         }.reversed()
     }
 

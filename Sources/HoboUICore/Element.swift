@@ -3,7 +3,11 @@ import CoreGraphics
 /// What `hobo-ui` reads of one accessibility element. Frames are in screen points, as the
 /// accessibility API gives them; output converts them to screenshot pixels (`PixelScale`).
 public struct ElementAttributes: Equatable, Sendable {
+    /// The role snapshots show and `--role` matches: an ARIA name (`UIRole`).
     public var role: String
+    /// The platform's own role (`AXButton`, `push button`, `Button`), for `--json`.
+    public var nativeRole: String
+    /// macOS's subrole (`AXCloseButton`), which names an unnamed element better than its role.
     public var subrole: String?
     public var title: String?
     public var identifier: String?
@@ -14,12 +18,18 @@ public struct ElementAttributes: Equatable, Sendable {
     public var enabled: Bool
     public var focused: Bool
     public var selected: Bool
+    /// Whether a checkable element is on, as its platform says; nil for one that isn't checkable.
+    public var checked: Bool?
 
+    /// `role` is `platform`'s native role, mapped to the shown one by `UIRole`. On macOS a
+    /// checkable element's state is its value (`1` when on) unless `checked` gives it.
     public init(
-        role: String, subrole: String? = nil, title: String? = nil, identifier: String? = nil, label: String? = nil,
-        value: String? = nil, frame: CGRect? = nil, enabled: Bool = true, focused: Bool = false, selected: Bool = false
+        platform: UIPlatform = .macOS, role native: String, subrole: String? = nil, title: String? = nil,
+        identifier: String? = nil, label: String? = nil, value: String? = nil, frame: CGRect? = nil,
+        enabled: Bool = true, focused: Bool = false, selected: Bool = false, checked: Bool? = nil
     ) {
-        self.role = role
+        role = UIRole.aria(platform, role: native, subrole: subrole)
+        nativeRole = native
         self.subrole = subrole
         self.title = title.nonEmpty
         // AppKit makes up `_NS:31`-style identifiers for views nobody named; they say nothing.
@@ -30,6 +40,8 @@ public struct ElementAttributes: Equatable, Sendable {
         self.enabled = enabled
         self.focused = focused
         self.selected = selected
+        let checkable = UIRole.checkable.contains(role)
+        self.checked = checkable ? checked ?? (platform == .macOS ? value == "1" : false) : nil
     }
 
     /// What names the element in its locator: its identifier, else its title, else its label.
@@ -43,15 +55,7 @@ public struct ElementAttributes: Equatable, Sendable {
     /// A layout container with nothing to say for itself, folded out of a snapshot: its children
     /// stand in its place.
     public var isUnnamedLayout: Bool {
-        Self.layoutRoles.contains(role) && name == nil && value == nil
-    }
-
-    static let layoutRoles: Set<String> = ["AXGroup", "AXSplitGroup", "AXLayoutArea", "AXLayoutItem", "AXUnknown"]
-
-    /// For a checkbox, radio button or switch, whether it is on.
-    public var checked: Bool? {
-        guard ["AXCheckBox", "AXRadioButton", "AXSwitch", "AXToggle"].contains(role) || subrole == "AXSwitch" else { return nil }
-        return value == "1"
+        UIRole.layout.contains(role) && name == nil && value == nil
     }
 }
 

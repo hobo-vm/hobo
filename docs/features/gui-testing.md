@@ -64,7 +64,7 @@ $ hobo ui dev snapshot --app TextEdit
 app TextEdit (com.apple.TextEdit) pid 628
 - window "Untitled" [e1] (213,86 586×488)
   - scrollarea [e2] (213,154 586×420)
-    - textarea [e3] #First Text View (213,186 586×382) focused
+    - textbox [e3] #First Text View (213,186 586×382) focused
   - group "Formatting" [e22] (213,118 586×36)
     - checkbox "bold" [e23] (221,127 22×20) unchecked
     …
@@ -90,6 +90,9 @@ $ hobo ui dev wait --text "Hello" --app TextEdit
   snapshot still means the same thing. One that has gone fails as stale rather than clicking
   whatever took its place. Give the controls of an app you're testing accessibility identifiers
   (the `#saveButton` after a ref), and its refs survive layout changes.
+- **Roles** are ARIA role names (`button`, `textbox`, `menuitem`, `checkbox`), plus `window`,
+  `text` and `scrollarea`, so `--role` means the same in every guest; `--json` also gives the
+  platform's own role (`AXTextArea`).
 - **Coordinates** are screenshot pixels, the same as in a `hobo screenshot` PNG.
 - `--app` takes a bundle ID, a name or `pid:<n>`; without it, the frontmost app.
 - `--json` prints any command's result as JSON, failures included.

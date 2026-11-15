@@ -5,6 +5,8 @@ import Foundation
 public struct SnapshotNode: Codable, Equatable, Sendable {
     public var ref: String
     public var role: String
+    /// The platform's own role (`AXButton`, `push button`, `Button`).
+    public var nativeRole: String
     public var name: String?
     public var identifier: String?
     public var value: String?
@@ -24,6 +26,7 @@ public struct SnapshotNode: Codable, Equatable, Sendable {
     public init(ref: Int, attributes a: ElementAttributes, scale: PixelScale) {
         self.ref = RefMap.format(ref)
         role = Self.shownRole(a)
+        nativeRole = a.nativeRole
         name = a.displayName
         identifier = a.identifier
         value = a.shownValue
@@ -35,15 +38,11 @@ public struct SnapshotNode: Codable, Equatable, Sendable {
         children = []
     }
 
-    /// The role a snapshot shows for an element. An unnamed one is better told by its subrole: a
-    /// window's close button, not a button.
+    /// The role a snapshot shows for an element (`UIRole`). An unnamed one is better told by its
+    /// macOS subrole, when it has one ARIA has no role for: a window's close button, not a button.
     public static func shownRole(_ a: ElementAttributes) -> String {
-        displayRole(a.displayName == nil && a.identifier == nil ? a.subrole ?? a.role : a.role)
-    }
-
-    /// `AXButton` → `button`.
-    public static func displayRole(_ role: String) -> String {
-        (role.hasPrefix("AX") ? String(role.dropFirst(2)) : role).lowercased()
+        guard a.displayName == nil, a.identifier == nil, let subrole = a.subrole, UIRole.macSubroles[subrole] == nil else { return a.role }
+        return UIRole.fallback(subrole)
     }
 }
 
@@ -115,7 +114,7 @@ public struct SnapshotBuilder {
     }
 
     /// The menu bar is `menu`'s; it's left out of an app's snapshot.
-    static let skippedAtAppLevel: Set<String> = ["AXMenuBar"]
+    static let skippedAtAppLevel: Set<String> = ["menubar"]
 
     /// The tree under `root` (an app, or the element `--root` named, at `locator`). The root
     /// itself isn't shown when it's the app.
@@ -142,7 +141,7 @@ public struct SnapshotBuilder {
         of element: E, attributes: ElementAttributes, locator: Locator, clip: CGRect?, depth: Int, isApp: Bool, refs: inout RefMap
     ) -> Level {
         var clip = clip
-        if attributes.role == "AXScrollArea", let frame = attributes.frame {
+        if attributes.role == "scrollarea", let frame = attributes.frame {
             clip = clip.map { $0.intersection(frame) } ?? frame
         }
         let children = element.children()
