@@ -55,11 +55,16 @@ struct MacBackend: UIBackend {
     func element(at point: CGPoint) -> AXElement? { AXElement.at(point) }
 
     /// Makes the app frontmost and raises the element's window, through accessibility (an app
-    /// activating another from the background is refused), and waits up to 2 s for it to take.
+    /// activating another from the background is refused).
     func bringForward(_ element: AXElement, of app: RunningApp) {
         if let window = element.element("AXWindow") { _ = window.perform("AXRaise") }
-        if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.identity.pid { return }
-        let root = AXElement.application(app.identity.pid)
+        activate(app.identity.pid)
+    }
+
+    /// Makes the app frontmost, waiting up to 2 s for it to take.
+    private func activate(_ pid: pid_t) {
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid { return }
+        let root = AXElement.application(pid)
         root.set("AXFrontmost", kCFBooleanTrue)
         let deadline = Date().addingTimeInterval(2)
         while Date() < deadline {
@@ -133,7 +138,10 @@ struct MacBackend: UIBackend {
     /// Opens the item's menu and closes it again. An app brings a menu's items up to date only as
     /// it opens: until then accessibility reads them as they last were, "Undo" for what will show
     /// as "Undo Typing", and enabled for what will show disabled. The items keep what they're given.
+    /// The app comes forward first: in the background it has no key window to ask, and gives the
+    /// items of a menu opened then the wrong states, Undo disabled with something to undo.
     private func bringUpToDate(menuOf item: AXElement) {
+        activate(item.pid)
         // A submenu opens from its open parent: the menu bar item first, then each item down to this one.
         let path = item.lineage.filter { ["AXMenuBarItem", "AXMenuItem"].contains($0.attributes().nativeRole) }.reversed()
         var opened: AXElement?

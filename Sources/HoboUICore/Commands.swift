@@ -223,7 +223,7 @@ public struct HoboUI: ParsableCommand {
             discussion: """
                 "File > Save" chooses the item through accessibility, failing if it's disabled. \
                 A menu's title alone ("File") lists its items: enabled, checked and their shortcuts. \
-                Titles are as the open menu shows them ("Undo Typing", not "Undo"): on macOS each menu on the way \
+                Titles are as the open menu shows them ("Undo Typing", not "Undo"): on macOS the app comes forward and each menu on the way \
                 is opened and closed again first, which is when an app brings its items up to date.
                 """
         )

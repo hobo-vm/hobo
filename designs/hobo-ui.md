@@ -46,8 +46,8 @@
     match; a timeout exits non-zero and prints the current snapshot.
 16. **`menu "A > B"`** presses through AXPress; fails on a disabled item; reports checked state from
     before the press. `menu "A"` lists items with enabled, checked and shortcut. Titles match
-    exactly, with `…` equal to `...`. Each menu on the way is opened (AXPress) and cancelled before
-    its items are read: an app brings a menu's titles and enabled states up to date only as it opens,
+    exactly, with `…` equal to `...`. The app is brought forward (in the background it validates Undo as disabled),
+    then each menu on the way is opened (AXPress) and cancelled before its items are read: an app brings a menu's titles and enabled states up to date only as it opens,
     so a closed Edit menu reads "Undo" where the open one shows "Undo Typing".
 17. **Snapshot scope.** Windows, sheets and popovers, not the menu bar. Elements wholly outside their
     scroll area are summarised (`… N more items offscreen`); containers over 50 children show 50
