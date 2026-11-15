@@ -11,10 +11,9 @@ import (
 // Tools are executables the host serves for the agent to run, fetched on first use each boot
 // like the agent itself, and again when the host's digest of the tool (`toolDigest`) differs
 // from the one fetched, as after hobo is updated under a running VM, so they match the hobo
-// asking for them. An exec request naming
-// one (`tool`) has it in place before its command runs. Only `ui` exists: `hobo ui`'s driver in a
-// macOS guest (designs/hobo-ui.md), its backend in a Linux or Windows one
-// (designs/hobo-ui-linux-windows.md).
+// asking for them. An exec request naming one (`tool`) has it in place before its command runs.
+// Only `ui` exists: `hobo ui`'s driver in a macOS guest (designs/hobo-ui.md), its backend in a
+// Linux or Windows one (designs/hobo-ui-linux-windows.md).
 var tools = map[string]bool{"ui": true}
 
 var toolLock sync.Mutex
