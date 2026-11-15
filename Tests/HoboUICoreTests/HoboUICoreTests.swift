@@ -712,6 +712,58 @@ final class FakeGuest: UITransport {
         #expect(guest.ops.contains("raise"))
     }
 
+    @Test func clickTextInARefLooksOnlyInsideThatElement() throws {
+        /// Two windows each with a Save button, answering `parent` from the tree.
+        final class TwoSaves: UITransport {
+            let tree: [String: Any] = [
+                "id": 1, "role": "application", "title": "Text Editor", "children": [
+                    ["id": 2, "role": "frame", "title": "Draft", "frame": [0, 0, 400, 300], "children": [
+                        ["id": 3, "role": "push button", "title": "Save", "frame": [10, 10, 80, 30], "children": []],
+                    ]],
+                    ["id": 4, "role": "frame", "title": "Final", "frame": [400, 0, 400, 300], "children": [
+                        ["id": 5, "role": "push button", "title": "Save", "frame": [410, 10, 80, 30], "children": []],
+                    ]],
+                ],
+            ]
+            var pressed: [Int] = []
+            func nodes(_ node: [String: Any], parent: [String: Any]?) -> [(node: [String: Any], parent: [String: Any]?)] {
+                [(node, parent)] + (node["children"] as! [[String: Any]]).flatMap { nodes($0, parent: node) }
+            }
+            func send(_ line: Data) throws -> Data {
+                let request = try JSONSerialization.jsonObject(with: line) as! [String: Any]
+                let entry = nodes(tree, parent: nil).first { $0.node["id"] as? Int == request["id"] as? Int }
+                let ok: Any = switch request["op"] as! String {
+                case "hello": ["platform": "linux", "scale": 1.0, "screen": [0, 0, 800, 600]]
+                case "apps": ["apps": [["name": "Text Editor", "id": "org.gnome.TextEditor", "pid": 42]], "focused": 42]
+                case "tree": tree
+                case "node": entry?.node ?? NSNull()
+                case "parent": entry?.parent ?? NSNull()
+                case "press": { pressed.append(request["id"] as! Int); return NSNull() }()
+                default: NSNull()
+                }
+                return try JSONSerialization.data(withJSONObject: ["ok": ok])
+            }
+        }
+        let guest = TwoSaves()
+        let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-ui-tests-\(UUID().uuidString)")
+        let driver = UIDriver(backend: try RemoteBackend(transport: guest), store: RefStore(directory: directory))
+        // e1 window Draft, e2 its Save, e3 window Final, e4 its Save.
+        _ = try driver.run(try HoboUI.parseAsRoot(["snapshot"]))
+        #expect {
+            try driver.run(try HoboUI.parseAsRoot(["click", "--text", "Save", "--press"]))
+        } throws: { error in
+            String(describing: error).contains("click one by its ref, as in click e2, or narrow with --role or --in <ref>")
+        }
+        let outcome = try driver.run(try HoboUI.parseAsRoot(["click", "--text", "Save", "--in", "e3", "--press"]))
+        #expect(outcome.text.hasPrefix(#"pressed button "Save" [e4]"#))
+        #expect(guest.pressed == [5])
+        #expect {
+            try driver.run(try HoboUI.parseAsRoot(["click", "--text", "Open", "--in", "e3", "--press"]))
+        } throws: { error in
+            String(describing: error).contains("no element in e3 in Text Editor shows exactly")
+        }
+    }
+
     @Test func aGuestErrorBecomesTheCommandsFailure() throws {
         final class Refusing: UITransport {
             func send(_ line: Data) throws -> Data {
