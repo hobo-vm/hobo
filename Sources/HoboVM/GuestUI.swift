@@ -28,6 +28,10 @@ enum GuestUI {
             onOutput(.stderr, Data((HoboUI.fullMessage(for: error) + "\n").utf8))
             return 64
         }
+        if platform.goos == "windows", (try? Payloads.uiBackend("windows")) == nil {
+            onOutput(.stderr, Data("hobo ui: this hobo was built without hobo ui's Windows backend; build it with make windows-ui\n".utf8))
+            return 1
+        }
         let session = try await agent.session(backendCommand(for: platform), gui: true, platform: platform, tool: "ui")
         // The driver blocks on the session's answers, so off the cooperative pool; cancelling the
         // task (the client hanging up) ends the session, which wakes it.

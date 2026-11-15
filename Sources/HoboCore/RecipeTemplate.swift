@@ -116,7 +116,7 @@ extension Recipe {
         set -eu
         export DEBIAN_FRONTEND=noninteractive
         apt-get update
-        apt-get install -y -o DPkg::Lock::Timeout=300 ubuntu-desktop-minimal python3-gi gir1.2-atspi-2.0 python3-evdev
+        apt-get install -y -o DPkg::Lock::Timeout=300 ubuntu-desktop-minimal python3-gi gir1.2-atspi-2.0
         echo uinput > /etc/modules-load.d/hobo.conf
         echo 'KERNEL=="uinput", SUBSYSTEM=="misc", OWNER="\(Conventions.username)", MODE="0600"' > /etc/udev/rules.d/70-hobo-uinput.rules
         \(CloudInit.agentPath) gnome-extension

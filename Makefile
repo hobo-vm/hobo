@@ -7,7 +7,7 @@ BIN := $(STAGE)/bin/hobo
 PREFIX ?= /usr/local
 
 .DEFAULT_GOAL := help
-.PHONY: help build sign install test integration-test readme readme-check site site-preview clean
+.PHONY: help build sign install test integration-test readme readme-check windows-ui windows-ui-check site site-preview clean
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -33,7 +33,7 @@ install: sign ## Install bin/hobo and share/hobo under PREFIX (default /usr/loca
 	rm -f $(HOME)/.local/bin/hobo
 	@if grep -qs '^hobo-version:' $(SKILL); then $(PREFIX)/bin/hobo claude install; fi
 
-test: readme-check ## README check, docs-script tests, then unit tests
+test: readme-check windows-ui-check ## README and Windows backend checks, docs-script tests, then unit tests
 	node --test 'site/scripts/*.test.mjs'
 	swift test
 	cd Agent && go test ./...
@@ -44,6 +44,13 @@ readme: ## Regenerate README.md's features from docs/features
 
 readme-check: ## Fail if README.md is out of date with docs/features
 	node site/scripts/readme.mjs --check
+
+# hobo ui's Windows backend is built in a Windows VM and committed (scripts/windows-ui.sh).
+windows-ui: ## Rebuild hobo ui's Windows backend in a Windows build VM
+	scripts/windows-ui.sh build
+
+windows-ui-check: ## Fail if hobo ui's Windows backend is out of date with UIWindows/
+	scripts/windows-ui.sh check
 
 site: ## Build the hobo.gsquared.app site into site/dist
 	cd site && npm ci && npm run build

@@ -59,34 +59,71 @@ class Shell:
 # MARK: Input
 
 
-KEYS = {}
+# Linux's input event codes (linux/input-event-codes.h).
+EV_SYN, EV_KEY, EV_REL, EV_ABS = 0, 1, 2, 3
+ABS_X, ABS_Y = 0, 1
+REL_HWHEEL, REL_WHEEL, REL_WHEEL_HI_RES, REL_HWHEEL_HI_RES = 6, 8, 11, 12
+BTN_LEFT, BTN_RIGHT, BTN_MIDDLE = 0x110, 0x111, 0x112
+KEY_LEFTCTRL, KEY_LEFTSHIFT, KEY_LEFTALT, KEY_LEFTMETA = 29, 42, 56, 125
 
-
-def key_codes():
-    from evdev import ecodes as e
-    codes = {chr(c): getattr(e, "KEY_" + chr(c).upper()) for c in range(ord("a"), ord("z") + 1)}
-    codes.update({str(d): getattr(e, "KEY_%d" % d) for d in range(10)})
-    codes.update({
-        "-": e.KEY_MINUS, "=": e.KEY_EQUAL, "[": e.KEY_LEFTBRACE, "]": e.KEY_RIGHTBRACE, ";": e.KEY_SEMICOLON,
-        "'": e.KEY_APOSTROPHE, "`": e.KEY_GRAVE, "\\": e.KEY_BACKSLASH, ",": e.KEY_COMMA, ".": e.KEY_DOT,
-        "/": e.KEY_SLASH, "return": e.KEY_ENTER, "tab": e.KEY_TAB, "space": e.KEY_SPACE,
-        "delete": e.KEY_BACKSPACE, "forwarddelete": e.KEY_DELETE, "escape": e.KEY_ESC, "home": e.KEY_HOME,
-        "end": e.KEY_END, "pageup": e.KEY_PAGEUP, "pagedown": e.KEY_PAGEDOWN, "left": e.KEY_LEFT,
-        "right": e.KEY_RIGHT, "up": e.KEY_UP, "down": e.KEY_DOWN,
-    })
-    codes.update({"f%d" % n: getattr(e, "KEY_F%d" % n) for n in range(1, 13)})
-    return codes
-
+KEYS = dict(zip("1234567890", range(2, 12)))
+KEYS.update(zip("qwertyuiop", range(16, 26)))
+KEYS.update(zip("asdfghjkl", range(30, 39)))
+KEYS.update(zip("zxcvbnm", range(44, 51)))
+KEYS.update({
+    "escape": 1, "-": 12, "=": 13, "delete": 14, "tab": 15, "[": 26, "]": 27, "return": 28, ";": 39, "'": 40,
+    "`": 41, "\\": 43, ",": 51, ".": 52, "/": 53, "space": 57, "home": 102, "up": 103, "pageup": 104, "left": 105,
+    "right": 106, "end": 107, "down": 108, "pagedown": 109, "forwarddelete": 111,
+})
+KEYS.update({"f%d" % n: 58 + n for n in range(1, 11)})
+KEYS.update({"f11": 87, "f12": 88})
+MODIFIERS = {"command": KEY_LEFTMETA, "control": KEY_LEFTCTRL, "option": KEY_LEFTALT, "shift": KEY_LEFTSHIFT}
 
 # What a US keyboard types without and with Shift, by the key it's on.
 SHIFTED = dict(zip('~!@#$%^&*()_+{}|:"<>?', "`1234567890-=[]\\;',./"))
+
+# uinput's ioctls: _IOW('U', n, int) and _IO('U', n).
+UI_SET_EVBIT, UI_SET_KEYBIT, UI_SET_RELBIT, UI_SET_ABSBIT = 0x40045564, 0x40045565, 0x40045566, 0x40045567
+UI_DEV_CREATE = 0x5501
+
+
+class Device:
+    """A uinput device, made with the legacy uinput_user_dev setup, which every kernel takes."""
+
+    RANGE = 65535
+
+    def __init__(self, name, keys=(), relative=(), absolute=()):
+        import fcntl
+        import os
+        import struct
+        self.os, self.struct = os, struct
+        self.fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
+        for kind, bits, ioctl in ((EV_KEY, keys, UI_SET_KEYBIT), (EV_REL, relative, UI_SET_RELBIT), (EV_ABS, absolute, UI_SET_ABSBIT)):
+            if bits:
+                fcntl.ioctl(self.fd, UI_SET_EVBIT, kind)
+                for bit in bits:
+                    fcntl.ioctl(self.fd, ioctl, bit)
+        maximum = [0] * 64
+        for axis in absolute:
+            maximum[axis] = self.RANGE
+        # struct uinput_user_dev: name[80], input_id (bustype, vendor, product, version), ff_effects_max,
+        # then absmax, absmin, absfuzz and absflat, 64 each.
+        setup = struct.pack("80sHHHHI", name.encode(), 0x06, 0x1209, 0x0001, 1, 0)
+        setup += struct.pack("64i", *maximum) + struct.pack("64i", *([0] * 64)) * 3
+        os.write(self.fd, setup)
+        fcntl.ioctl(self.fd, UI_DEV_CREATE)
+
+    def write(self, kind, code, value):
+        # struct input_event: a timeval the kernel fills in, then type, code and value.
+        self.os.write(self.fd, self.struct.pack("qqHHi", 0, 0, kind, code, value))
+
+    def syn(self):
+        self.write(EV_SYN, 0, 0)
 
 
 class Input:
     """A uinput absolute pointer and keyboard, made on first use: the kernel hands their events to
     the compositor as hardware's, so Wayland apps get them as a person's."""
-
-    RANGE = 65535
 
     def __init__(self, screen):
         self.screen = screen
@@ -97,66 +134,46 @@ class Input:
         if self.pointer:
             return
         try:
-            from evdev import AbsInfo, UInput, ecodes as e
-        except ImportError:
-            raise Failure("python3-evdev isn't installed; was this VM's desktop set up by a current hobo init --os linux recipe?")
-        global KEYS
-        KEYS = key_codes()
-        absolute = AbsInfo(value=0, min=0, max=self.RANGE, fuzz=0, flat=0, resolution=0)
-        try:
-            self.pointer = UInput({
-                e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT, e.BTN_MIDDLE],
-                e.EV_ABS: [(e.ABS_X, absolute), (e.ABS_Y, absolute)],
-                e.EV_REL: [e.REL_WHEEL, e.REL_HWHEEL, e.REL_WHEEL_HI_RES, e.REL_HWHEEL_HI_RES],
-            }, name="hobo ui pointer")
-            self.keyboard = UInput({e.EV_KEY: sorted(set(KEYS.values()) | {
-                e.KEY_LEFTSHIFT, e.KEY_LEFTCTRL, e.KEY_LEFTALT, e.KEY_LEFTMETA, e.KEY_U})}, name="hobo ui keyboard")
+            self.pointer = Device("hobo ui pointer", keys=(BTN_LEFT, BTN_RIGHT, BTN_MIDDLE),
+                                  relative=(REL_WHEEL, REL_HWHEEL, REL_WHEEL_HI_RES, REL_HWHEEL_HI_RES), absolute=(ABS_X, ABS_Y))
+            self.keyboard = Device("hobo ui keyboard", keys=sorted(set(KEYS.values()) | set(MODIFIERS.values())))
         except OSError as error:
             raise Failure("can't make input devices (%s); was this VM's desktop set up by a current hobo init --os "
                           "linux recipe, which gives hobo /dev/uinput?" % error)
         # The compositor takes a moment to add a new device; events before then are lost.
         time.sleep(0.5)
 
-    def e(self):
-        from evdev import ecodes
-        return ecodes
-
     def move(self, x, y, settle=0.03):
         self.devices()
-        e = self.e()
         sx, sy, sw, sh = self.screen
-        ax = round((x - sx) / max(sw, 1) * self.RANGE)
-        ay = round((y - sy) / max(sh, 1) * self.RANGE)
-        self.pointer.write(e.EV_ABS, e.ABS_X, max(0, min(self.RANGE, ax)))
-        self.pointer.write(e.EV_ABS, e.ABS_Y, max(0, min(self.RANGE, ay)))
+        ax = round((x - sx) / max(sw, 1) * Device.RANGE)
+        ay = round((y - sy) / max(sh, 1) * Device.RANGE)
+        self.pointer.write(EV_ABS, ABS_X, max(0, min(Device.RANGE, ax)))
+        self.pointer.write(EV_ABS, ABS_Y, max(0, min(Device.RANGE, ay)))
         self.pointer.syn()
         time.sleep(settle)
 
     def modifiers(self, names, down):
-        e = self.e()
-        codes = {"command": e.KEY_LEFTMETA, "control": e.KEY_LEFTCTRL, "option": e.KEY_LEFTALT, "shift": e.KEY_LEFTSHIFT}
         for name in names:
-            if name in codes:
-                self.keyboard.write(e.EV_KEY, codes[name], 1 if down else 0)
+            if name in MODIFIERS:
+                self.keyboard.write(EV_KEY, MODIFIERS[name], 1 if down else 0)
         self.keyboard.syn()
 
     def click(self, x, y, right=False, count=1, mods=()):
         self.move(x, y)
-        e = self.e()
-        button = e.BTN_RIGHT if right else e.BTN_LEFT
+        button = BTN_RIGHT if right else BTN_LEFT
         self.modifiers(mods, True)
         for _ in range(count):
             for value in (1, 0):
-                self.pointer.write(e.EV_KEY, button, value)
+                self.pointer.write(EV_KEY, button, value)
                 self.pointer.syn()
                 time.sleep(0.02)
         self.modifiers(mods, False)
 
     def drag(self, start, end, mods=()):
-        e = self.e()
         self.move(*start)
         self.modifiers(mods, True)
-        self.pointer.write(e.EV_KEY, e.BTN_LEFT, 1)
+        self.pointer.write(EV_KEY, BTN_LEFT, 1)
         self.pointer.syn()
         time.sleep(0.1)
         steps = 20
@@ -164,32 +181,30 @@ class Input:
             t = step / steps
             self.move(start[0] + (end[0] - start[0]) * t, start[1] + (end[1] - start[1]) * t, settle=0.015)
         time.sleep(0.3)
-        self.pointer.write(e.EV_KEY, e.BTN_LEFT, 0)
+        self.pointer.write(EV_KEY, BTN_LEFT, 0)
         self.pointer.syn()
         self.modifiers(mods, False)
         time.sleep(0.1)
 
     def scroll(self, x, y, direction, notches):
         self.move(x, y)
-        e = self.e()
         axis, hi, sign = {
-            "up": (e.REL_WHEEL, e.REL_WHEEL_HI_RES, 1), "down": (e.REL_WHEEL, e.REL_WHEEL_HI_RES, -1),
-            "left": (e.REL_HWHEEL, e.REL_HWHEEL_HI_RES, -1), "right": (e.REL_HWHEEL, e.REL_HWHEEL_HI_RES, 1),
+            "up": (REL_WHEEL, REL_WHEEL_HI_RES, 1), "down": (REL_WHEEL, REL_WHEEL_HI_RES, -1),
+            "left": (REL_HWHEEL, REL_HWHEEL_HI_RES, -1), "right": (REL_HWHEEL, REL_HWHEEL_HI_RES, 1),
         }[direction]
         for _ in range(notches):
-            self.pointer.write(e.EV_REL, axis, sign)
-            self.pointer.write(e.EV_REL, hi, 120 * sign)
+            self.pointer.write(EV_REL, axis, sign)
+            self.pointer.write(EV_REL, hi, 120 * sign)
             self.pointer.syn()
             time.sleep(0.02)
         time.sleep(0.1)
 
     def tap(self, code, mods=()):
-        e = self.e()
         self.modifiers(mods, True)
-        self.keyboard.write(e.EV_KEY, code, 1)
+        self.keyboard.write(EV_KEY, code, 1)
         self.keyboard.syn()
         time.sleep(0.01)
-        self.keyboard.write(e.EV_KEY, code, 0)
+        self.keyboard.write(EV_KEY, code, 0)
         self.keyboard.syn()
         self.modifiers(mods, False)
         time.sleep(0.01)
@@ -211,7 +226,7 @@ class Input:
                 self.tap(KEYS["space"])
             elif character == "\t":
                 self.tap(KEYS["tab"])
-            elif character.isascii() and character.lower() in KEYS and (character.islower() or character.isdigit() or not character.isalpha()):
+            elif character in KEYS:
                 self.tap(KEYS[character])
             elif character.isascii() and character.isalpha():
                 self.tap(KEYS[character.lower()], ["shift"])

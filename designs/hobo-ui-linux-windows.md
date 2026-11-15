@@ -7,8 +7,8 @@
    `UIBackend` protocol. macOS keeps running it in the guest, in `hobo-ui`, with the AX backend.
    For Linux and Windows the same driver runs on the host, with thin guest backends for the platform
    calls; their refs live in the VM's per-boot run state on the host.
-2. **Linux input** is a uinput absolute pointer and keyboard (`python3-evdev`, and a udev rule giving
-   the `hobo` user `/dev/uinput`), which reaches Wayland apps as hardware input.
+2. **Linux input** is a uinput absolute pointer and keyboard (a udev rule giving the `hobo` user
+   `/dev/uinput`), which reaches Wayland apps as hardware input.
 3. **Linux screen positions** come from a GNOME Shell extension of hobo's own, shipped in
    `share/hobo` and installed by the recipe. Over D-Bus it lists windows (pid, desktop app ID, title,
    frame and buffer rects, stacking, focus) and activates one. AT-SPI's window-relative extents are
@@ -24,8 +24,8 @@
    `scrollarea` where ARIA has none, on every guest, macOS included (`textfield` becomes `textbox`,
    `statictext` becomes `text`). Backends report native roles; the mapping lives in Swift on the host
    side of the driver; `--json` keeps the native role.
-7. **Linux setup** is part of the recipe's desktop step, always on: the udev rule, `python3-evdev`
-   and the extension. `[gui_testing]` stays macOS-only; Windows needs nothing.
+7. **Linux setup** is part of the recipe's desktop step, always on: the udev rule and the
+   extension. `[gui_testing]` stays macOS-only; Windows needs nothing.
 8. **`--app`**: on Linux the desktop app ID (`org.gnome.TextEditor`), a display name (its `.desktop`
    name or AT-SPI's), or `pid:N`; on Windows the AUMID or exe name without `.exe`, a display name, or
    `pid:N`. Case-insensitive; ambiguous names fail listing matches; refs are keyed by the ID; the
