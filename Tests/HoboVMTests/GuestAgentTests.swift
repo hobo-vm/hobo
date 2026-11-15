@@ -389,6 +389,57 @@ import Testing
         #expect(received.withLock { $0 } == [big, "after"])
     }
 
+    // MARK: Sessions
+
+    /// The host's stdin frames up to the next newline, or nil at the empty one that closes its input.
+    func receiveStdinLine(_ socket: AgentSocket) throws -> String? {
+        var line = Data()
+        while let (kind, payload) = try socket.readFrame(), kind == .stdin {
+            if payload.isEmpty { return nil }
+            line += payload
+            if line.last == UInt8(ascii: "\n") { return String(decoding: line, as: UTF8.self) }
+        }
+        return nil
+    }
+
+    @Test func aSessionAnswersEachLineWithTheNextItPrintsAndCloseEndsItsInput() async throws {
+        let seen = Seen()
+        let closed = Mutex(false)
+        let agent = guestAgent { request, socket in
+            seen.record(request)
+            while let line = try receiveStdinLine(socket) {
+                // An answer split across frames, with stderr between, is still one line.
+                let answer = "got " + line.dropLast()
+                try socket.writeFrame(.stdout, Data(answer.prefix(3).utf8))
+                try socket.writeFrame(.stderr, Data("noise\n".utf8))
+                try socket.writeFrame(.stdout, Data((answer.dropFirst(3) + "\n").utf8))
+            }
+            closed.withLock { $0 = true }
+            try sendExit(0, on: socket)
+        }
+        let session = try await agent.session(["backend"], gui: false, platform: LinuxVMBundle.self)
+        #expect(try session.send(Data("one".utf8)) == Data("got one".utf8))
+        #expect(try session.send(Data("two".utf8)) == Data("got two".utf8))
+        #expect(try session.close() == 0)
+        #expect(closed.withLock { $0 })
+        #expect(seen.fields["op"] == "exec")
+        #expect(seen.fields["stdin"] == "1")
+    }
+
+    @Test func aSessionWhoseCommandExitsSaysSoWithWhatItPrintedToStderr() async throws {
+        let agent = guestAgent { _, socket in
+            _ = try receiveStdinLine(socket)
+            try socket.writeFrame(.stderr, Data("Traceback: no AT-SPI bus\n".utf8))
+            try sendExit(2, on: socket)
+        }
+        let session = try await agent.session(["backend"], gui: false, platform: LinuxVMBundle.self)
+        #expect(throws: AgentError.refused("the command exited with status 2: Traceback: no AT-SPI bus")) {
+            try session.send(Data("hello".utf8))
+        }
+        // Already exited: close sends nothing more and gives its status.
+        #expect(try session.close() == 2)
+    }
+
     @Test func cancellingTheClipboardHangsUp() async throws {
         let hungUp = Mutex(false)
         let agent = guestAgent { _, socket in
