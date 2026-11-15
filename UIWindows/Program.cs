@@ -332,17 +332,14 @@ namespace Hobo
             return found;
         }
 
-        /// A Win32 pop-up menu (class #32768) or a XAML flyout menu that is open where `point` isn't.
+        /// The app of an open Win32 pop-up menu (class #32768) when the point is in none of them. Each
+        /// cascaded submenu is a window of its own, so a point in any open menu counts as in the menu.
         object OpenMenu(double x, double y)
         {
-            foreach (var (handle, bounds, cloaked) in Native.TopWindows())
-            {
-                if (cloaked || Native.ClassName(handle) != "#32768") continue;
-                if (bounds.Contains(new System.Windows.Point(x, y))) return null;
-                Native.GetWindowThreadProcessId(handle, out var pid);
-                return "a menu of " + AppName((int)pid);
-            }
-            return null;
+            var menus = Native.TopWindows().Where(w => !w.Item3 && Native.ClassName(w.Item1) == "#32768").ToList();
+            if (menus.Count == 0 || menus.Any(w => w.Item2.Contains(new System.Windows.Point(x, y)))) return null;
+            Native.GetWindowThreadProcessId(menus[0].Item1, out var pid);
+            return "a menu of " + AppName((int)pid);
         }
 
         // MARK: Actions
