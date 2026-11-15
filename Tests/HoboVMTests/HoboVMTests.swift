@@ -745,6 +745,8 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try ui(["key", "cmd+a"]) == 0)
         #expect(try ui(["click", bold.ref, "--app", "TextEdit"]) == 0)
         #expect(find(try snapshot("TextEdit")) { $0.ref == bold.ref }?.checked == true)
+        // A title TextEdit gives the item only as its menu opens: closed, it still reads "Undo".
+        #expect(try output(hobo, ["ui", vm, "menu", "Edit", "--app", "TextEdit"], environment: env).contains(#""Undo Set Font" cmd+z"#))
         #expect(try ui(["scroll", text.ref, "down", "3", "--app", "TextEdit"]) == 0)
         #expect(try ui(["menu", "Format > Font > Show Fonts", "--app", "TextEdit"]) == 0)
         #expect(try output(hobo, ["ui", vm, "menu", "Format", "--app", "TextEdit"], environment: env).contains(#""Make Plain Text" cmd+shift+t"#))

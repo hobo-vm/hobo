@@ -218,6 +218,15 @@ public func searchableElements<E: AccessibleElement>(under app: E) -> [(E, Eleme
     }
 }
 
+/// Whether something in the app's menu bar shows `text` (or with `partial`, has it as part of its
+/// text): what `click --text` says of a title it didn't find, since it doesn't look there.
+public func menuBarShows<E: AccessibleElement>(_ text: String, partial: Bool = false, under app: E) -> Bool {
+    allElements(under: app, locator: Locator()).contains { _, attributes, locator in
+        guard let topLevelRole = locator.steps.first?.role, SnapshotBuilder.skippedAtAppLevel.contains(topLevelRole) else { return false }
+        return partial ? attributes.contains(text) : attributes.shows(text)
+    }
+}
+
 /// The elements under `root` (an app) showing exactly `text`, for `click --text`, or with
 /// `partial` showing it as part of their text (`click --text --contains`). `role` keeps only
 /// those a snapshot shows with that role. Of an element and one inside it that both match

@@ -125,7 +125,25 @@ struct MacBackend: UIBackend {
     /// A menu bar's items, or what a menu bar item or menu item opens: it holds its menu as its only child.
     func menuItems(of element: AXElement) -> [AXElement] {
         if element.attributes().nativeRole == "AXMenuBar" { return element.children() }
-        return element.children().first.map { $0.children() } ?? []
+        guard let menu = element.children().first else { return [] }
+        bringUpToDate(menuOf: element)
+        return menu.children()
+    }
+
+    /// Opens the item's menu and closes it again. An app brings a menu's items up to date only as
+    /// it opens: until then accessibility reads them as they last were, "Undo" for what will show
+    /// as "Undo Typing", and enabled for what will show disabled. The items keep what they're given.
+    private func bringUpToDate(menuOf item: AXElement) {
+        // A submenu opens from its open parent: the menu bar item first, then each item down to this one.
+        let path = item.lineage.filter { ["AXMenuBarItem", "AXMenuItem"].contains($0.attributes().nativeRole) }.reversed()
+        var opened: AXElement?
+        for item in path {
+            // AXPress returns once the menu is open.
+            guard item.perform("AXPress") == .success else { break }
+            opened = opened ?? item
+        }
+        // Cancelling the menu bar item's menu closes the submenus open from it.
+        _ = opened?.children().first?.perform("AXCancel")
     }
 
     func menuItem(_ item: AXElement) -> MenuItemInfo {

@@ -37,7 +37,8 @@ public struct HoboUI: ParsableCommand {
             abstract: "Print an app's windows as a tree of elements with refs.",
             discussion: """
                 Unnamed layout groups are left out, and without --all so are elements outside their scroll area \
-                and children past the first 50 of a container, which are counted instead.
+                and children past the first 50 of a container, which are counted instead. \
+                A macOS app's menu bar isn't shown: menu lists its menus and chooses from them.
                 """
         )
         @OptionGroup public var target: AppOption
@@ -221,7 +222,9 @@ public struct HoboUI: ParsableCommand {
             abstract: "Choose a menu item, or list a menu.",
             discussion: """
                 "File > Save" chooses the item through accessibility, failing if it's disabled. \
-                A menu's title alone ("File") lists its items: enabled, checked and their shortcuts.
+                A menu's title alone ("File") lists its items: enabled, checked and their shortcuts. \
+                Titles are as the open menu shows them ("Undo Typing", not "Undo"): on macOS each menu on the way \
+                is opened and closed again first, which is when an app brings its items up to date.
                 """
         )
         @OptionGroup public var target: AppOption

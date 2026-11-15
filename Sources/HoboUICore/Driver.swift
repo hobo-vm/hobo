@@ -74,6 +74,11 @@ public struct UIDriver<Backend: UIBackend> {
         guard let first = nodes.first, let ref = RefMap.parse(first.ref) else {
             let how = partial ? "shows" : "shows exactly"
             let hint = partial ? "" : ", or --contains to match part of its text"
+            if menuBarShows(text, partial: partial, under: app.root) {
+                throw UIError.failed(
+                    "no \(kind) in \(app.identity.name)'s windows \(how) \(AppSnapshot.quoted(text)), but its menu bar does, which click --text and snapshot leave out: menu \"File\" lists a menu's items and menu \"File > Save\" chooses one"
+                )
+            }
             throw UIError.failed("no \(kind) in \(app.identity.name) \(how) \(AppSnapshot.quoted(text)); take a snapshot to see what's there\(hint)")
         }
         guard nodes.count == 1 else {

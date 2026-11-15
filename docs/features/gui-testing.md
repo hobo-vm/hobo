@@ -100,7 +100,7 @@ $ hobo ui win choose 'C:\Users\hobo\Documents\hello.txt' --app notepad
 | `scroll <ref\|x,y> <direction> [lines]` | Scroll wheel events; `scroll --to e40` brings an element into view |
 | `type <text> [--into ref]` | Types text where the cursor is, whatever the keyboard layout. `--replace` selects all first, so the text replaces what the field had |
 | `key <cmd+k>` | Presses a key with modifiers. Keys are named as typed or by name: `cmd+-` or `cmd+minus`, `cmd++` or `cmd+plus`, `return`, `escape`, `left`, `f5` |
-| `menu "File > Save"` | Chooses a menu item, failing if it's disabled; `menu File` lists the items with their shortcuts |
+| `menu "File > Save"` | Chooses a menu item, failing if it's disabled; `menu File` lists the items with their shortcuts. Titles are as the open menu shows them, such as `Undo Typing`. A macOS app's menu bar is `menu`'s alone: `snapshot` and `click --text` leave it out |
 | `choose <path>` | Chooses a file or folder in the open or save panel an app is showing: goes to the path, then clicks Open or Save. On Linux it uses the file chooser's location bar, including GNOME's save dialog, which runs in Files' process; on Windows the dialog's File name box |
 | `wait` | Waits for `--ref`, `--text` or `--app`, or with `--gone` for it to go. On a timeout it prints the snapshot |
 

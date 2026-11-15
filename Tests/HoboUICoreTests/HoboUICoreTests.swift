@@ -289,6 +289,18 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         elements(showing: text, role: role, under: app).map(\.2.description)
     }
 
+    @Test func saysWhatTheMenuBarShows() {
+        let app = Fake("AXApplication", [
+            Fake("AXMenuBar", [Fake("AXMenuBarItem", "Edit", [Fake("AXMenu", [Fake("AXMenuItem", "Undo Typing")])])]),
+            Fake("AXWindow", "Main", [Fake("AXButton", "Remove")]),
+        ])
+        #expect(menuBarShows("Edit", under: app))
+        #expect(menuBarShows("Undo Typing", under: app))
+        #expect(!menuBarShows("Undo", under: app))
+        #expect(menuBarShows("Undo", partial: true, under: app))
+        #expect(!menuBarShows("Remove", under: app))
+    }
+
     @Test func matchesTheWholeTextOutsideTheMenuBar() {
         #expect(found("Remove") == ["window:Main[0]/button:Remove[0]", "window:Main[0]/menu[0]/menuitem:Remove[0]"])
         #expect(found("Remov").isEmpty)
