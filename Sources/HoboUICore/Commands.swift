@@ -80,9 +80,9 @@ public struct HoboUI: ParsableCommand {
                 It first waits, for up to 2 s, for windows over it to finish animating in or out: a prompt or sheet \
                 can be there to accessibility before it's there to click, and gone from it before it stops taking clicks. \
                 --text clicks the one element showing exactly that text, e.g. click --text Remove --role menuitem, \
-                and fails listing them if several do; --in <ref> looks only inside that element, such as the list \
-                when an inspector shows the same name. With --contains, the one showing it as part of its text, \
-                for a label that carries more, such as a photo cell's capture time. --press performs the element's default action instead (AXPress, AT-SPI's first action, UI Automation's Invoke), with no mouse.
+                and fails listing them if several do; with --contains, the one showing it as part of its text, \
+                for a label that carries more, such as a photo cell's capture time. --in <ref> looks only inside that \
+                element, such as the list when an inspector shows the same name. --press performs the element's default action instead (AXPress, AT-SPI's first action, UI Automation's Invoke), with no mouse.
                 """
         )
         @OptionGroup public var target: AppOption
@@ -187,8 +187,9 @@ public struct HoboUI: ParsableCommand {
         let takingARef = [Click._commandName, Scroll._commandName, Drag._commandName]
         guard let command = arguments.first(where: names.contains), takingARef.contains(command),
               let index = arguments.firstIndex(where: { $0 == "--ref" || $0.hasPrefix("--ref=") }) else { return nil }
-        let attached = arguments[index].split(separator: "=", maxSplits: 1).dropFirst().first.map(String.init)
-        let ref = attached ?? arguments.dropFirst(index + 1).first.flatMap { RefMap.parse($0) != nil ? $0 : nil } ?? "e12"
+        let given = arguments[index].split(separator: "=", maxSplits: 1).dropFirst().first.map(String.init)
+            ?? arguments.dropFirst(index + 1).first
+        let ref = given.flatMap { RefMap.parse($0) != nil ? $0 : nil } ?? "e12"
         return "a ref is an argument, not an option: \(command) \(ref)"
     }
 

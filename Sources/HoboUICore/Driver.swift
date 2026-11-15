@@ -91,8 +91,8 @@ public struct UIDriver<Backend: UIBackend> {
             let lines = nodes.prefix(listed).map { "\n  " + AppSnapshot.line($0) }.joined()
             let rest = nodes.count > listed ? "\n  … \(nodes.count - listed) more" : ""
             let narrow = [role == nil ? "--role" : nil, scope == nil ? "--in <ref> (inside that element)" : nil].compactMap { $0 }
-            let how = "click one by its ref, as in click \(first.ref)" + (narrow.isEmpty ? "" : ", or narrow with \(narrow.joined(separator: " or "))")
-            throw UIError.failed("\(nodes.count) \(kind)s in \(place) show \(AppSnapshot.quoted(text)); \(how):\(lines)\(rest)")
+            let advice = "click one by its ref, as in click \(first.ref)" + (narrow.isEmpty ? "" : ", or narrow with \(narrow.joined(separator: " or "))")
+            throw UIError.failed("\(nodes.count) \(kind)s in \(place) show \(AppSnapshot.quoted(text)); \(advice):\(lines)\(rest)")
         }
         return ref
     }
