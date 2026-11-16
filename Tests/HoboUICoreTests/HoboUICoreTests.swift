@@ -762,7 +762,7 @@ final class TreeGuest: UITransport {
 }
 
 @Suite struct RemoteBackendTests {
-    func driver(_ guest: FakeGuest) throws -> UIDriver<RemoteBackend> {
+    func driver(_ guest: some UITransport) throws -> UIDriver<RemoteBackend> {
         let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-ui-tests-\(UUID().uuidString)")
         return UIDriver(backend: try RemoteBackend(transport: guest), store: RefStore(directory: directory))
     }
@@ -831,8 +831,7 @@ final class TreeGuest: UITransport {
                 ]],
             ],
         ])
-        let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-ui-tests-\(UUID().uuidString)")
-        let driver = UIDriver(backend: try RemoteBackend(transport: guest), store: RefStore(directory: directory))
+        let driver = try driver(guest)
         let outcome = try driver.run(try HoboUI.parseAsRoot(["click", "--text", "Named", "--role", "menuitem"]))
         #expect(outcome.text.hasPrefix(#"clicked menuitem "Named""#))
         let click = try #require(guest.calls.first { $0["op"] as? String == "click" })
@@ -877,8 +876,7 @@ final class TreeGuest: UITransport {
             }
         }
         let guest = TwoSaves()
-        let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-ui-tests-\(UUID().uuidString)")
-        let driver = UIDriver(backend: try RemoteBackend(transport: guest), store: RefStore(directory: directory))
+        let driver = try driver(guest)
         // e1 window Draft, e2 its Save, e3 window Final, e4 its Save.
         _ = try driver.run(try HoboUI.parseAsRoot(["snapshot"]))
         #expect {
