@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds whichever kept VM the guest tests clone is missing (Tests/HoboVMTests/KeptVM.swift), from
+# Builds the kept VMs the guest tests clone (Tests/HoboVMTests/KeptVM.swift), any that are missing, from
 # Tests/HoboVMTests/recipes: $HOBO_MACOS_VM, $HOBO_LINUX_VM and $HOBO_WINDOWS_VM, each skipped when
 # set empty. Windows needs $HOBO_WINDOWS_ISO, a Windows on Arm installer, which hobo can't download.
 set -euo pipefail

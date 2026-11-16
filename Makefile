@@ -71,7 +71,7 @@ integration-test: sign ## Tests that drive the signed binary
 	@mkdir -p $(dir $(INTEGRATION_LOCK))
 	$(KEPT_VMS) HOBO_INTEGRATION=1 HOBO_BIN=$(abspath $(BIN)) lockf $(INTEGRATION_LOCK) swift test --filter HoboVMTests
 
-test-vms: sign ## Build whichever kept VM the guest tests clone is missing (Windows needs HOBO_WINDOWS_ISO)
+test-vms: sign ## Build the kept VMs the guest tests clone, any that are missing (Windows needs HOBO_WINDOWS_ISO)
 	$(KEPT_VMS) HOBO_BIN=$(abspath $(BIN)) scripts/test-vms.sh
 
 clean: ## Remove build products

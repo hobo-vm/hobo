@@ -25,9 +25,9 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
     }
 
     /// Creates a macOS VM from the latest IPSW. The recipe's step asserts the guest conventions and a
-    /// GUI session from inside the guest, so a VM that builds has them. It enables `[gui_testing]`,
-    /// whose grants create checks and the test checks again on a later boot, where captures raise no
-    /// approval dialog. Everything that doesn't depend on the build runs on a clone of the kept VM
+    /// GUI session from inside the guest, so a VM that builds has them. It enables `[gui_testing]`:
+    /// create checks its grants, and the test checks them again on a later boot, and that a capture
+    /// then raises no approval dialog. Everything that doesn't depend on the build runs on a clone of the kept VM
     /// (`macOSGuest`). VMs go to a temp `HOBO_VMS`, whose store hash keeps their launchd jobs apart
     /// from real ones; the IPSW goes through the real image index, so it downloads only once.
     @Test(.timeLimit(.minutes(120)))
