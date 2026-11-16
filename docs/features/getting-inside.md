@@ -55,7 +55,8 @@ hobo cp dev:/var/log/system.log .      # guest to host
 hobo cp ./build dev:/Users/hobo/       # a directory, with everything in it
 ```
 
-One side names the guest as `<vm>:<path>`, and paths mean what they do to `scp`: a source goes
+One side names the guest as `<vm>:<path>`, and a guest path that is relative, or starts `~/`, is
+from the `hobo` user's home, as it is for `hobo rm`. Paths are placed as `scp` places them: a source goes
 inside a destination directory that exists, under its own name, and otherwise becomes the
 destination itself.
 

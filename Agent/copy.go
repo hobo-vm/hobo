@@ -13,22 +13,42 @@ import (
 )
 
 // `hobo cp` inside the guest, as scp would do it: these run as the copy's user (the agent starts
-// them with that user's credentials), so files are read and written with that user's rights, and
-// relative guest paths are from that user's home.
+// them with that user's credentials, from their home), so files are read and written with that
+// user's rights, and guest paths are taken as guestPath takes them.
+
+// guestPath is where a guest path the user typed (the path of dev:<path>) is, for every command
+// that takes one, so a guest operand names the same file whichever command it is given to. A
+// leading ~ is home, since the shell leaves the ~ of dev:~/x alone and a literal ~ directory is
+// never what was meant. A relative path is from home, and one rooted without a drive, as /tmp/x
+// is on Windows, is from the root of home's drive, as the file APIs take it.
+func guestPath(home, path string) string {
+	switch {
+	case path == "~" || strings.HasPrefix(path, "~/") || strings.HasPrefix(path, `~\`):
+		path = filepath.Join(home, path[1:])
+	case filepath.IsAbs(path):
+	case filepath.VolumeName(path) == "" && (strings.HasPrefix(path, "/") || strings.HasPrefix(path, `\`)):
+		path = filepath.VolumeName(home) + path
+	default:
+		path = filepath.Join(home, path)
+	}
+	return filepath.Clean(path)
+}
 
 // putTar extracts a tar stream from stdin. Its top-level entries are the sources' base names.
 // Into a directory that exists they go in under those names; otherwise a single source becomes
 // destination itself, as `scp a b` makes b. Without replace a directory that is already there is
 // merged into, as scp does; with it, whatever a source would land on is removed first.
-func putTar(input io.Reader, destination string, single, replace bool) error {
+// destination is the path as typed, which guestPath resolves against home.
+func putTar(input io.Reader, home, typed string, single, replace bool) error {
+	destination := guestPath(home, typed)
 	info, err := os.Stat(destination)
 	intoDirectory := err == nil && info.IsDir()
 	if !intoDirectory {
 		switch {
-		case strings.HasSuffix(destination, "/"):
-			return fmt.Errorf("%s: no such directory", destination)
+		case strings.HasSuffix(typed, "/"):
+			return fmt.Errorf("%s: no such directory", typed)
 		case !single:
-			return fmt.Errorf("%s: not a directory", destination)
+			return fmt.Errorf("%s: not a directory", typed)
 		}
 	}
 	// Removed as each source's first entry arrives, so a copy that brings nothing removes nothing.
@@ -110,12 +130,13 @@ func extract(header *tar.Header, reader io.Reader, target, destination string, i
 }
 
 // getTar writes a tar stream of sources to output, each under its base name. Like scp, a missing
-// source is reported and skipped, and fails the copy at the end.
-func getTar(output, messages io.Writer, sources []string) error {
+// source is reported and skipped, and fails the copy at the end. Each source is the path as typed,
+// which guestPath resolves against home.
+func getTar(output, messages io.Writer, home string, sources []string) error {
 	writer := tar.NewWriter(output)
 	failed := false
 	for _, source := range sources {
-		if err := addSource(writer, source); err != nil {
+		if err := addSource(writer, guestPath(home, source), source); err != nil {
 			fmt.Fprintln(messages, err)
 			failed = true
 		}
@@ -132,11 +153,12 @@ func getTar(output, messages io.Writer, sources []string) error {
 // errReported fails a copy or removal whose problems have already been reported, one per path.
 var errReported = errors.New("")
 
-func addSource(writer *tar.Writer, source string) error {
+// addSource adds the file at source, which the user typed as typed.
+func addSource(writer *tar.Writer, source, typed string) error {
 	// A source that is a symlink is copied as what it points to, as scp does.
 	info, err := os.Stat(source)
 	if err != nil {
-		return fmt.Errorf("%s: no such file or directory", source)
+		return fmt.Errorf("%s: no such file or directory", typed)
 	}
 	// The name of what source resolves to, so `.` and `..` still give one top-level entry.
 	absolute, err := filepath.Abs(source)
@@ -149,7 +171,7 @@ func addSource(writer *tar.Writer, source string) error {
 	}
 	// A filesystem root has no name to copy it under, and holds /dev and /proc, whose files never end.
 	if filepath.Dir(absolute) == absolute {
-		return fmt.Errorf("%s: is the filesystem root (copy a directory in it)", source)
+		return fmt.Errorf("%s: is the filesystem root (copy a directory in it)", typed)
 	}
 	return filepath.Walk(source, func(file string, info fs.FileInfo, err error) error {
 		if err != nil {

@@ -9,8 +9,8 @@ import (
 )
 
 // `hobo rm` inside the guest: runs as the request's user (the agent starts it with that user's
-// credentials, from their home), so paths are removed with that user's rights and relative ones
-// are from that home.
+// credentials, from their home), so paths are removed with that user's rights and are taken as
+// guestPath takes them.
 
 // removePaths removes each path, a directory with everything in it, as `rm -rf` would, except
 // that a path that isn't there fails it unless force. It refuses the filesystem root, the user's
@@ -34,21 +34,7 @@ func removePath(home, path string, force bool) error {
 	if path == "" {
 		return fmt.Errorf("refusing an empty path")
 	}
-	absolute := path
-	switch {
-	case absolute == "~" || strings.HasPrefix(absolute, "~/") || strings.HasPrefix(absolute, `~\`):
-		// The shell leaves the ~ of dev:~/x alone, and a literal ~ directory is never what was
-		// meant: without this, rm -f would quietly remove nothing.
-		absolute = filepath.Join(home, absolute[1:])
-	case filepath.IsAbs(absolute):
-	case filepath.VolumeName(absolute) == "" && (strings.HasPrefix(absolute, "/") || strings.HasPrefix(absolute, `\`)):
-		// Rooted without a drive, as /tmp/x is on Windows: from the root of the home's drive, as
-		// the file APIs (and `hobo cp`) take it, not from the home.
-		absolute = filepath.VolumeName(home) + absolute
-	default:
-		absolute = filepath.Join(home, absolute)
-	}
-	absolute = filepath.Clean(absolute)
+	absolute := guestPath(home, path)
 	if holds(absolute, home) {
 		what := "a directory that holds the home directory"
 		switch {

@@ -29,22 +29,17 @@ func main() {
 		if len(os.Args) != 5 {
 			os.Exit(2)
 		}
-		finish(putTar(os.Stdin, os.Args[2], os.Args[3] == "1", os.Args[4] == "1"))
+		finish(putTar(os.Stdin, workingHome("put"), os.Args[2], os.Args[3] == "1", os.Args[4] == "1"))
 	case "get":
 		if len(os.Args) < 3 {
 			os.Exit(2)
 		}
-		finish(getTar(os.Stdout, os.Stderr, os.Args[2:]))
+		finish(getTar(os.Stdout, os.Stderr, workingHome("get"), os.Args[2:]))
 	case "rm":
 		if len(os.Args) < 4 {
 			os.Exit(2)
 		}
-		home, err := os.Getwd()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "hobo-agent rm: %v\n", err)
-			os.Exit(1)
-		}
-		finish(removePaths(os.Stderr, home, os.Args[3:], os.Args[2] == "1"))
+		finish(removePaths(os.Stderr, workingHome("rm"), os.Args[3:], os.Args[2] == "1"))
 	case "clipboard":
 		board, err := newGuestClipboard()
 		if err == nil {
@@ -80,4 +75,15 @@ func finish(err error) {
 		fmt.Fprintln(os.Stderr, err)
 	}
 	os.Exit(1)
+}
+
+// workingHome is the home of the user a put, get or rm runs as: serve starts them from it, and
+// guest paths are taken against it (guestPath).
+func workingHome(op string) string {
+	home, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hobo-agent %s: %v\n", op, err)
+		os.Exit(1)
+	}
+	return home
 }

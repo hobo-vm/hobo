@@ -85,8 +85,8 @@ func copyTree(t *testing.T, sources []string, destination string) (string, error
 func copyTreeReplacing(t *testing.T, sources []string, destination string, replace bool) (string, error) {
 	t.Helper()
 	var archive, messages bytes.Buffer
-	getErr := getTar(&archive, &messages, sources)
-	if err := putTar(&archive, destination, len(sources) == 1, replace); err != nil {
+	getErr := getTar(&archive, &messages, "/", sources)
+	if err := putTar(&archive, "/", destination, len(sources) == 1, replace); err != nil {
 		return messages.String(), err
 	}
 	return messages.String(), getErr
@@ -177,7 +177,7 @@ func TestCopyReplaceKeepsTheDestinationWhenNothingArrives(t *testing.T) {
 	if err := tar.NewWriter(&archive).Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := putTar(&archive, filepath.Join(dir, "kept"), true, true); err != nil {
+	if err := putTar(&archive, dir, "kept", true, true); err != nil {
 		t.Fatal(err)
 	}
 	if read(t, filepath.Join(dir, "kept")) != "kept" {
@@ -189,8 +189,11 @@ func TestCopyDotIsOneDirectory(t *testing.T) {
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, "home/a.txt"), "a")
 	write(t, filepath.Join(dir, "home/b.txt"), "b")
-	t.Chdir(filepath.Join(dir, "home"))
-	if _, err := copyTree(t, []string{"."}, filepath.Join(dir, "copy")); err != nil {
+	var archive, messages bytes.Buffer
+	if err := getTar(&archive, &messages, filepath.Join(dir, "home"), []string{"."}); err != nil {
+		t.Fatalf("%v: %s", err, messages.String())
+	}
+	if err := putTar(&archive, dir, "copy", true, false); err != nil {
 		t.Fatal(err)
 	}
 	if read(t, filepath.Join(dir, "copy/a.txt")) != "a" || read(t, filepath.Join(dir, "copy/b.txt")) != "b" {
@@ -218,6 +221,35 @@ func TestCopyFailures(t *testing.T) {
 	messages, err = copyTree(t, []string{"/", filepath.Join(dir, "file")}, filepath.Join(dir, "out"))
 	if err != errReported || !strings.Contains(messages, "/: is the filesystem root") || read(t, filepath.Join(dir, "out/file")) != "f" {
 		t.Fatalf("root source: %q %v", messages, err)
+	}
+}
+
+func TestCopyTakesTildeAsTheHomeBothWays(t *testing.T) {
+	home := t.TempDir()
+	write(t, filepath.Join(home, "Apps/MyApp.app/Contents/app"), "a")
+	if err := os.Mkdir(filepath.Join(home, "Out"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Out of the guest: ~/Apps/MyApp.app is home's, as `hobo rm` takes it.
+	var archive, messages bytes.Buffer
+	if err := getTar(&archive, &messages, home, []string{"~/Apps/MyApp.app"}); err != nil {
+		t.Fatalf("%v: %s", err, messages.String())
+	}
+	// Into the guest: ~/Out/ is home's Out, not a literal ~ directory.
+	if err := putTar(&archive, home, "~/Out/", true, false); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, filepath.Join(home, "Out/MyApp.app/Contents/app")) != "a" {
+		t.Fatal("~/ was not taken as the home")
+	}
+	if _, err := os.Lstat(filepath.Join(home, "~")); !os.IsNotExist(err) {
+		t.Fatal("a literal ~ directory was made")
+	}
+	// A missing ~ path is reported as typed.
+	archive.Reset()
+	messages.Reset()
+	if err := getTar(&archive, &messages, home, []string{"~/missing"}); err != errReported || !strings.Contains(messages.String(), "~/missing: no such file") {
+		t.Fatalf("missing source: %q %v", messages.String(), err)
 	}
 }
 
