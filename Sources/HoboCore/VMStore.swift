@@ -165,8 +165,13 @@ public struct VMStore: Sendable {
         if case .building = vm.status { throw VMStoreError.busy(vm.name, reason: "being built") }
         // The job, not the status: a running VM whose config.json has gone bad still runs.
         if !allowRunning, vm.job?.pid != nil {
-            // Beside another sentence the stop is one too, so it says what it does to any VM.
-            let hint = runningAlternative.map { "\($0); \(vm.stopHint(kept: "shuts it down"))" } ?? vm.stopHint()
+            // The alternative is a sentence, and a bare command after it would read as a fragment,
+            // so there the stop says what it does to a VM it leaves in place too.
+            let hint = if let runningAlternative {
+                "\(runningAlternative); " + vm.stopHint(kept: "shuts it down")
+            } else {
+                vm.stopHint()
+            }
             throw VMStoreError.busy(vm.name, reason: "running (\(hint))")
         }
         if !allowSuspended, case .suspended = vm.status {
