@@ -86,20 +86,16 @@ import Testing
             jobs.value.withLock { $0 += "\(100 + index)\t0\t\(store.job(for: name).label)\n" }
         }
         let lifecycle = VMLifecycle(store: store) { _ in }
-        let twoConfig = store.bundle(for: "two").appending(path: VMStore.configFile)
-        var two = try VMConfig.load(from: twoConfig)
-        two.os = .linux
-        try two.write(to: twoConfig)
-        #expect(throws: Never.self) { try lifecycle.checkMacSlot(for: config) }
-
-        let linux = two
-        two.os = .macOS
-        try two.write(to: twoConfig)
         await #expect(throws: LifecycleError.macVMLimit(running: ["one", "two"])) {
             _ = try await lifecycle.startEphemeral(from: "dev")
         }
         #expect(store.list().map(\.name) == ["dev", "one", "two"])
-        #expect(throws: Never.self) { try lifecycle.checkMacSlot(for: linux) }
-    }
 
+        var linux = config
+        linux.os = .linux
+        #expect(throws: Never.self) { try lifecycle.checkMacSlot(for: linux) }
+
+        try linux.write(to: store.bundle(for: "two").appending(path: VMStore.configFile))
+        #expect(throws: Never.self) { try lifecycle.checkMacSlot(for: config) }
+    }
 }

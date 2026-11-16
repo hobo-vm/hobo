@@ -111,7 +111,7 @@ public struct VMLifecycle: Sendable {
     public func checkMacSlot(for config: VMConfig) throws {
         guard config.os == .macOS else { return }
         let running = store.list().filter {
-            if case .running(let config, _) = $0.status { config.os == .macOS } else { false }
+            if case .running(let other, _) = $0.status { other.os == .macOS } else { false }
         }
         if running.count >= Self.macVMLimit { throw LifecycleError.macVMLimit(running: running.map(\.name)) }
     }
