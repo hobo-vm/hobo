@@ -35,7 +35,13 @@ func removePath(home, path string, force bool) error {
 		return fmt.Errorf("refusing an empty path")
 	}
 	absolute := path
-	if !filepath.IsAbs(absolute) {
+	switch {
+	case filepath.IsAbs(absolute):
+	case filepath.VolumeName(absolute) == "" && (strings.HasPrefix(absolute, "/") || strings.HasPrefix(absolute, `\`)):
+		// Rooted without a drive, as /tmp/x is on Windows: from the root of the home's drive, as
+		// the file APIs (and `hobo cp`) take it, not from the home.
+		absolute = filepath.VolumeName(home) + absolute
+	default:
 		absolute = filepath.Join(home, absolute)
 	}
 	absolute = filepath.Clean(absolute)
