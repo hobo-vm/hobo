@@ -26,7 +26,7 @@ enum GuestUI {
         do {
             command = try HoboUI.parseAsRoot(arguments)
         } catch {
-            onOutput(.stderr, Data((HoboUI.fullMessage(for: error) + "\n").utf8))
+            onOutput(.stderr, Data((HoboUI.usageError(for: error) + "\n").utf8))
             return 64
         }
         if platform.goos == "windows", (try? Payloads.uiBackend("windows")) == nil {

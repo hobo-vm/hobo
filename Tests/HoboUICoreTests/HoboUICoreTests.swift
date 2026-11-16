@@ -457,11 +457,14 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(throws: (any Error).self) { try HoboUI.parseAsRoot(arguments) }
     }
 
-    // `click "$ref"` with nothing found says so, rather than ending on an empty "not ".
+    // `click "$ref"` with nothing found says so, rather than ending on an empty "not ", and
+    // says only that: the usage of a well-formed command would bury it.
     @Test func saysARefIsEmpty() {
         for arguments in [["click", ""], ["drag", " ", "1,2"], ["scroll", "", "down"]] {
             let error = #expect(throws: (any Error).self) { try HoboUI.parseAsRoot(arguments) }
-            #expect(error.map(HoboUI.message(for:))?.contains("the ref or point is empty") == true, "\(arguments)")
+            let printed = error.map(HoboUI.usageError(for:))
+            #expect(printed?.contains("the ref or point is empty") == true, "\(arguments)")
+            #expect(printed?.contains("Usage:") == false, "\(printed ?? "")")
         }
     }
 

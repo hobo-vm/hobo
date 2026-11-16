@@ -322,12 +322,25 @@ public enum UITarget: Equatable, Sendable {
     }
 }
 
+let emptyTargetMessage = "the ref or point is empty: if it came from a snapshot, the search for it found nothing"
+
+extension HoboUI {
+    /// What to print for arguments that don't parse: the error and the failing command's usage.
+    /// An empty ref gets the error alone: the command was well formed and the script's search
+    /// came up empty, so the usage would only bury that.
+    public static func usageError(for error: any Error) -> String {
+        let full = fullMessage(for: error)
+        guard message(for: error) == emptyTargetMessage, let usage = full.range(of: "\nUsage:") else { return full }
+        return String(full[..<usage.lowerBound])
+    }
+}
+
 /// `840,412` as a point; nil for a ref; throws for anything else.
 func parsePoint(_ text: String) throws(ValidationError) -> PixelPoint? {
     if RefMap.parse(text) != nil { return nil }
     // `click "$ref"` with the variable unset: a script's search of a snapshot found nothing.
     if text.trimmingCharacters(in: .whitespaces).isEmpty {
-        throw ValidationError("the ref or point is empty: if it came from a snapshot, the search for it found nothing")
+        throw ValidationError(emptyTargetMessage)
     }
     let parts = text.split(separator: ",", omittingEmptySubsequences: false)
     guard parts.count == 2, let x = Int(parts[0].trimmingPrefix(" ")), let y = Int(parts[1].trimmingPrefix(" ")) else {
