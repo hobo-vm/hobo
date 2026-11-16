@@ -42,16 +42,22 @@
 14. **`drag <from> <to> [--mods]`** with real CGEvents: down, intermediate drags over ~300 ms, a short
     hover on the target, up. Both ends hit-tested.
 15. **`wait`** polls every 100 ms, `--timeout` default 10 s; `--ref`, `--text` (case-sensitive
-    substring of any title, value or description), `--app`; `--gone` inverts. Success prints the
+    substring of any title, value or description, with `--role` only on elements of that role), `--app`; `--gone` inverts. Success prints the
     match; a timeout exits non-zero and prints the current snapshot.
 16. **`menu "A > B"`** presses through AXPress; fails on a disabled item; reports checked state from
     before the press. `menu "A"` lists items with enabled, checked and shortcut. Titles match
     exactly, with `…` equal to `...`. The app is brought forward (in the background it validates Undo as disabled),
     then each menu on the way is opened (AXPress) and cancelled before its items are read: an app brings a menu's titles and enabled states up to date only as it opens,
     so a closed Edit menu reads "Undo" where the open one shows "Undo Typing".
+    AXPress returns before the menu is open (the app opens it on its next turn of the run loop), so each
+    press waits for the menu's window to be on screen, and the cancel for them all to be gone. A cancel that
+    overtakes a submenu's opening leaves the app tracking a menu that never shows and that nothing ends:
+    clicks and keys go nowhere until the app is killed (12 of 20 `menu "Format > Font > Bold"` in TextEdit).
 17. **Snapshot scope.** Windows, sheets and popovers, not the menu bar. Elements wholly outside their
     scroll area are summarised (`… N more items offscreen`); containers over 50 children show 50
-    then `… N more`. `--all` lifts both, `--root e12` snapshots a subtree, `--depth N` caps depth.
+    then `… N more`. A menu, sheet or popover is a window of its own, so the scroll area around the
+    element it hangs from clips neither it nor a click's "scrolled out of view" test: a context menu
+    opened on a list's row has its submenu beside the list. `--all` lifts both, `--root e12` snapshots a subtree, `--depth N` caps depth.
 18. **MCP.** One typed tool per command: `ui_snapshot`, `ui_click`, `ui_drag`, `ui_scroll`,
     `ui_type`, `ui_key`, `ui_menu`, `ui_wait`, with the CLI's parameters and output.
 19. **Coordinates** are screenshot pixels everywhere (frames, points), converted by the display's

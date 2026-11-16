@@ -387,12 +387,12 @@ public struct UIDriver<Backend: UIBackend> {
         return frame
     }
 
-    /// The frames of the scroll areas an element is in, outermost first.
+    /// The frames of the scroll areas an element is in, outermost first: those inside its window,
+    /// sheet, popover or menu, since one around that doesn't clip it (`UIRole.containers`).
     func scrollAreas(around element: Element) -> [CGRect] {
-        lineage(element).dropFirst().compactMap {
-            let a = attributes($0)
-            return a.role == "scrollarea" ? a.frame : nil
-        }.reversed()
+        let selfAndAncestors = lineage(element).map { attributes($0) }
+        let insideContainer = selfAndAncestors.prefix { !UIRole.containers.contains($0.role) }
+        return insideContainer.dropFirst().compactMap { $0.role == "scrollarea" ? $0.frame : nil }.reversed()
     }
 
     // MARK: Keyboard
@@ -669,7 +669,7 @@ public struct UIDriver<Backend: UIBackend> {
 
     func wait(_ c: HoboUI.Wait) throws -> Outcome {
         let deadline = Date().addingTimeInterval(c.timeout)
-        let what = c.ref.map { "element \($0)" } ?? c.text.map { "text \"\($0)\"" } ?? "app \(c.target.app ?? "")"
+        let what = c.ref.map { "element \($0)" } ?? c.text.map { "\(c.role?.lowercased() ?? "text") \"\($0)\"" } ?? "app \(c.target.app ?? "")"
         // What kept a --gone wait waiting, for its timeout to name: a view that's hidden can still
         // be an accessibility element, and only its line in the snapshot would otherwise say so.
         var stillThere: SnapshotNode?
@@ -706,7 +706,7 @@ public struct UIDriver<Backend: UIBackend> {
             return Found(present: true, node: describe(element, ref: ref))
         }
         if let text = c.text {
-            for (_, attributes, locator) in searchableElements(under: app.root) where attributes.contains(text) {
+            for (_, attributes, locator) in searchableElements(under: app.root) where attributes.contains(text) && attributes.hasShownRole(c.role) {
                 let ref = try store.update(app.identity.storeKey) { $0.ref(for: locator) }
                 return Found(present: true, node: SnapshotNode(ref: ref, attributes: attributes, scale: scale))
             }

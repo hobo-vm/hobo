@@ -156,6 +156,8 @@ public struct SnapshotBuilder {
             let a = childAttributes[index]
             if isApp && Self.skippedAtAppLevel.contains(a.role) { continue }
             // Outside its scroll area, or with no size (a scroll bar's hidden arrows): not on screen.
+            // A container isn't its parent's scroll area's to clip (`UIRole.containers`).
+            let clip = UIRole.containers.contains(a.role) ? nil : clip
             if !options.all, let frame = a.frame, frame.isEmpty || clip.map({ !frame.intersects($0) }) == true {
                 level.offscreen += 1
                 continue
@@ -239,8 +241,7 @@ public func elements<E: AccessibleElement>(
 ) -> [(E, ElementAttributes, Locator)] {
     var found: [(E, ElementAttributes, Locator)] = []
     for (element, attributes, locator) in searchableElements(under: root) {
-        let hasRole = role.map { SnapshotNode.shownRole(attributes).caseInsensitiveCompare($0) == .orderedSame } ?? true
-        guard hasRole, partial ? attributes.contains(text) : attributes.shows(text), include(element) else { continue }
+        guard attributes.hasShownRole(role), partial ? attributes.contains(text) : attributes.shows(text), include(element) else { continue }
         // Depth first, so an element's ancestors come before it.
         let isInsideAMatch = found.contains { locator.steps.starts(with: $0.2.steps) }
         let isAMatchAgain = attributes.frame.map { frame in
@@ -259,6 +260,11 @@ extension ElementAttributes {
     /// title, shown value and label, with `...` as `…` so that either spelling finds the other.
     var shownTexts: [String] {
         [title, shownValue, label].compactMap { $0.map(MenuPath.normalized) }
+    }
+
+    /// Whether a snapshot shows the element with `role` (`--role`), whatever its case; any element when nil.
+    public func hasShownRole(_ role: String?) -> Bool {
+        role.map { SnapshotNode.shownRole(self).caseInsensitiveCompare($0) == .orderedSame } ?? true
     }
 
     /// Whether `text` is the whole of something the element shows.

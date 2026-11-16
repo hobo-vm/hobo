@@ -89,11 +89,8 @@ struct MacBackend: UIBackend {
     /// isn't in one: a click outside every open menu goes to dismissing them, not to what's under
     /// the point. A click in a submenu is in a menu, though its parent menu is elsewhere.
     func openMenu(notAt point: CGPoint) -> String? {
-        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
         // A closing menu stays listed while it fades out, at alpha 0.
-        let menus = windows.filter {
-            $0[kCGWindowLayer as String] as? Int == Int(CGWindowLevelForKey(.popUpMenuWindow)) && ($0[kCGWindowAlpha as String] as? Double ?? 1) > 0
-        }
+        let menus = menuWindows().filter { ($0[kCGWindowAlpha as String] as? Double ?? 1) > 0 }
         guard let menu = menus.first else { return nil }
         // A menu window's bounds take in its shadow, so ask what's at the point; only if nothing
         // answers, fall back on the bounds.
@@ -105,6 +102,22 @@ struct MacBackend: UIBackend {
             return nil
         }
         return "a menu\((menu[kCGWindowOwnerName as String] as? String).map { " of \($0)" } ?? "")"
+    }
+
+    /// The windows of the menus on screen: menu bar menus, their submenus, pop-up and context menus.
+    private func menuWindows() -> [[String: Any]] {
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        return windows.filter { $0[kCGWindowLayer as String] as? Int == Int(CGWindowLevelForKey(.popUpMenuWindow)) }
+    }
+
+    /// Waits, for up to a second, until the app has as many menus on screen as `enough` wants.
+    private func waitForMenus(of pid: pid_t, _ enough: (Int) -> Bool) {
+        let deadline = Date().addingTimeInterval(1)
+        while Date() < deadline {
+            let count = menuWindows().count { $0[kCGWindowOwnerPID as String] as? pid_t == pid }
+            if enough(count) { return }
+            Input.pause(0.01)
+        }
     }
 
     // MARK: Actions
@@ -145,13 +158,19 @@ struct MacBackend: UIBackend {
         // A submenu opens from its open parent: the menu bar item first, then each item down to this one.
         let path = item.lineage.filter { ["AXMenuBarItem", "AXMenuItem"].contains($0.attributes().nativeRole) }.reversed()
         var opened: AXElement?
-        for item in path {
-            // AXPress returns once the menu is open.
+        for (depth, item) in path.enumerated() {
             guard item.perform("AXPress") == .success else { break }
             opened = opened ?? item
+            // AXPress returns with the menu still to open, which the app does on its next turn of
+            // the run loop. A cancel that gets in first ends the menus above it, and the app then
+            // opens this one with nothing left to close it: it sits tracking a menu nobody can
+            // see, taking every later click and key (in 12 of 20 `menu "Format > Font > Bold"`).
+            waitForMenus(of: item.pid) { $0 > depth }
         }
         // Cancelling the menu bar item's menu closes the submenus open from it.
         _ = opened?.children().first?.perform("AXCancel")
+        // Closed before anything else is pressed: the next menu's opening, or the item chosen.
+        if opened != nil { waitForMenus(of: item.pid) { $0 == 0 } }
     }
 
     func menuItem(_ item: AXElement) -> MenuItemInfo {
