@@ -187,9 +187,10 @@ public struct VMStore: Sendable {
         if let existing = existingName(matching: new), existing != vm.name { throw VMStoreError.exists(existing) }
         // Only the process stands in the way, so a suspend, which keeps the guest's memory, is enough.
         // A stop is enough too, except that it deletes an ephemeral VM, the one being renamed.
-        var stopping = "shuts it down"
-        if case .running(let config, _) = vm.status, config.ephemeral {
-            stopping = "deletes it, since it is ephemeral, unless hobo set \(vm.name) --keep comes first"
+        let stopping = if case .running(let config, _) = vm.status, config.ephemeral {
+            "deletes it, since it is ephemeral, unless hobo set \(vm.name) --keep comes first"
+        } else {
+            "shuts it down"
         }
         try checkStopped(
             vm, allowSuspended: true,
