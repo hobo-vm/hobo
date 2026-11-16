@@ -38,7 +38,7 @@ func guestPath(home, path string) string {
 // Into a directory that exists they go in under those names; otherwise a single source becomes
 // destination itself, as `scp a b` makes b. Without replace a directory that is already there is
 // merged into, as scp does; with it, whatever a source would land on is removed first.
-// destination is the path as typed, which guestPath resolves against home.
+// typed is the destination as the user typed it, which guestPath resolves against home.
 func putTar(input io.Reader, home, typed string, single, replace bool) error {
 	destination := guestPath(home, typed)
 	info, err := os.Stat(destination)
@@ -153,7 +153,7 @@ func getTar(output, messages io.Writer, home string, sources []string) error {
 // errReported fails a copy or removal whose problems have already been reported, one per path.
 var errReported = errors.New("")
 
-// addSource adds the file at source, which the user typed as typed.
+// addSource adds the file at source, reporting a problem under typed, the path as the user typed it.
 func addSource(writer *tar.Writer, source, typed string) error {
 	// A source that is a symlink is copied as what it points to, as scp does.
 	info, err := os.Stat(source)
