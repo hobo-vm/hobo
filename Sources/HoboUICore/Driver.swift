@@ -670,10 +670,14 @@ public struct UIDriver<Backend: UIBackend> {
     func wait(_ c: HoboUI.Wait) throws -> Outcome {
         let deadline = Date().addingTimeInterval(c.timeout)
         let what = c.ref.map { "element \($0)" } ?? c.text.map { "text \"\($0)\"" } ?? "app \(c.target.app ?? "")"
+        // What kept a --gone wait waiting, for its timeout to name: a view that's hidden can still
+        // be an accessibility element, and only its line in the snapshot would otherwise say so.
+        var stillThere: SnapshotNode?
         while true {
             // Looked up afresh each time: the app may be starting, quitting or relaunching.
             if let app = try? app(c.target.app) {
                 let found = try check(c, in: app)
+                stillThere = found.node
                 if found.present != c.gone {
                     let text = c.gone ? "\(what) is gone" : found.node.map { "found " + AppSnapshot.line($0) } ?? "\(app.identity.name) is running with a window"
                     return Outcome(text: text, element: c.gone ? nil : found.node)
@@ -686,7 +690,8 @@ public struct UIDriver<Backend: UIBackend> {
             backend.pause(0.1)
         }
         let snapshot = (try? app(c.target.app)).flatMap(snapshotNow)
-        throw UIError.timedOut("timed out after \(c.timeout.formatted())s waiting for \(what)\(c.gone ? " to go" : "")", snapshot)
+        let held = c.gone ? stillThere.map { "; still there: " + AppSnapshot.line($0) } ?? "" : ""
+        throw UIError.timedOut("timed out after \(c.timeout.formatted())s waiting for \(what)\(c.gone ? " to go" : "")\(held)", snapshot)
     }
 
     struct Found {

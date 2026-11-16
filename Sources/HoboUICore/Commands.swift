@@ -283,7 +283,8 @@ public struct HoboUI: ParsableCommand {
             discussion: """
                 Checks every 100 ms. With only --app, waits for the app to be running with a window. \
                 --text matches part of what an element shows, as click --text --contains does: \
-                wait --text "3 photos" finds "3 photos, 1 selected". On a timeout it prints the app's snapshot and exits 1.
+                wait --text "3 photos" finds "3 photos, 1 selected". On a timeout it prints the app's snapshot and exits 1; a --gone wait first names the element still there, \
+                since a view that's hidden can still be an accessibility element.
                 """
         )
         @OptionGroup public var target: AppOption

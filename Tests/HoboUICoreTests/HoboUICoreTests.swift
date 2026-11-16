@@ -720,6 +720,14 @@ final class FakeGuest: UITransport {
         #expect(guest.ops.contains("raise"))
     }
 
+    @Test func aGoneWaitThatTimesOutNamesWhatIsStillThere() throws {
+        #expect {
+            try driver(FakeGuest()).run(try HoboUI.parseAsRoot(["wait", "--text", "Save", "--gone", "--timeout", "0.1"]))
+        } throws: { error in
+            String(describing: error).contains(#"waiting for text "Save" to go; still there: button "Save" [e1] (20,20 160×60)"#)
+        }
+    }
+
     @Test func clickTextInARefLooksOnlyInsideThatElement() throws {
         /// Two windows each with a Save button, answering `parent` from the tree.
         final class TwoSaves: UITransport {
