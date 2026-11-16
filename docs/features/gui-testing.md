@@ -24,7 +24,13 @@ $ hobo screenshot ubuntu
 hobo screenshot dev                 # a new dev-<timestamp>.png here
 hobo screenshot dev shot.png        # that file, replacing it (or -o shot.png)
 hobo screenshot dev - | open -f -a Preview
+hobo screenshot dev --crop 840,412,400,300    # only that rectangle: x,y,width,height
 ```
+
+`--crop` keeps one rectangle of the screen, in screenshot pixels from the top left. It also takes a
+frame the way [`hobo ui snapshot`](#drive-an-app-with-hobo-ui) prints one, so an element's or a window's frame
+can be pasted in: `--crop "840,412 400×300"`. A rectangle that reaches past the screen keeps the
+part that's on it.
 
 The capture runs inside the guest's desktop session, which each guest needs:
 

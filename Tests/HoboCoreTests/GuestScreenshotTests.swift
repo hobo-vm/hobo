@@ -1,4 +1,7 @@
+import CoreGraphics
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 import Testing
 @testable import HoboCore
 
@@ -61,6 +64,67 @@ import Testing
         #expect(GuestScreenshot.command(for: .windows) == WindowsGuest.screenshotCommand)
         #expect(GuestScreenshot.command(for: .macOS) == GuestScreenshot.macOSCommand)
         #expect(GuestScreenshot.command(for: .linux) == GuestScreenshot.linuxCommand)
+    }
+
+    /// A PNG of `width`×`height` whose pixel at (x, y) is grey level x + 16y, so a crop shows where
+    /// it was cut from.
+    private func gradient(width: Int, height: Int) throws -> Data {
+        let pixels = (0..<height).flatMap { y in (0..<width).map { x in UInt8(x + 16 * y) } }
+        let provider = try #require(CGDataProvider(data: Data(pixels) as CFData))
+        let image = try #require(CGImage(
+            width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: width,
+            space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+        ))
+        let data = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        #expect(CGImageDestinationFinalize(destination))
+        return data as Data
+    }
+
+    /// The grey levels of a PNG, row by row.
+    private func levels(of png: Data) throws -> [[UInt8]] {
+        let source = try #require(CGImageSourceCreateWithData(png as CFData, nil))
+        let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        var pixels = [UInt8](repeating: 0, count: image.width * image.height)
+        let context = try #require(CGContext(
+            data: &pixels, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width,
+            space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return (0..<image.height).map { Array(pixels[$0 * image.width..<($0 + 1) * image.width]) }
+    }
+
+    @Test func aCropKeepsTheRectangleMeasuredFromTheTopLeft() throws {
+        let shot = GuestScreenshot(name: "dev", png: try gradient(width: 8, height: 6))
+        let cropped = try shot.cropped(to: ScreenshotCrop(x: 2, y: 1, width: 3, height: 2))
+        #expect(cropped.name == "dev")
+        #expect(cropped.png.starts(with: GuestScreenshot.pngSignature))
+        #expect(try levels(of: cropped.png) == [[18, 19, 20], [34, 35, 36]])
+    }
+
+    /// A window partly off the screen has a frame that reaches past it; the part on screen is kept.
+    @Test func aCropReachingPastTheScreenKeepsWhatIsOnIt() throws {
+        let shot = GuestScreenshot(name: "dev", png: try gradient(width: 8, height: 6))
+        #expect(try levels(of: shot.cropped(to: ScreenshotCrop(x: -3, y: 4, width: 5, height: 10)).png) == [[64, 65], [80, 81]])
+        #expect(throws: ScreenshotCropError.offScreen(ScreenshotCrop(x: 8, y: 0, width: 4, height: 4), width: 8, height: 6)) {
+            try shot.cropped(to: ScreenshotCrop(x: 8, y: 0, width: 4, height: 4))
+        }
+        #expect(throws: ScreenshotCropError.unreadable) { try screenshot.cropped(to: ScreenshotCrop(x: 0, y: 0, width: 1, height: 1)) }
+    }
+
+    @Test(arguments: ["840,412,80,28", "840,412 80×28", "(840,412 80×28)", "840,412 80x28"])
+    func aCropParsesFromFourNumbersOrASnapshotFrame(text: String) {
+        #expect(ScreenshotCrop(text) == ScreenshotCrop(x: 840, y: 412, width: 80, height: 28))
+    }
+
+    @Test func aCropCanStartOffTheScreenButNotBeEmptyOrMalformed() {
+        #expect(ScreenshotCrop("-40,-8,200,100") == ScreenshotCrop(x: -40, y: -8, width: 200, height: 100))
+        #expect(ScreenshotCrop(x: 1, y: 2, width: 3, height: 4).description == "1,2,3,4")
+        for text in ["", "1,2,3", "1,2,3,4,5", "1,2,0,4", "1,2,3,-4", "a,b,c,d", "1.5,2,3,4"] {
+            #expect(ScreenshotCrop(text) == nil, "\(text)")
+        }
     }
 
     @Test func resultShape() throws {

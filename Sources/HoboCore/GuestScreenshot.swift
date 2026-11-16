@@ -1,4 +1,6 @@
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 /// A PNG of a guest's screen, captured from inside its desktop session (`GuestChannel.screenshot`).
 public struct GuestScreenshot: Equatable, Sendable {
@@ -92,6 +94,26 @@ public struct GuestScreenshot: Equatable, Sendable {
     /// How long the Linux capture waits for the portal's answer, which takes well under a second.
     static let portalTimeoutSeconds = 30
 
+    /// The part of the screenshot inside `crop`, or as much of it as is on the screen: a window
+    /// dragged partly off it has a frame that reaches past the edge.
+    public func cropped(to crop: ScreenshotCrop) throws -> GuestScreenshot {
+        guard let source = CGImageSourceCreateWithData(png as CFData, nil), let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            throw ScreenshotCropError.unreadable
+        }
+        let screen = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        let rect = screen.intersection(CGRect(x: crop.x, y: crop.y, width: crop.width, height: crop.height))
+        guard !rect.isEmpty, let part = image.cropping(to: rect) else {
+            throw ScreenshotCropError.offScreen(crop, width: image.width, height: image.height)
+        }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else {
+            throw ScreenshotCropError.unwritable
+        }
+        CGImageDestinationAddImage(destination, part, nil)
+        guard CGImageDestinationFinalize(destination) else { throw ScreenshotCropError.unwritable }
+        return GuestScreenshot(name: name, png: data as Data)
+    }
+
     /// Writes the PNG to `path`, replacing what's there. With no path it goes in `directory` under a
     /// name of its own, `<vm>-<timestamp>.png`, numbered if that is taken, so a session's
     /// screenshots never replace each other. Returns where it went.
@@ -132,5 +154,50 @@ public struct ScreenshotResult: Codable, Equatable, Sendable {
     public init(name: String, path: String) {
         self.name = name
         self.path = path
+    }
+}
+
+/// `hobo screenshot --crop`: a rectangle in screenshot pixels, from the top left, as `hobo ui`
+/// gives an element's frame.
+public struct ScreenshotCrop: Equatable, Sendable, CustomStringConvertible {
+    public var x: Int
+    public var y: Int
+    public var width: Int
+    public var height: Int
+
+    public init(x: Int, y: Int, width: Int, height: Int) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+
+    /// `x,y,width,height`, or a frame as `hobo ui snapshot` prints it, `x,y width×height`, with or
+    /// without its brackets. Nil for anything else, and for an empty rectangle. A window partly
+    /// off the screen's left or top has a negative `x` or `y`.
+    public init?(_ text: String) {
+        let numbers = text.trimmingCharacters(in: CharacterSet(charactersIn: "() "))
+            .split(whereSeparator: { ", ×x".contains($0) }).map { Int($0) }
+        guard numbers.count == 4, let x = numbers[0], let y = numbers[1], let width = numbers[2], let height = numbers[3],
+              width > 0, height > 0
+        else { return nil }
+        self.init(x: x, y: y, width: width, height: height)
+    }
+
+    public var description: String { "\(x),\(y),\(width),\(height)" }
+}
+
+public enum ScreenshotCropError: Error, Equatable, CustomStringConvertible {
+    case unreadable
+    case unwritable
+    case offScreen(ScreenshotCrop, width: Int, height: Int)
+
+    public var description: String {
+        switch self {
+        case .unreadable: "can't crop the screenshot: the guest's PNG can't be read"
+        case .unwritable: "can't crop the screenshot: the cropped PNG couldn't be written"
+        case .offScreen(let crop, let width, let height):
+            "--crop \(crop) is off the screen, which is \(width)×\(height) pixels"
+        }
     }
 }

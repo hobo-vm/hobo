@@ -80,7 +80,8 @@ struct Usage: ParsableCommand {
               exec, cp,   hobo exits with the guest command's (or scp's) status. With --json their output
               rm          goes to stderr and stdout gets {"exitStatus":…}. `rm` removes files in a VM,
                           never the VM: that is `delete`.
-              screenshot  Prints where the PNG went; --json gives {"name":…,"path":…}. It and exec --gui
+              screenshot  Prints where the PNG went; --json gives {"name":…,"path":…}. --crop x,y,width,height
+                          keeps one rectangle, e.g. a frame from `ui snapshot`. It and exec --gui
                           need a desktop: on macOS a screenshot needs [gui_testing], and a Linux guest
                           built with `init --os linux --server` has none.
               Ephemeral   `start <vm> --ephemeral` boots a new clone of a stopped VM, named <vm>-<4 hex>

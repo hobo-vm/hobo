@@ -635,6 +635,12 @@ global VMs on 2026-11-01.
       the recipe wouldn't. By default the PNG goes to a new `./<vm>-<timestamp>.png`, numbered if
       taken, so a session's shots never replace each other; a path of `-` is stdout, and it prints the path
       (`--json`: `{name, path}`). Decided 2026-11-05.
+    - `screenshot --crop x,y,width,height` keeps one rectangle, cut on the host (ImageIO) so it is
+      the same for every guest OS. It is in screenshot pixels, as `hobo ui`'s frames are, and also
+      parses a frame as `ui snapshot` prints it (`x,y w×h`), so cropping to a window or an element
+      is a snapshot and a paste; a rectangle reaching past the screen keeps what is on it. An
+      agent had been cropping with `sips` afterwards. `--app <name>`, cropping to an app's windows
+      by asking `hobo-ui` for their frames, is Beads work. Decided 2026-11-16.
     - Linux guests have their own `exec --gui` and `screenshot` (decision 21), and Windows guests
       theirs (decision 20).
     - A host-side framebuffer screenshot for wedged guests is deferred.
@@ -711,7 +717,10 @@ global VMs on 2026-11-01.
 18. **Agent sessions and leases.** Agents work in sessions, not one-shot commands: `start --ephemeral`,
     many `exec`/`screenshot` calls, `stop`. There is no `hobo run`. An agent that dies or forgets
     leaves a clone running and holding one of the 2 macOS guest slots, and with no daemon only its
-    own VM process can notice. So an ephemeral VM holds a lease on running: an idle timeout (nothing
+    own VM process can notice. `start` checks the slots first (`VMLifecycle.checkMacSlot`, 2026-11-16):
+    with two of this store's macOS VMs running it fails naming them, before `--ephemeral` clones
+    anything or launchd starts a process. VZ's limit also counts other stores' and other apps' VMs,
+    which hobo can't see, so its refusal in the VM process stays as the backstop. So an ephemeral VM holds a lease on running: an idle timeout (nothing
     to do with the guest's DHCP lease), after which the VM process runs the normal graceful stop,
     which deletes the clone. `hobo mcp` also stops the ephemeral VMs it started when its session
     ends (hobo-i2j); the timeout is what covers a server that is killed, and CLI agents. Decided

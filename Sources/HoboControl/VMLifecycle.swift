@@ -70,6 +70,7 @@ public struct VMLifecycle: Sendable {
             throw LifecycleError.notStartable(vm.name, "its bundle has no valid \(VMStore.configFile)")
         }
         if idleTimeout != nil, !config.ephemeral { throw LifecycleError.idleTimeoutNeedsEphemeral(vm.name) }
+        try checkMacSlot(for: config)
         guard Entitlements.has(Entitlements.virtualization) else { throw LifecycleError.unsigned(executable.path) }
         try ControlSocket.checkPath(job.socket.path)
         if !resuming {
@@ -97,6 +98,22 @@ public struct VMLifecycle: Sendable {
         log(resuming ? "Resuming \(vm.name)" : "Starting \(vm.name)")
         let status = try await waitUntilRunning(vm.name, job: job, timeout: timeout)
         return resuming ? .resumed(status) : .started(status)
+    }
+
+    /// How many macOS VMs Apple lets one Mac run at once.
+    public static let macVMLimit = 2
+
+    /// Refuses to start a macOS guest while this store's running ones already fill Apple's limit,
+    /// before anything is made for it: the VM process would be refused too, but only once
+    /// `start --ephemeral` had cloned the VM and launchd had started the process. The limit also
+    /// counts other stores' VMs and other apps', which only VZ can see, so a start that passes
+    /// this can still be refused there (`GuestVMError.tooManyMacVMs`).
+    public func checkMacSlot(for config: VMConfig) throws {
+        guard config.os == .macOS else { return }
+        let running = store.list().filter {
+            if case .running(let config, _) = $0.status { config.os == .macOS } else { false }
+        }
+        if running.count >= Self.macVMLimit { throw LifecycleError.macVMLimit(running: running.map(\.name)) }
     }
 
     /// The VM process's command line, as launchd runs it.
@@ -336,6 +353,7 @@ public enum LifecycleError: Error, Equatable, CustomStringConvertible {
     case cantResume(String, String)
     case idleTimeoutNeedsEphemeral(String)
     case idleTimeoutNeedsStop(String)
+    case macVMLimit(running: [String])
 
     public var description: String {
         switch self {
@@ -363,6 +381,9 @@ public enum LifecycleError: Error, Equatable, CustomStringConvertible {
             "\(name) isn't ephemeral, and only ephemeral VMs have an idle timeout (hobo start \(name) --ephemeral boots a clone that does)"
         case .idleTimeoutNeedsStop(let name):
             "\(name) is already running, and a run's idle timeout can't change (hobo set \(name) --keep keeps the VM instead)"
+        case .macVMLimit(let running):
+            "Apple lets a Mac run at most \(VMLifecycle.macVMLimit) macOS VMs at once, and \(running.joined(separator: " and ")) are running: "
+                + "hobo stop one makes room"
         }
     }
 }

@@ -23,12 +23,18 @@ extension VMStore {
 extension VMLifecycle {
     /// `hobo start <source> --ephemeral`: clones the stopped VM `source` to a new, auto-named
     /// ephemeral VM (`VMStore.ephemeralName`) and starts that, returning its name. The clone is
-    /// deleted when it stops, as it is if it fails to start.
+    /// deleted when it stops, as it is if it fails to start. With no macOS slot free for it, it
+    /// isn't cloned at all (`checkMacSlot`).
     public func startEphemeral(
         from source: String, gui: Bool = false, shares: [VMShare] = [], idleTimeout: IdleTimeout? = nil,
         timeout: Duration = .seconds(10 * 60)
     ) async throws -> (name: String, result: StartResult) {
         let vm = try store.find(source)
+        // A source in any other state is the clone's to refuse.
+        switch vm.status {
+        case .stopped(let config), .crashed(let config, _): try checkMacSlot(for: config)
+        default: break
+        }
         let name = try store.ephemeralName(for: vm.name)
         _ = try store.cloneVM(vm.name, to: name, ephemeral: true, log: log)
         log("Cloned \(vm.name) to \(name)")
