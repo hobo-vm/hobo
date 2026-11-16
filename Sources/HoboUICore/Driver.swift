@@ -85,7 +85,9 @@ public struct UIDriver<Backend: UIBackend> {
                 )
             }
             // A role nothing there has is likelier a wrong guess at its name than a missing element.
-            let searched = searchableElements(under: app.root).filter { match in container.map { isWithin(match.0, $0) } ?? true }.map(\.1)
+            // Walked down from the scope: asking each element of the app for its parents is a call to the guest apiece.
+            let searched = try (scope.map { allElements(under: try element($0, in: app), locator: try locator($0, in: app)) }
+                ?? searchableElements(under: app.root)).map(\.1)
             if let role, !searched.contains(where: { $0.hasShownRole(role) }) {
                 throw UIError.failed("no \(kind) in \(place)\(rolesHint(searched))")
             }

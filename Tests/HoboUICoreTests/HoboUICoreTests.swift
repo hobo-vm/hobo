@@ -845,6 +845,16 @@ final class TreeGuest: UITransport {
         } throws: { error in
             String(describing: error).contains(#"no button element in Text Editor shows exactly "Wrap""#)
         }
+        // Inside the window, with no call to the guest per element to ask where it is.
+        let guest = FakeGuest()
+        let scoped = try self.driver(guest)
+        _ = try scoped.run(try HoboUI.parseAsRoot(["snapshot"]))
+        #expect {
+            try scoped.run(try HoboUI.parseAsRoot(["click", "--text", "Save", "--role", "textfield", "--in", "e1"]))
+        } throws: { error in
+            String(describing: error).contains("no textfield element in e1 in Text Editor; the roles there are button, checkbox, group")
+        }
+        #expect(!guest.ops.contains("parent"))
     }
 
     // A context menu's submenu lies beyond the list its row is in, and takes a click all the same;
