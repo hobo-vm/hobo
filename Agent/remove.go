@@ -36,6 +36,10 @@ func removePath(home, path string, force bool) error {
 	}
 	absolute := path
 	switch {
+	case absolute == "~" || strings.HasPrefix(absolute, "~/") || strings.HasPrefix(absolute, `~\`):
+		// The shell leaves the ~ of dev:~/x alone, and a literal ~ directory is never what was
+		// meant: without this, rm -f would quietly remove nothing.
+		absolute = filepath.Join(home, absolute[1:])
 	case filepath.IsAbs(absolute):
 	case filepath.VolumeName(absolute) == "" && (strings.HasPrefix(absolute, "/") || strings.HasPrefix(absolute, `\`)):
 		// Rooted without a drive, as /tmp/x is on Windows: from the root of the home's drive, as

@@ -724,7 +724,7 @@ struct Remove: OutputCommand {
         abstract: "Remove files or directories inside a running VM (not the VM: that's hobo delete).",
         discussion: """
             Every path names the guest as <vm>:<path>, as in hobo rm dev:/tmp/MyApp.app, all in one VM; \
-            a relative path is from the hobo user's home. A directory is removed with everything in it, \
+            a relative path, or one starting ~/, is from the hobo user's home. A directory is removed with everything in it, \
             as the hobo user. It refuses the filesystem root, the home directory and what holds it. \
             A path that isn't there fails the command unless --force, but the others are still removed.
             """

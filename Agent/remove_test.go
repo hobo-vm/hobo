@@ -11,15 +11,17 @@ func TestRemoveTakesFilesAndWholeDirectories(t *testing.T) {
 	home := t.TempDir()
 	write(t, filepath.Join(home, "app/Contents/MacOS/app"), "a")
 	write(t, filepath.Join(home, "note"), "n")
+	write(t, filepath.Join(home, "tilde"), "t")
 	if err := os.Symlink("/nonexistent", filepath.Join(home, "dangling")); err != nil {
 		t.Fatal(err)
 	}
 	var messages strings.Builder
 	// Relative paths are from home; a dangling symlink is itself removed.
-	if err := removePaths(&messages, home, []string{"app", filepath.Join(home, "note"), "dangling"}, false); err != nil {
+	// ~/ is the home too, as the shell leaves it unexpanded in dev:~/x.
+	if err := removePaths(&messages, home, []string{"app", filepath.Join(home, "note"), "~/tilde", "dangling"}, false); err != nil {
 		t.Fatalf("%v: %s", err, messages.String())
 	}
-	for _, name := range []string{"app", "note", "dangling"} {
+	for _, name := range []string{"app", "note", "tilde", "dangling"} {
 		if _, err := os.Lstat(filepath.Join(home, name)); !os.IsNotExist(err) {
 			t.Fatalf("%s is still there", name)
 		}
@@ -50,6 +52,7 @@ func TestRemoveRefusesTheRootAndTheHome(t *testing.T) {
 	for path, want := range map[string]string{
 		"/":                   "refusing to remove the filesystem root",
 		".":                   "refusing to remove the home directory",
+		"~":                   "refusing to remove the home directory",
 		home + "/":            "refusing to remove the home directory",
 		strings.ToUpper(home): "refusing to remove", // macOS's filesystem ignores case
 		"..":                  "refusing to remove a directory that holds the home directory",
