@@ -41,7 +41,7 @@ public struct VMLifecycle: Sendable {
         var resuming = false
         switch vm.status {
         case .running(let stored, _):
-            if !shares.isEmpty { throw LifecycleError.sharesNeedStop(vm.name) }
+            if !shares.isEmpty { throw LifecycleError.sharesNeedStop(vm.name, stop: vm.stopHint(kept: "first")) }
             if idleTimeout != nil {
                 throw stored.ephemeral ? LifecycleError.idleTimeoutNeedsStop(vm.name) : LifecycleError.idleTimeoutNeedsEphemeral(vm.name)
             }
@@ -347,7 +347,8 @@ public enum LifecycleError: Error, Equatable, CustomStringConvertible {
     case unresponsive(String, String)
     case stopTimedOut(String)
     case notRunning(String)
-    case sharesNeedStop(String)
+    /// `stop` is the VM's `stopHint`, which says that a stop deletes an ephemeral VM.
+    case sharesNeedStop(String, stop: String)
     case sharesNeedCold(String)
     case suspended(String)
     case cantResume(String, String)
@@ -369,8 +370,8 @@ public enum LifecycleError: Error, Equatable, CustomStringConvertible {
         case .unresponsive(let name, let reason): "the VM process for \(name) isn't answering (\(reason)); hobo stop --force \(name) kills it"
         case .stopTimedOut(let name): "\(name) is still stopping (hobo stop --force \(name) powers it off)"
         case .notRunning(let name): "\(name) is not running (hobo start --gui \(name))"
-        case .sharesNeedStop(let name):
-            "\(name) is already running, and shares can't be added to a running VM (hobo stop \(name) first, or hobo set \(name) --share while it's stopped)"
+        case .sharesNeedStop(let name, let stop):
+            "\(name) is already running, and shares can't be added to a running VM (\(stop); or hobo set \(name) --share while it's stopped)"
         case .sharesNeedCold(let name):
             "\(name) is suspended, and its saved state only fits the shares it had (hobo start --cold boots it fresh with new ones, discarding the saved state)"
         case .suspended(let name):

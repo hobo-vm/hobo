@@ -53,6 +53,21 @@ import Testing
         }
     }
 
+    /// Stopping an ephemeral VM deletes it, so the refusal mustn't offer a bare stop as the way to change one.
+    @Test func aRunningEphemeralVMsRefusalSaysAStopDeletesIt() throws {
+        defer { cleanUp() }
+        var ephemeral = config
+        ephemeral.ephemeral = true
+        _ = try store.beginCreate("dev")
+        try store.finishCreate("dev", config: ephemeral, recipe: Data())
+        let label = store.job(for: "dev").label
+        jobs.value.withLock { $0 += "4242\t0\t\(label)\n" }
+        let busy = VMStoreError.busy(
+            "dev", reason: "running (hobo stop dev deletes it, since it is ephemeral, unless hobo set dev --keep comes first)"
+        )
+        #expect(throws: busy) { try VMSettings(cpus: 2).apply(to: "dev", store: store) { _ in } }
+    }
+
     /// `--keep` changes nothing the guest sees, so a running or suspended VM may take it; its VM
     /// process reads config.json again as it exits.
     @Test(arguments: [false, true])

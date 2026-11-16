@@ -409,7 +409,31 @@ import Testing
         defer { cleanUp() }
         launchctl.pid.withLock { $0 = 4242 }
         let share = VMShare(name: "tmp", path: "/tmp", readOnly: false)
-        await #expect(throws: LifecycleError.sharesNeedStop("dev")) { try await lifecycle.start("dev", shares: [share]) }
+        let refusal = LifecycleError.sharesNeedStop("dev", stop: "hobo stop dev first")
+        await #expect(throws: refusal) { try await lifecycle.start("dev", shares: [share]) }
+        #expect(
+            refusal.description
+                == "dev is already running, and shares can't be added to a running VM "
+                + "(hobo stop dev first; or hobo set dev --share while it's stopped)"
+        )
+    }
+
+    /// Stopping an ephemeral VM deletes it, so the refusal mustn't offer a bare stop as the way to add a share.
+    @Test func sharesRefusalSaysAStopDeletesARunningEphemeralVM() async throws {
+        defer { cleanUp() }
+        try makeEphemeral()
+        launchctl.pid.withLock { $0 = 4242 }
+        let share = VMShare(name: "tmp", path: "/tmp", readOnly: false)
+        let refusal = LifecycleError.sharesNeedStop(
+            "dev", stop: "hobo stop dev deletes it, since it is ephemeral, unless hobo set dev --keep comes first"
+        )
+        await #expect(throws: refusal) { try await lifecycle.start("dev", shares: [share]) }
+        #expect(
+            refusal.description
+                == "dev is already running, and shares can't be added to a running VM "
+                + "(hobo stop dev deletes it, since it is ephemeral, unless hobo set dev --keep comes first; "
+                + "or hobo set dev --share while it's stopped)"
+        )
     }
 
     /// Gives `dev` saved state, as a suspend leaves it, recording `shares`; nil leaves out `run.json`.

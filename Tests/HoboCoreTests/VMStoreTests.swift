@@ -295,6 +295,38 @@ import Testing
         #expect(throws: busy) { try store.rename("exp", to: "other") }
     }
 
+    /// Whatever refuses a running ephemeral VM says so too: following a bare `hobo stop` would delete
+    /// the VM that was to be changed or copied.
+    @Test func everyRefusalOfARunningEphemeralVMSaysAStopDeletesIt() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try madeWithDisk("dev")
+        _ = try clone("dev", to: "exp", ephemeral: true)
+        launchctl.list = "PID\tStatus\tLabel\n4242\t0\t\(store.job(for: "exp").label)\n"
+        let busy = VMStoreError.busy(
+            "exp", reason: "running (hobo stop exp deletes it, since it is ephemeral, unless hobo set exp --keep comes first)"
+        )
+        let vm = try store.find("exp")
+        #expect(throws: busy) { try store.checkStopped(vm) }
+        #expect(throws: busy) { try clone("exp", to: "copy") }
+        #expect(throws: busy) { try store.delete("exp") }
+        #expect(throws: busy) { try store.discard("exp") }
+    }
+
+    /// A VM that a stop leaves in place gets the bare command, or what a caller has the hint say of it.
+    @Test func stopHintSaysWhatAStopDoesOnlyOfAnEphemeralVMUnlessAsked() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try madeWithDisk("dev")
+        _ = try clone("dev", to: "exp", ephemeral: true)
+        launchctl.list = "PID\tStatus\tLabel\n4242\t0\t\(store.job(for: "dev").label)\n4243\t0\t\(store.job(for: "exp").label)\n"
+        let kept = try store.find("dev")
+        #expect(kept.stopHint() == "hobo stop dev")
+        #expect(kept.stopHint(kept: "first") == "hobo stop dev first")
+        let deleted = "hobo stop exp deletes it, since it is ephemeral, unless hobo set exp --keep comes first"
+        let ephemeral = try store.find("exp")
+        #expect(ephemeral.stopHint() == deleted)
+        #expect(ephemeral.stopHint(kept: "first") == deleted)
+    }
+
     @Test func runningJobBlocksDeleteEvenWithABrokenConfig() throws {
         defer { try? FileManager.default.removeItem(at: store.directory) }
         try made("dev")

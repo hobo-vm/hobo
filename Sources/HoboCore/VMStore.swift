@@ -58,6 +58,17 @@ public struct VMStore: Sendable {
         public var allocatedBytes: UInt64
         /// The VM's launchd job, if it is loaded.
         public var job: Launchd.Job?
+
+        /// `hobo stop <name>`, for an error that offers a stop as the way to do something to a
+        /// running VM. A stop deletes an ephemeral VM, the one the user meant to change, so for one
+        /// the hint says so, and how to keep it. `kept` is what it says of a VM that a stop leaves
+        /// in place, nothing by default.
+        public func stopHint(kept: String? = nil) -> String {
+            if case .running(let config, _) = status, config.ephemeral {
+                return "hobo stop \(name) deletes it, since it is ephemeral, unless hobo set \(name) --keep comes first"
+            }
+            return "hobo stop \(name)" + (kept.map { " \($0)" } ?? "")
+        }
     }
 
     public func bundle(for name: String) -> URL {
@@ -146,15 +157,16 @@ public struct VMStore: Sendable {
     /// Saved state fits only the disk, configuration and platform identity it was saved with, so
     /// anything that changes those must refuse a suspended VM. Only operations that move or remove
     /// the bundle as a unit (delete, rename, discard) pass `allowSuspended`. `allowRunning` is for a
-    /// caller about to power the VM off (`delete --force`). `runningHint` is what a running VM's
-    /// error says to do about it, `hobo stop <name>` by default.
+    /// caller about to power the VM off (`delete --force`). A running VM's error says to stop it
+    /// (`VM.stopHint`), after `runningAlternative`, a sentence on another way past it, if there is one.
     public func checkStopped(
-        _ vm: VM, allowSuspended: Bool = false, allowRunning: Bool = false, runningHint: String? = nil
+        _ vm: VM, allowSuspended: Bool = false, allowRunning: Bool = false, runningAlternative: String? = nil
     ) throws {
         if case .building = vm.status { throw VMStoreError.busy(vm.name, reason: "being built") }
         // The job, not the status: a running VM whose config.json has gone bad still runs.
         if !allowRunning, vm.job?.pid != nil {
-            let hint = runningHint ?? "hobo stop \(vm.name)"
+            // Beside another sentence the stop is one too, so it says what it does to any VM.
+            let hint = runningAlternative.map { "\($0); \(vm.stopHint(kept: "shuts it down"))" } ?? vm.stopHint()
             throw VMStoreError.busy(vm.name, reason: "running (\(hint))")
         }
         if !allowSuspended, case .suspended = vm.status {
@@ -186,15 +198,8 @@ public struct VMStore: Sendable {
         // A case-only rename matches the VM itself, which is fine.
         if let existing = existingName(matching: new), existing != vm.name { throw VMStoreError.exists(existing) }
         // Only the process stands in the way, so a suspend, which keeps the guest's memory, is enough.
-        // A stop is enough too, except that it deletes an ephemeral VM, the one being renamed.
-        let stopping = if case .running(let config, _) = vm.status, config.ephemeral {
-            "deletes it, since it is ephemeral, unless hobo set \(vm.name) --keep comes first"
-        } else {
-            "shuts it down"
-        }
         try checkStopped(
-            vm, allowSuspended: true,
-            runningHint: "hobo suspend \(vm.name) keeps what it is doing through a rename; hobo stop \(vm.name) \(stopping)"
+            vm, allowSuspended: true, runningAlternative: "hobo suspend \(vm.name) keeps what it is doing through a rename"
         )
         try FileManager.default.moveItem(at: vm.bundle, to: bundle(for: new))
         forgetJob(of: vm.name)
