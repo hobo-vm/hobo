@@ -717,13 +717,14 @@ global VMs on 2026-11-01.
 18. **Agent sessions and leases.** Agents work in sessions, not one-shot commands: `start --ephemeral`,
     many `exec`/`screenshot` calls, `stop`. There is no `hobo run`. An agent that dies or forgets
     leaves a clone running and holding one of the 2 macOS guest slots, and with no daemon only its
-    own VM process can notice. `start` checks the slots first (`VMLifecycle.checkMacSlot`, 2026-11-16):
-    with two of this store's macOS VMs running it fails naming them, before `--ephemeral` clones
-    anything or launchd starts a process. VZ's limit also counts other stores' and other apps' VMs,
-    which hobo can't see, so its refusal in the VM process stays as the backstop. So an ephemeral VM holds a lease on running: an idle timeout (nothing
+    own VM process can notice. So an ephemeral VM holds a lease on running: an idle timeout (nothing
     to do with the guest's DHCP lease), after which the VM process runs the normal graceful stop,
     which deletes the clone. `hobo mcp` also stops the ephemeral VMs it started when its session
-    ends (hobo-i2j); the timeout is what covers a server that is killed, and CLI agents. Decided
+    ends (hobo-i2j); the timeout is what covers a server that is killed, and CLI agents. A
+    leaked clone holds its slot until then, so `start` checks the slots first (`VMLifecycle.checkMacSlot`, 2026-11-16): with
+    two of this store's macOS VMs running it fails naming them, before `--ephemeral` clones
+    anything or launchd starts a process. VZ's limit also counts other stores' and other apps' VMs,
+    which hobo can't see, so its refusal in the VM process stays as the backstop. Decided
     2026-11-04 (hobo-r86):
     - Only ephemeral VMs have one; normal VMs were kept on purpose, and aren't deleted anyway.
       `start --idle-timeout <d>` takes a whole number and a unit (`90s`, `30m`, `2h`) or `off`, and
