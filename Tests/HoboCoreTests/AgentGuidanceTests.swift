@@ -15,7 +15,7 @@ struct AgentGuidanceTests {
 
     @Test func coversTheDesignedRules() {
         for phrase in ["start <vm> --ephemeral", "exec --gui", "[gui_testing]", "at most 2 running macOS guests",
-                       "never drive the VM's window from the host"] {
+                       "never drive the VM's window from the host", "cp --replace"] {
             #expect(AgentGuidance.rules.localizedCaseInsensitiveContains(phrase), "\(phrase)")
         }
     }
