@@ -390,9 +390,9 @@ public struct UIDriver<Backend: UIBackend> {
     /// The frames of the scroll areas an element is in, outermost first: those inside its window,
     /// sheet, popover or menu, since one around that doesn't clip it (`UIRole.containers`).
     func scrollAreas(around element: Element) -> [CGRect] {
-        let roles = lineage(element).map { attributes($0) }
-        let inside = roles.prefix { !UIRole.containers.contains($0.role) }
-        return inside.dropFirst().compactMap { $0.role == "scrollarea" ? $0.frame : nil }.reversed()
+        let selfAndAncestors = lineage(element).map { attributes($0) }
+        let insideContainer = selfAndAncestors.prefix { !UIRole.containers.contains($0.role) }
+        return insideContainer.dropFirst().compactMap { $0.role == "scrollarea" ? $0.frame : nil }.reversed()
     }
 
     // MARK: Keyboard
