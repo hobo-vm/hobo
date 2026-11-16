@@ -282,12 +282,13 @@ public struct HoboUI: ParsableCommand {
             abstract: "Wait until an element or text is there, or gone.",
             discussion: """
                 Checks every 100 ms. With only --app, waits for the app to be running with a window. \
-                On a timeout it prints the app's snapshot and exits 1.
+                --text matches part of what an element shows, as click --text --contains does: \
+                wait --text "3 photos" finds "3 photos, 1 selected". On a timeout it prints the app's snapshot and exits 1.
                 """
         )
         @OptionGroup public var target: AppOption
         @Option(help: ArgumentHelp("Wait for this element.", valueName: "ref")) public var ref: String?
-        @Option(help: ArgumentHelp("Wait for an element showing this text (title, value or label).", valueName: "text")) public var text: String?
+        @Option(help: ArgumentHelp("Wait for an element showing this text, whole or as part of its title, value or label.", valueName: "text")) public var text: String?
         @Flag(help: "Wait for it to be gone instead.") public var gone = false
         @Option(help: "Seconds to wait.") public var timeout: Double = 10
         public init() {}
