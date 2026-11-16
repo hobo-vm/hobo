@@ -154,7 +154,8 @@ public struct VMStore: Sendable {
         if case .building = vm.status { throw VMStoreError.busy(vm.name, reason: "being built") }
         // The job, not the status: a running VM whose config.json has gone bad still runs.
         if !allowRunning, vm.job?.pid != nil {
-            throw VMStoreError.busy(vm.name, reason: "running (\(runningHint ?? "hobo stop \(vm.name)"))")
+            let hint = runningHint ?? "hobo stop \(vm.name)"
+            throw VMStoreError.busy(vm.name, reason: "running (\(hint))")
         }
         if !allowSuspended, case .suspended = vm.status {
             throw VMStoreError.busy(vm.name, reason: "suspended (hobo discard \(vm.name) throws its saved state away)")
