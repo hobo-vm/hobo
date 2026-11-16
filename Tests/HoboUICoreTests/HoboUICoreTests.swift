@@ -457,6 +457,16 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(throws: (any Error).self) { try HoboUI.parseAsRoot(arguments) }
     }
 
+    // `click "$ref"` with nothing found says so, rather than ending on an empty "not ".
+    @Test func saysARefIsEmpty() {
+        for arguments in [["click", ""], ["drag", " ", "1,2"], ["scroll", "", "down"]] {
+            #expect(throws: (any Error).self) { try HoboUI.parseAsRoot(arguments) }
+            do { _ = try HoboUI.parseAsRoot(arguments) } catch {
+                #expect(HoboUI.message(for: error).contains("the ref or point is empty"), "\(arguments)")
+            }
+        }
+    }
+
     // A direction given as an option is put right with the positional form.
     @Test func hintsAtAScrollDirectionGivenAsAnOption() {
         let hint = { HoboUI.scrollHint(for: $0)?.components(separatedBy: ": ").last }

@@ -323,6 +323,10 @@ public enum UITarget: Equatable, Sendable {
 /// `840,412` as a point; nil for a ref; throws for anything else.
 func parsePoint(_ text: String) throws(ValidationError) -> PixelPoint? {
     if RefMap.parse(text) != nil { return nil }
+    // `click "$ref"` with the variable unset: a script's search of a snapshot found nothing.
+    if text.trimmingCharacters(in: .whitespaces).isEmpty {
+        throw ValidationError("the ref or point is empty: if it came from a snapshot, the search for it found nothing")
+    }
     let parts = text.split(separator: ",", omittingEmptySubsequences: false)
     guard parts.count == 2, let x = Int(parts[0].trimmingPrefix(" ")), let y = Int(parts[1].trimmingPrefix(" ")) else {
         // `click 840 412`: the point split in two at a space.
