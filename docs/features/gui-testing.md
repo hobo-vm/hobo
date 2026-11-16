@@ -93,7 +93,7 @@ $ hobo ui win choose 'C:\Users\hobo\Documents\hello.txt' --app notepad
 
 | Command | Does |
 | --- | --- |
-| `snapshot` | Prints the tree, open context menus and their submenus included. `--all` adds offscreen elements and long lists in full, `--root e12` one subtree, `--depth N` fewer levels |
+| `snapshot` | Prints the tree, open context menus and their submenus included. `--all` adds offscreen elements and long lists in full, `--root e12` one subtree, `--depth N` fewer levels. `--role textbox` lists just the elements of that role, offscreen ones included, without the tree |
 | `at <x,y>` | What's at a point read off a screenshot: the element there and the elements it's in, with refs, in whichever app it is, and a menu open elsewhere that a click there would close |
 | `click <ref\|x,y>` | A real click at the element's centre once windows over it stop animating in or out, failing if something covers it, and warning when a menu open elsewhere likely swallowed it. `--text Remove` clicks the one element showing exactly that text, `--contains` matches part of it instead, `--role menuitem` narrows it, and `--in e30` looks only inside that element (the list, not an inspector showing the same name). `--right`, `--double`, `--mods cmd,shift`; `--press` performs the element's default action instead |
 | `drag <from> <to>` | A real drag, pausing over the target before it drops |
@@ -108,9 +108,16 @@ $ hobo ui win choose 'C:\Users\hobo\Documents\hello.txt' --app notepad
   snapshot still means the same thing. One that has gone fails as stale rather than clicking
   whatever took its place. Give the controls of an app you're testing accessibility identifiers
   (the `#saveButton` after a ref), and its refs survive layout changes.
+- **A snapshot line** is the element's role, `"name"`, `[ref]`, `#identifier`, `= "value"`,
+  `(x,y width×height)` and its states (`disabled`, `focused`, `selected`, `checked` or
+  `unchecked`), in that order and leaving out what the element hasn't got:
+  `textbox "Name" [e14] #nameField = "Untitled" (420,180 240×22) focused`. To find an element
+  from a script, ask for it (`snapshot --role textbox`, `click --text`, `wait --text`) rather
+  than match lines of the whole tree.
 - **Roles** are ARIA role names (`button`, `textbox`, `menuitem`, `checkbox`), plus `window`,
   `text` and `scrollarea`, so `--role` means the same in every guest; `--json` also gives the
-  platform's own role (`AXTextArea`).
+  platform's own role (`AXTextArea`). A text field is a `textbox` and a pop-up button a `combobox`;
+  a `--role` nothing has fails listing the roles that are there.
 - **Coordinates** are screenshot pixels, the same as in a `hobo screenshot` PNG.
 - `--app` takes an app ID (a bundle ID such as `com.apple.TextEdit`, a desktop app ID such as
   `org.gnome.TextEditor`, a Windows AUMID or exe name such as `notepad`), a name or `pid:<n>`;

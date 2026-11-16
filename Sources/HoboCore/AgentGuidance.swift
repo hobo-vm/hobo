@@ -65,7 +65,8 @@ public enum AgentGuidance {
         to watch. To drive the guest's UI, run the automation inside the guest (`hobo ui`) and look with `screenshot`, \
         which fails rather than leave windows out if a macOS VM lacks the Screen Recording grant.
         - Drive a guest's apps with `hobo ui <vm>`, on macOS, Linux and Windows alike: `snapshot --app <name>` prints the app's \
-        elements as a tree, each with a ref such as `e12`; `click`, `drag`, `scroll`, `type --into` and \
+        elements as a tree, each with a ref such as `e12` (`snapshot --role textbox` lists just the text fields: roles are \
+        ARIA's); `click`, `drag`, `scroll`, `type --into` and \
         `menu "File > Save"` (a GNOME app's menus are behind a header-bar button instead: \
         `click --text`) act on them with real input events, and `wait --text`, `--ref` or `--app` \
         waits for a condition instead of a sleep. `click --text Remove` (with `--role menuitem` to \

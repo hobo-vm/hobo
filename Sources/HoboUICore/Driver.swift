@@ -84,6 +84,11 @@ public struct UIDriver<Backend: UIBackend> {
                     "no \(kind) in \(app.identity.name)'s windows \(how) \(AppSnapshot.quoted(text)), but its menu bar does, which click --text and snapshot leave out: menu \"File\" lists a menu's items and menu \"File > Save\" chooses one"
                 )
             }
+            // A role nothing there has is likelier a wrong guess at its name than a missing element.
+            let searched = searchableElements(under: app.root).filter { match in container.map { isWithin(match.0, $0) } ?? true }.map(\.1)
+            if let role, !searched.contains(where: { $0.hasShownRole(role) }) {
+                throw UIError.failed("no \(kind) in \(place)\(rolesHint(searched))")
+            }
             throw UIError.failed("no \(kind) in \(place) \(how) \(AppSnapshot.quoted(text)); take a snapshot to see what's there\(hint)")
         }
         guard nodes.count == 1 else {
@@ -122,6 +127,7 @@ public struct UIDriver<Backend: UIBackend> {
 
     func snapshot(_ c: HoboUI.Snapshot) throws -> Outcome {
         let app = try app(c.target.app)
+        if let role = c.role { return try snapshot(of: role, under: c.root.flatMap(RefMap.parse), in: app) }
         let builder = SnapshotBuilder(options: SnapshotOptions(all: c.all, depth: c.depth), scale: scale)
         let elements = try store.update(app.identity.storeKey) { refs in
             guard let root = c.root.flatMap(RefMap.parse) else {
@@ -132,6 +138,30 @@ public struct UIDriver<Backend: UIBackend> {
         }
         let snapshot = AppSnapshot(app: app.identity, scale: scale.factor, elements: elements)
         return Outcome(text: snapshot.text, snapshot: snapshot)
+    }
+
+    /// `snapshot --role`: every element of the role in the app, or inside the element `scope`
+    /// names, as a list. They're found where `click --text --role` looks, so offscreen ones are in it.
+    func snapshot(of role: String, under scope: Int?, in app: App) throws -> Outcome {
+        let within = try scope.map { (try element($0, in: app), try locator($0, in: app)) }
+        let inside = within.map { allElements(under: $0.0, locator: $0.1) } ?? searchableElements(under: app.root)
+        let matches = inside.filter { $0.1.hasShownRole(role) }
+        guard !matches.isEmpty else {
+            let place = scope.map { "\(RefMap.format($0)) in \(app.identity.name)" } ?? app.identity.name
+            throw UIError.failed("no \(role.lowercased()) element in \(place)\(rolesHint(inside.map(\.1)))")
+        }
+        let nodes = try store.update(app.identity.storeKey) { refs in
+            matches.map { SnapshotNode(ref: refs.ref(for: $0.2), attributes: $0.1, scale: scale) }
+        }
+        let snapshot = AppSnapshot(app: app.identity, scale: scale.factor, elements: nodes)
+        return Outcome(text: snapshot.text, snapshot: snapshot)
+    }
+
+    /// The roles `elements` have, for the failure of a `--role` that matched none of them: a
+    /// guessed role name (`textfield` for `textbox`) is told what there is to choose from.
+    func rolesHint(_ elements: [ElementAttributes]) -> String {
+        let roles = Set(elements.map(SnapshotNode.shownRole)).sorted()
+        return roles.isEmpty ? "" : "; the roles there are \(roles.joined(separator: ", "))"
     }
 
     func snapshotNow(_ app: App) -> AppSnapshot? {

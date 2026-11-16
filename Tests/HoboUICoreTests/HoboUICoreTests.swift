@@ -477,7 +477,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         ["click", "nowhere"], ["click", "1,2", "--press"], ["at", "e12"], ["at"], ["click"], ["click", "e1", "--text", "OK"], ["click", "e1", "--role", "button"], ["click", "e1", "--contains"], ["click", "e1", "--in", "e2"], ["click", "--text", "OK", "--in", "list"],
         ["click", "--text", ""], ["wait", "--text", ""], ["scroll", "e5"], ["wait"], ["wait", "--ref", "e1", "--text", "x"],
         ["wait", "--app", "X", "--role", "button"], ["wait", "--ref", "e1", "--role", "button"],
-        ["key", "cmd+blah"], ["choose", "Pictures/a.png"], ["snapshot", "--depth", "0"], ["menu", " > "],
+        ["key", "cmd+blah"], ["choose", "Pictures/a.png"], ["snapshot", "--depth", "0"], ["snapshot", "--role", "button", "--depth", "2"], ["menu", " > "],
         ["wait", "--app", "X", "--timeout", "0"], ["wait", "--app", "X", "--timeout", "nan"], ["wait", "--app", "X", "--timeout", "inf"],
     ])
     func rejectsUsageErrors(_ arguments: [String]) {
@@ -811,6 +811,40 @@ final class TreeGuest: UITransport {
         }
         let gone = try driver(FakeGuest()).run(try HoboUI.parseAsRoot(["wait", "--text", "Save", "--role", "checkbox", "--gone", "--timeout", "0.1"]))
         #expect(gone.text == #"checkbox "Save" is gone"#)
+    }
+
+    @Test func snapshotWithARoleListsJustThoseElements() throws {
+        let driver = try driver(FakeGuest())
+        let listed = try driver.run(try HoboUI.parseAsRoot(["snapshot", "--role", "Checkbox"]))
+        #expect(listed.text == """
+            app Text Editor (org.gnome.TextEditor) pid 42
+            scale 2
+            - checkbox "Wrap" [e1] (20,100 160×60) checked
+            """)
+        // The ref is the one the tree gives the element.
+        let tree = try driver.run(try HoboUI.parseAsRoot(["snapshot"]))
+        #expect(tree.text.contains(#"- checkbox "Wrap" [e1]"#))
+        #expect(try driver.run(try HoboUI.parseAsRoot(["snapshot", "--role", "button", "--root", "e2"])).snapshot?.elements.map(\.name) == ["Save"])
+    }
+
+    // `textfield` for `textbox`: a guessed role is told the roles there are.
+    @Test func aRoleNothingHasFailsNamingTheRolesThereAre() throws {
+        let driver = try driver(FakeGuest())
+        #expect {
+            try driver.run(try HoboUI.parseAsRoot(["snapshot", "--role", "textfield"]))
+        } throws: { error in
+            String(describing: error).contains("no textfield element in Text Editor; the roles there are button, checkbox, group, window")
+        }
+        #expect {
+            try driver.run(try HoboUI.parseAsRoot(["click", "--text", "Save", "--role", "textfield"]))
+        } throws: { error in
+            String(describing: error).contains("no textfield element in Text Editor; the roles there are button, checkbox, group, window")
+        }
+        #expect {
+            try driver.run(try HoboUI.parseAsRoot(["click", "--text", "Wrap", "--role", "button"]))
+        } throws: { error in
+            String(describing: error).contains(#"no button element in Text Editor shows exactly "Wrap""#)
+        }
     }
 
     // A context menu's submenu lies beyond the list its row is in, and takes a click all the same;

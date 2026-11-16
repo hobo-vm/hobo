@@ -38,16 +38,24 @@ public struct HoboUI: ParsableCommand {
             discussion: """
                 Unnamed layout groups are left out, and without --all so are elements outside their scroll area \
                 and children past the first 50 of a container, which are counted instead. \
-                A macOS app's menu bar isn't shown: menu lists its menus and chooses from them.
+                A macOS app's menu bar isn't shown: menu lists its menus and chooses from them. \
+                A line is the element's role, "name", [ref], #identifier, = "value", (x,y width×height) and states \
+                (disabled, focused, selected, checked or unchecked), leaving out what it hasn't got: \
+                textbox "Name" [e14] #nameField = "Untitled" (420,180 240×22) focused. \
+                Roles are ARIA's, so a text field is a textbox and a pop-up button a combobox. \
+                --role textbox lists just the elements of that role, offscreen ones included, without the tree.
                 """
         )
         @OptionGroup public var target: AppOption
         @Flag(help: "Show offscreen elements and every child.") public var all = false
         @Option(help: ArgumentHelp("Show only this element's subtree.", valueName: "ref")) public var root: String?
         @Option(help: "Show this many levels (1: windows only).") public var depth: Int?
+        @Option(help: ArgumentHelp("List only the elements of this role, e.g. textbox, wherever they are (inside --root, if given).", valueName: "role")) public var role: String?
         public init() {}
 
         public func validate() throws {
+            if role?.isEmpty == true { throw ValidationError("--role needs a role such as textbox") }
+            if role != nil && depth != nil { throw ValidationError("--role lists elements at every level, so it takes no --depth") }
             if let root, RefMap.parse(root) == nil { throw ValidationError("--root takes a ref such as e12") }
             if let depth, depth < 1 { throw ValidationError("--depth must be at least 1") }
         }
