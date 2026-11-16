@@ -15,21 +15,18 @@ public struct GuestRemove: Codable, Equatable, Sendable {
 
     /// Parses `<vm>:<path>...`, all in the same VM.
     public static func parse(_ operands: [String], force: Bool = false) throws -> (vm: String, remove: GuestRemove) {
-        guard !operands.isEmpty else { throw GuestRemoveError.noPaths }
-        var vm: String?
-        var paths: [String] = []
-        for operand in operands {
-            guard case .guest(let name, let path) = GuestOperand(operand) else {
+        let guests = try operands.map { operand in
+            guard case .guest(let vm, let path) = GuestOperand(operand) else {
                 // A bare VM name is someone reaching for `hobo delete`.
                 if (try? VMStore.validate(operand)) != nil { throw GuestRemoveError.vmName(operand) }
                 throw GuestRemoveError.hostPath(operand)
             }
             if path.isEmpty { throw GuestRemoveError.emptyPath(operand) }
-            if let vm, vm != name { throw GuestRemoveError.severalGuests }
-            vm = name
-            paths.append(path)
+            return (vm: vm, path: path)
         }
-        return (vm!, GuestRemove(paths: paths, force: force))
+        guard let vm = guests.first?.vm else { throw GuestRemoveError.noPaths }
+        guard guests.allSatisfy({ $0.vm == vm }) else { throw GuestRemoveError.severalGuests }
+        return (vm, GuestRemove(paths: guests.map(\.path), force: force))
     }
 }
 
