@@ -1,6 +1,7 @@
 import Foundation
 import HoboControl
 import HoboCore
+import Synchronization
 
 /// Runs a recipe's `[[provision]]` steps in the guest: once each during `create`, and again on a
 /// running VM with `hobo provision`, which its VM process runs.
@@ -83,12 +84,39 @@ public enum Provisioning {
                 }
             }
             let command = windows ? step.powerShellCommand(running: remote) : step.shellCommand(running: remote)
-            let status = try await shell.stream(command, onOutput: onOutput)
-            if status != 0 { throw VMError.commandFailed("provision step \(index + 1)", status) }
+            // The step's output can run to thousands of lines, so its last few go in the error.
+            let tail = OutputTail()
+            let status = try await shell.stream(command) { stream, data in
+                tail.append(data)
+                onOutput(stream, data)
+            }
+            if status != 0 { throw VMError.provisionFailed(step: index + 1, status: status, lastLines: tail.lines()) }
         case .file:
             guard let source = step.source, let destination = step.destination else { return }
             try await upload(recipe.resolve(source), to: destination)
         }
+    }
+}
+
+/// The end of a command's output, stdout and stderr together, bounded however much it prints.
+final class OutputTail: Sendable {
+    static let keptBytes = 16 * 1024
+    private let buffer = Mutex(Data())
+
+    func append(_ data: Data) {
+        buffer.withLock {
+            $0.append(data)
+            if $0.count > 2 * Self.keptBytes { $0 = Data($0.suffix(Self.keptBytes)) }
+        }
+    }
+
+    /// The last `count` non-blank lines. A carriage return ends a line too, so a progress bar's
+    /// redraws read as separate lines rather than one run together.
+    func lines(_ count: Int = 10) -> [String] {
+        let text = String(decoding: buffer.withLock { $0.suffix(Self.keptBytes) }, as: UTF8.self)
+        let lines = text.split(whereSeparator: { $0 == "\n" || $0 == "\r" || $0 == "\r\n" })
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        return Array(lines.suffix(count))
     }
 }
 

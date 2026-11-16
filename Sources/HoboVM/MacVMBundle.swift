@@ -143,6 +143,7 @@ public enum VMError: Error, CustomStringConvertible {
     case cloneFailed(String, String)
     case replaceFailed(String, String)
     case commandFailed(String, Int32)
+    case provisionFailed(step: Int, status: Int32, lastLines: [String])
     case timedOut(String)
     case stoppedWithError
     case unexpectedAttachOutput(String)
@@ -167,6 +168,9 @@ public enum VMError: Error, CustomStringConvertible {
         case .cloneFailed(let name, let reason): "cloning \(name) failed: \(reason)"
         case .replaceFailed(let name, let reason): "replacing \(name) failed: \(reason)"
         case .commandFailed(let command, let status): "\(command) exited with status \(status)"
+        case .provisionFailed(let step, let status, let lastLines):
+            "provision step \(step) exited with status \(status)"
+                + (lastLines.isEmpty ? "" : "; its output ended:\n" + lastLines.map { "  \($0)" }.joined(separator: "\n"))
         case .timedOut(let what): "timed out \(what)"
         case .stoppedWithError: "the VM stopped with an error"
         case .unexpectedAttachOutput(let disk): "could not read diskutil's output for attaching \(disk)"
