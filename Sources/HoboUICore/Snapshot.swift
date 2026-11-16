@@ -141,7 +141,6 @@ public struct SnapshotBuilder {
         of element: E, attributes: ElementAttributes, locator: Locator, clip: CGRect?, depth: Int, isApp: Bool, refs: inout RefMap
     ) -> Level {
         var clip = clip
-        if UIRole.containers.contains(attributes.role) { clip = nil }
         if attributes.role == "scrollarea", let frame = attributes.frame {
             clip = clip.map { $0.intersection(frame) } ?? frame
         }
