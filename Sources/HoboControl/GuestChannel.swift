@@ -104,8 +104,7 @@ public struct GuestAddress: Codable, Equatable, Sendable {
 }
 
 /// `hobo exec --json`, `hobo cp --json` and `hobo rm --json`: the guest command's (or the copy's
-/// or removal's) exit status. Its output
-/// went to stderr, keeping stdout for this.
+/// or removal's) exit status. Its output went to stderr, keeping stdout for this.
 public struct GuestCommandResult: Codable, Equatable, Sendable {
     public var exitStatus: Int32
 

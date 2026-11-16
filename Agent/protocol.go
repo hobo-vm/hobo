@@ -43,7 +43,7 @@ type request struct {
 	// exec: the host sends the command's input as stdin frames, an empty one closing it. Without
 	// it the command's stdin is empty.
 	Stdin bool `json:"stdin,omitempty"`
-	// exec, put, get, rm, clipboard: who runs it, and whose files the copy reads or writes.
+	// exec, put, get, rm, clipboard: who runs it, and so whose files a copy reads or writes, or rm removes.
 	User string `json:"user,omitempty"`
 	// put: where the copy goes; single says the tar holds one top-level entry, and replace that
 	// whatever a source would land on is removed first.
