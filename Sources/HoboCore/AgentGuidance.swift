@@ -59,9 +59,10 @@ public enum AgentGuidance {
         ## Test inside the guest, never through the host
 
         - Everything runs in the guest as the `hobo` user with passwordless sudo: \
-        `exec` runs a command, `cp` copies files in and out. To put a rebuilt app or directory in \
-        place of an earlier copy, `cp --replace` removes what's there first (plain `cp` merges into \
-        it); don't run `rm -rf` through `exec`.
+        `exec` runs a command, `cp` copies files in and out, and `rm <vm>:<path>` removes them. To \
+        put a rebuilt app or directory in place of an earlier copy, `cp --replace` removes what's \
+        there first (plain `cp` merges into it). Remove guest files with `rm`, never `rm -rf` \
+        through `exec`.
         - Never drive the VM's window from the host: don't click, type or take host screenshots of \
         it, or script it with AppleScript or computer use. `view` and `start --gui` are for a person \
         to watch. To drive the guest's UI, run the automation inside the guest (`hobo ui`) and look with `screenshot`, \

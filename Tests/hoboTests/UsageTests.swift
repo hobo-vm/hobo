@@ -183,6 +183,20 @@ struct ScreenshotOptionTests {
     }
 }
 
+struct RemoveOptionTests {
+    /// `rm -r` and `rm -rf` are habit; -r has no effect and -f is --force.
+    @Test func takesRmsFlags() throws {
+        let remove = try Remove.parse(["-rf", "dev:/tmp/app", "dev:b"])
+        #expect(remove.force && remove.paths == ["dev:/tmp/app", "dev:b"])
+        #expect(try Remove.parse(["dev:a"]).force == false)
+    }
+
+    @Test func helpSaysItRemovesFilesNotVMs() {
+        #expect(Remove.configuration.abstract.contains("not the VM"))
+        #expect(Delete.configuration.abstract.contains("hobo rm"))
+    }
+}
+
 struct CopyOptionTests {
     /// `cp -r` is habit, so the flag still parses though directories no longer need it.
     @Test func recursiveIsStillAccepted() throws {

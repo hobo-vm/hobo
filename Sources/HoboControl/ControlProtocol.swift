@@ -3,7 +3,7 @@ import HoboCore
 
 /// The control-socket protocol between hobo clients (CLI, MCP) and a VM's `hobo _vm-run` process.
 /// Each connection carries one request, as a line of JSON. Most get one line of JSON back;
-/// `exec` and `copy` stream `output` lines and end with `exited`.
+/// `exec`, `copy` and `remove` stream `output` lines and end with `exited`.
 public enum ControlProtocol {
     /// Bumped on any incompatible change. A VM process refuses other versions, since a client and
     /// a VM process started by an older `hobo` can both be around after an upgrade.
@@ -29,6 +29,8 @@ public enum ControlRequest: Codable, Equatable, Sendable {
     case ui(arguments: [String])
     /// Copies between host paths and the guest: the copy's messages as `output` lines, then `exited`.
     case copy(GuestCopy)
+    /// `hobo rm`: removes guest paths, as the guest user: what fails as `output` lines, then `exited`.
+    case remove(GuestRemove)
     /// `hobo provision`: runs the `[[provision]]` steps of the recipe at this absolute host path,
     /// streaming progress and the steps' output as `output` lines, then `exited`.
     case provision(recipeFile: String)

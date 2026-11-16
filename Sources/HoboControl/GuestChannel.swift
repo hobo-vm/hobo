@@ -64,6 +64,11 @@ public struct GuestChannel: Sendable {
         try stream(.copy(copy), name: name, onOutput: onOutput)
     }
 
+    /// Removes guest paths and returns the exit status; what couldn't be removed arrives as output.
+    public func remove(_ name: String, _ remove: GuestRemove, onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
+        try stream(.remove(remove), name: name, onOutput: onOutput)
+    }
+
     /// Runs the `[[provision]]` steps of the recipe at `recipeFile` in the guest; progress and the
     /// steps' output arrive as output.
     public func provision(_ name: String, recipeFile: URL, onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
@@ -98,7 +103,8 @@ public struct GuestAddress: Codable, Equatable, Sendable {
     }
 }
 
-/// `hobo exec --json` and `hobo cp --json`: the guest command's (or the copy's) exit status. Its output
+/// `hobo exec --json`, `hobo cp --json` and `hobo rm --json`: the guest command's (or the copy's
+/// or removal's) exit status. Its output
 /// went to stderr, keeping stdout for this.
 public struct GuestCommandResult: Codable, Equatable, Sendable {
     public var exitStatus: Int32

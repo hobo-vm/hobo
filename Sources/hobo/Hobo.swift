@@ -35,7 +35,7 @@ struct HoboCommand: AsyncParsableCommand {
         version: Hobo.version,
         subcommands: [
             Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self, Suspend.self, Discard.self, View.self,
-            SSH.self, Exec.self, Copy.self, Screenshot.self, UICommand.self, IP.self, SetCommand.self, Provision.self, Clone.self, SnapshotCommand.self, Rename.self, Delete.self, Claude.self, Usage.self,
+            SSH.self, Exec.self, Copy.self, Remove.self, Screenshot.self, UICommand.self, IP.self, SetCommand.self, Provision.self, Clone.self, SnapshotCommand.self, Rename.self, Delete.self, Claude.self, Usage.self,
         ]
     )
 }
@@ -718,6 +718,40 @@ struct Copy: OutputCommand {
     }
 }
 
+struct Remove: OutputCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "rm",
+        abstract: "Remove files or directories inside a running VM (not the VM: that's hobo delete).",
+        discussion: """
+            Every path names the guest as <vm>:<path>, as in hobo rm dev:/tmp/MyApp.app, all in one VM; \
+            a relative path is from the hobo user's home. A directory is removed with everything in it, \
+            as the hobo user. It refuses the filesystem root, the home directory and what holds it. \
+            A path that isn't there fails the command unless --force, but the others are still removed.
+            """
+    )
+
+    /// Accepted because `rm -r` is habit; a directory is removed whole without it.
+    @Flag(name: .shortAndLong, help: "Has no effect: directories are always removed whole.")
+    var recursive = false
+
+    @Flag(name: .shortAndLong, help: "Don't fail for a path that isn't there.")
+    var force = false
+
+    @Flag(help: "Print the removal's exit status as JSON; its messages go to stderr.")
+    var json = false
+
+    @Argument(help: ArgumentHelp("Paths in the VM, as <vm>:<path>.", valueName: "vm:path"))
+    var paths: [String] = []
+
+    static let jsonStyle = Output.JSONStyle.document
+
+    func execute(_ output: Output) async throws -> Reply {
+        let (vm, remove) = try GuestRemove.parse(paths, force: force)
+        let status = try GuestChannel().remove(vm, remove, onOutput: writeOutput)
+        return Reply(GuestCommandResult(exitStatus: status), text: nil, exitStatus: status)
+    }
+}
+
 /// Writes a guest command's output to the matching stream of this process. With `--json`,
 /// `Output` has pointed fd 1 at stderr, so stdout carries only the JSON.
 func writeOutput(_ stream: GuestStream, _ data: Data) throws {
@@ -1125,7 +1159,7 @@ struct Rename: OutputCommand {
 }
 
 struct Delete: OutputCommand {
-    static let configuration = CommandConfiguration(abstract: "Delete a VM and its bundle.")
+    static let configuration = CommandConfiguration(abstract: "Delete a VM and its bundle. (hobo rm removes files inside a VM.)")
 
     @Argument(help: "Name of the VM.")
     var name: String

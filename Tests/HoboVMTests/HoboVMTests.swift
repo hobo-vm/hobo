@@ -439,6 +439,14 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try FileManager.default.destinationOfSymbolicLink(atPath: work.appending(path: "tree-back/link").path) == "sub/deep.txt")
         #expect(try run(hobo, ["cp", "\(vm):/nonexistent", "\(vm):tree/sub/deep.txt", "missing-dir/"], in: work, environment: env) != 0)
 
+        // rm removes a directory whole, fails for a missing path unless -f, and refuses the home.
+        #expect(try run(hobo, ["rm", "\(vm):tree", "\(vm):tree-r"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["exec", vm, "--", "test", "-e", "tree"], in: work, environment: env) != 0)
+        #expect(try run(hobo, ["rm", "\(vm):tree"], in: work, environment: env) != 0)
+        #expect(try run(hobo, ["rm", "-f", "\(vm):tree"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["rm", "-rf", "\(vm):."], in: work, environment: env) != 0)
+        #expect(try run(hobo, ["exec", vm, "--", "test", "-d", "."], in: work, environment: env) == 0)
+
         // ^C on the client ends the command in the guest.
         let sleeper = Process()
         sleeper.executableURL = URL(filePath: hobo)

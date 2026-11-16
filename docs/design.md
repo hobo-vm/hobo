@@ -46,7 +46,7 @@ global VMs on 2026-11-01.
    `images [--os macos|linux] [<build-or-version>] [--all]`, `validate [recipe]`,
    `create <name> [recipe] [--hold-on-failure]`, `list [-v]`,
    `start [--ephemeral] [--gui] [--cold] [--share path] [--idle-timeout d]`, `stop [--force]`,
-   `suspend`, `discard`, `ssh <name> [--print] [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp <src>... <dst>`, `ip <name>`, `view`, `screenshot`,
+   `suspend`, `discard`, `ssh <name> [--print] [-- cmd]`, `exec <name> [--gui] -- cmd`, `cp <src>... <dst>`, `rm <vm>:<path>...`, `ip <name>`, `view`, `screenshot`,
    `clone <src> <dst> [--ephemeral]`, `delete <name> [--yes] [--force]`, `rename <old> <new>`,
    `set <name> --cpus/--memory/--disk/--share/--unshare/--keep`, `snapshot save|restore [--force]|list|delete <name> <tag>`,
    `provision <name> [recipe]` (re-run steps on an existing VM), `usage`,
@@ -399,7 +399,7 @@ global VMs on 2026-11-01.
       host's CID (2), so a guest process can't reach a root agent over vsock loopback. There is
       no other authentication: only the VM process can reach the device, and `hobo` has
       passwordless sudo anyway. Each request is a connection, opened by the host: one line of
-      JSON (`ping`, `exec`, `put`, `get`, `clipboard`), then frames both ways (a type byte, a 4-byte
+      JSON (`ping`, `exec`, `put`, `get`, `rm`, `clipboard`), then frames both ways (a type byte, a 4-byte
       length, the bytes: stdin (for an `exec` asking for it, which the hobo ui backends speak JSON
       lines over, 2026-11-15), stdout, stderr, tar data, clipboard text, the exit status, or why it
       couldn't run). Frames rather than
@@ -464,6 +464,12 @@ global VMs on 2026-11-01.
       installing a rebuilt `.app` over the last one otherwise needs an `rm -rf` in the guest
       (decided 2026-11-11). Opt-in, so a plain copy never deletes. The VM process runs `scp` on the
       client's absolute host paths (same user, same machine) and streams its messages like `exec`.
+    - `hobo rm <vm>:<path>...` removes guest paths whole (`-r` accepted, as with `cp`), as `hobo`
+      through the agent's `rm` request, so an agent never sends `rm -rf` through `exec`: Claude Code
+      can't tell a guest path from a host one and blocks that (decided 2026-11-15). Every operand
+      must name the guest, and a bare VM name points at `hobo delete`, so `rm` can't be mistaken for
+      removing a VM. A missing path fails it unless `-f`, and it refuses `/`, the home and what holds
+      it, comparing without case.
 16. **Networking.** The system's shared NAT (`VZNATNetworkDeviceAttachment`): every VM is on the same
     bridge (192.168.64.0/24), so VMs reach each other and the host. Each VM's MAC is fixed at create,
     so bootpd keeps giving it the same lease, and its IP is read from `/var/db/dhcpd_leases` by MAC,

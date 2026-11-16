@@ -322,6 +322,10 @@ public final class VMRunner {
             return await withGuest(reply: reply) { shell, onOutput in
                 try await shell.copy(copy, onOutput: onOutput)
             }
+        case .remove(let remove):
+            return await withGuest(reply: reply) { shell, onOutput in
+                try await shell.remove(remove, onOutput: onOutput)
+            }
         case .provision(let recipeFile):
             return await withGuest(reply: reply) { shell, onOutput in
                 try await Provisioning.provision(URL(filePath: recipeFile), shell: shell, onOutput: onOutput)

@@ -66,6 +66,17 @@ stay. `--replace` removes whatever each source would land on first:
 hobo cp --replace ./build/MyApp.app dev:/Applications/    # no leftovers from the old MyApp.app
 ```
 
+## Remove files
+
+```sh
+hobo rm dev:/tmp/app.zip dev:/Users/hobo/build    # a directory goes with everything in it
+hobo rm -f dev:/tmp/maybe-there                    # no failure if it's already gone
+```
+
+`hobo rm` removes files and directories inside a VM, never the VM itself: that is `hobo delete`.
+Every path names the guest as `<vm>:<path>`, and a relative one is from the `hobo` user's home.
+It won't remove `/`, the home directory or what holds it.
+
 ## Share folders
 
 ```sh

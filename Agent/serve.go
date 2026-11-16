@@ -57,6 +57,8 @@ func handle(conn io.ReadWriteCloser) {
 		runPut(req, reader, frames)
 	case "get":
 		runGet(req, reader, frames)
+	case "rm":
+		runRemove(req, reader, frames)
 	case "clipboard":
 		runClipboardRequest(req, reader, frames)
 	default:
@@ -76,7 +78,7 @@ type process interface {
 }
 
 // commandSpec is what start runs: a command line in the user's shell, or this binary's own
-// put, get or clipboard.
+// put, get, rm or clipboard.
 type commandSpec struct {
 	user string
 	// A command line for the user's login shell, or else this binary's arguments.
@@ -175,6 +177,23 @@ func runGet(req request, conn io.Reader, frames *frameWriter) {
 	run(proc, conn, frames, nil, false, func() {
 		_ = frames.write(frameData, nil) // Ends the stream, now that Wait has passed all of it on.
 	})
+}
+
+// runRemove removes the request's sources as its user, by running this binary's `rm` as them,
+// from their home; what it can't remove it reports on stderr.
+func runRemove(req request, conn io.Reader, frames *frameWriter) {
+	force := "0"
+	if req.Force {
+		force = "1"
+	}
+	proc, err := start(commandSpec{
+		user: req.User, self: append([]string{"rm", force}, req.Sources...),
+		stdout: streamWriter{frames, frameStderr}, stderr: streamWriter{frames, frameStderr},
+	})
+	if !started(err, frames) {
+		return
+	}
+	run(proc, conn, frames, nil, false, nil)
 }
 
 // How long the clipboard helper has to exit once the host hangs up, before it is terminated.

@@ -83,6 +83,11 @@ public struct GuestAgent: GuestShell {
         }
     }
 
+    /// `hobo rm`: the agent removes the paths as the guest user, reporting each it can't.
+    public func remove(_ remove: GuestRemove, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
+        try await stream(AgentRequest(op: "rm", user: user, sources: remove.paths, force: remove.force), onOutput: onOutput)
+    }
+
     public func upload(_ local: URL, to remote: String) async throws {
         let copy = GuestCopy(direction: .toGuest, sources: [local.path], destination: remote)
         let status = try await self.copy(copy) { _, data in FileHandle.standardError.write(data) }
@@ -419,6 +424,7 @@ struct AgentRequest: Encodable, Equatable {
     var single: Bool?
     var replace: Bool?
     var sources: [String]?
+    var force: Bool?
 }
 
 /// The agent's frame types: a type byte, a big-endian UInt32 length, then the payload.

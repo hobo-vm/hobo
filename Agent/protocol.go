@@ -29,7 +29,7 @@ const protocolVersion = 2
 // request is the one JSON line that opens every connection from the host.
 type request struct {
 	Version int    `json:"version"`
-	Op      string `json:"op"` // ping, exec, put, get, clipboard
+	Op      string `json:"op"` // ping, exec, put, get, rm, clipboard
 	// exec: a command line for User's login shell, as sshd would run it.
 	Command string `json:"command,omitempty"`
 	// exec on Windows: run it in the console's desktop session (`exec --gui`). Elsewhere the
@@ -43,15 +43,17 @@ type request struct {
 	// exec: the host sends the command's input as stdin frames, an empty one closing it. Without
 	// it the command's stdin is empty.
 	Stdin bool `json:"stdin,omitempty"`
-	// exec, put, get, clipboard: who runs it, and whose files the copy reads or writes.
+	// exec, put, get, rm, clipboard: who runs it, and whose files the copy reads or writes.
 	User string `json:"user,omitempty"`
 	// put: where the copy goes; single says the tar holds one top-level entry, and replace that
 	// whatever a source would land on is removed first.
 	Destination string `json:"destination,omitempty"`
 	Single      bool   `json:"single,omitempty"`
 	Replace     bool   `json:"replace,omitempty"`
-	// get: what is copied.
+	// get: what is copied; rm: what is removed.
 	Sources []string `json:"sources,omitempty"`
+	// rm: a path that isn't there is no failure.
+	Force bool `json:"force,omitempty"`
 }
 
 // Frames carry everything after the request, in both directions: a type byte, a big-endian

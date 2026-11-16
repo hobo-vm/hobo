@@ -28,8 +28,8 @@ public struct GuestCopy: Codable, Equatable, Sendable {
     /// `<vm>:<path>`. A colon after a slash (`./a:b`) is part of a host path, as with scp.
     public static func parse(_ operands: [String], replace: Bool = false, currentDirectory: URL) throws -> (vm: String, copy: GuestCopy) {
         guard operands.count >= 2, let last = operands.last else { throw GuestCopyError.tooFewOperands }
-        let sources = operands.dropLast().map(Operand.init)
-        let destination = Operand(last)
+        let sources = operands.dropLast().map(GuestOperand.init)
+        let destination = GuestOperand(last)
         func absolute(_ path: String) -> String {
             let absolute = URL(filePath: path, relativeTo: currentDirectory).standardizedFileURL.path
             // A trailing slash tells scp the destination must be a directory; keep it.
@@ -61,27 +61,29 @@ public struct GuestCopy: Codable, Equatable, Sendable {
         }
         return ["-q", "-r", "--"] + operands
     }
+}
 
-    private enum Operand {
-        case host(String)
-        case guest(vm: String, path: String)
+/// A `cp` or `rm` operand: a guest path, `<vm>:<path>`, or a host path. A colon after a slash
+/// (`./a:b`) is part of a host path, as with scp.
+enum GuestOperand {
+    case host(String)
+    case guest(vm: String, path: String)
 
-        init(_ operand: String) {
-            if let colon = operand.firstIndex(of: ":") {
-                let vm = String(operand[..<colon])
-                if (try? VMStore.validate(vm)) != nil {
-                    self = .guest(vm: vm, path: String(operand[operand.index(after: colon)...]))
-                    return
-                }
+    init(_ operand: String) {
+        if let colon = operand.firstIndex(of: ":") {
+            let vm = String(operand[..<colon])
+            if (try? VMStore.validate(vm)) != nil {
+                self = .guest(vm: vm, path: String(operand[operand.index(after: colon)...]))
+                return
             }
-            self = .host(operand)
         }
+        self = .host(operand)
+    }
 
-        var isGuest: Bool { if case .guest = self { true } else { false } }
-        var path: String {
-            switch self {
-            case .host(let path), .guest(_, let path): path
-            }
+    var isGuest: Bool { if case .guest = self { true } else { false } }
+    var path: String {
+        switch self {
+        case .host(let path), .guest(_, let path): path
         }
     }
 }

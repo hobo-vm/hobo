@@ -124,13 +124,13 @@ func getTar(output, messages io.Writer, sources []string) error {
 		return err
 	}
 	if failed {
-		return errCopyFailed
+		return errReported
 	}
 	return nil
 }
 
-// errCopyFailed fails a copy whose problems have already been reported, one per source.
-var errCopyFailed = errors.New("")
+// errReported fails a copy or removal whose problems have already been reported, one per path.
+var errReported = errors.New("")
 
 func addSource(writer *tar.Writer, source string) error {
 	// A source that is a symlink is copied as what it points to, as scp does.

@@ -67,7 +67,7 @@ struct Usage: ParsableCommand {
                           `hobo init` writes a starter (macOS, Ubuntu with --os linux, or Windows with
                           --os windows <iso>) and `hobo validate` checks one. [source] ipsw makes a macOS
                           guest, image a Linux one, iso a Windows one.
-              Guest user  `exec`, `cp` and `ssh` act as the \(Conventions.username) user
+              Guest user  `exec`, `cp`, `rm` and `ssh` act as the \(Conventions.username) user
                           (password \(Conventions.password), passwordless sudo; on Windows an elevated
                           administrator, with PowerShell as the shell).
               JSON        Every command takes --json except \(codeList(json.withoutJSON)).
@@ -77,8 +77,9 @@ struct Usage: ParsableCommand {
                           Sizes are bytes, dates ISO 8601.
               Errors      A failure prints {"error":…} (or an error event) on stdout under --json, the same
                           message on stderr, and hobo exits 1. Usage errors are text on stderr.
-              exec, cp    hobo exits with the guest command's (or scp's) status. With --json their output
-                          goes to stderr and stdout gets {"exitStatus":…}.
+              exec, cp,   hobo exits with the guest command's (or scp's) status. With --json their output
+              rm          goes to stderr and stdout gets {"exitStatus":…}. `rm` removes files in a VM,
+                          never the VM: that is `delete`.
               screenshot  Prints where the PNG went; --json gives {"name":…,"path":…}. It and exec --gui
                           need a desktop: on macOS a screenshot needs [gui_testing], and a Linux guest
                           built with `init --os linux --server` has none.
