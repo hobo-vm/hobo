@@ -186,9 +186,14 @@ public struct VMStore: Sendable {
         // A case-only rename matches the VM itself, which is fine.
         if let existing = existingName(matching: new), existing != vm.name { throw VMStoreError.exists(existing) }
         // Only the process stands in the way, so a suspend, which keeps the guest's memory, is enough.
+        // A stop is enough too, except that it deletes an ephemeral VM, the one being renamed.
+        var stopping = "shuts it down"
+        if case .running(let config, _) = vm.status, config.ephemeral {
+            stopping = "deletes it, since it is ephemeral, unless hobo set \(vm.name) --keep comes first"
+        }
         try checkStopped(
             vm, allowSuspended: true,
-            runningHint: "hobo suspend \(vm.name) keeps what it is doing through a rename; hobo stop \(vm.name) shuts it down"
+            runningHint: "hobo suspend \(vm.name) keeps what it is doing through a rename; hobo stop \(vm.name) \(stopping)"
         )
         try FileManager.default.moveItem(at: vm.bundle, to: bundle(for: new))
         forgetJob(of: vm.name)

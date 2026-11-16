@@ -281,6 +281,20 @@ import Testing
         #expect(!launchctl.calls.contains { $0.first == "bootout" })
     }
 
+    /// Stopping an ephemeral VM deletes it, so the hint mustn't offer a stop as a way to rename one.
+    @Test func renamingARunningEphemeralVMSaysAStopDeletesIt() throws {
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        try madeWithDisk("dev")
+        _ = try clone("dev", to: "exp", ephemeral: true)
+        launchctl.list = "PID\tStatus\tLabel\n4242\t0\t\(store.job(for: "exp").label)\n"
+        let busy = VMStoreError.busy(
+            "exp",
+            reason: "running (hobo suspend exp keeps what it is doing through a rename; "
+                + "hobo stop exp deletes it, since it is ephemeral, unless hobo set exp --keep comes first)"
+        )
+        #expect(throws: busy) { try store.rename("exp", to: "other") }
+    }
+
     @Test func runningJobBlocksDeleteEvenWithABrokenConfig() throws {
         defer { try? FileManager.default.removeItem(at: store.directory) }
         try made("dev")
