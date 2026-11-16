@@ -160,17 +160,13 @@ func addSource(writer *tar.Writer, source, typed string) error {
 	if err != nil {
 		return fmt.Errorf("%s: no such file or directory", typed)
 	}
-	// The name of what source resolves to, so `.` and `..` still give one top-level entry.
-	absolute, err := filepath.Abs(source)
-	if err != nil {
-		return err
-	}
-	base := filepath.Base(absolute)
+	// guestPath has made source absolute and clean, so `.` and `..` still give one top-level entry.
+	base := filepath.Base(source)
 	if !info.IsDir() {
 		return addEntry(writer, source, base, info)
 	}
 	// A filesystem root has no name to copy it under, and holds /dev and /proc, whose files never end.
-	if filepath.Dir(absolute) == absolute {
+	if filepath.Dir(source) == source {
 		return fmt.Errorf("%s: is the filesystem root (copy a directory in it)", typed)
 	}
 	// Walked from what it resolves to, since the walk doesn't follow a symlink it starts at.
