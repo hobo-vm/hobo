@@ -788,7 +788,8 @@ struct Screenshot: OutputCommand {
     @Option(name: [.customShort("o"), .customLong("output")], help: ArgumentHelp("The same as <path>.", valueName: "path"))
     var outputOption: String?
 
-    @Option(help: ArgumentHelp(
+    // Unconditional, since a window partly off the screen's left has a frame that starts with "-".
+    @Option(parsing: .unconditional, help: ArgumentHelp(
         "Keep only this rectangle, in screenshot pixels from the top left. Also takes a frame as hobo ui snapshot prints it: \"x,y width×height\".",
         valueName: "x,y,width,height"
     ))

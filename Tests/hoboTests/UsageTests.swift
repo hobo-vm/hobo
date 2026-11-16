@@ -164,6 +164,15 @@ struct DeleteOptionTests {
 }
 
 struct ScreenshotOptionTests {
+    /// A window partly off the screen's left or top has a frame that starts with "-", which must
+    /// not be read as an option.
+    @Test func cropTakesAFrameThatStartsOffTheScreen() throws {
+        let crop = ScreenshotCrop(x: -40, y: -8, width: 200, height: 100)
+        #expect(try Screenshot.parse(["dev", "--crop", "-40,-8,200,100"]).crop == crop)
+        #expect(try Screenshot.parse(["dev", "--crop", "-40,-8 200×100", "shot.png"]).crop == crop)
+        #expect(throws: (any Error).self) { try Screenshot.parse(["dev", "--crop", "1,2,3"]) }
+    }
+
     /// The JSON would land in the middle of the PNG's stdout.
     @Test func jsonNeedsTheOutputToBeAFile() throws {
         #expect(throws: (any Error).self) { try Screenshot.parse(["dev", "--json", "-o", "-"]) }
