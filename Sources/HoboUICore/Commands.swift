@@ -193,6 +193,12 @@ public struct HoboUI: ParsableCommand {
         return "a ref is an argument, not an option: \(command) \(ref)"
     }
 
+    /// What an `at` given `--app` got wrong: it answers for whichever app is at the point.
+    public static func atAppHint(for arguments: [String]) -> String? {
+        guard arguments.first == At._commandName, arguments.contains(where: { $0 == "--app" || $0.hasPrefix("--app=") }) else { return nil }
+        return "at takes no --app: it shows what's at the point, whichever app that's in"
+    }
+
     /// The direction and any `=lines` of an argument like `--down` or `--down=10`.
     private static func directionOption(_ argument: String) -> (direction: String, lines: String?)? {
         guard argument.hasPrefix("--") else { return nil }
@@ -283,13 +289,15 @@ public struct HoboUI: ParsableCommand {
             discussion: """
                 Checks every 100 ms. With only --app, waits for the app to be running with a window. \
                 --text matches part of what an element shows, as click --text --contains does: \
-                wait --text "3 photos" finds "3 photos, 1 selected". On a timeout it prints the app's snapshot and exits 1; a --gone wait first names the element still there, \
+                wait --text "3 photos" finds "3 photos, 1 selected"; --role keeps it to elements of that role, \
+                as in wait --text Move --role button. On a timeout it prints the app's snapshot and exits 1; a --gone wait first names the element still there, \
                 since a view that's hidden can still be an accessibility element.
                 """
         )
         @OptionGroup public var target: AppOption
         @Option(help: ArgumentHelp("Wait for this element.", valueName: "ref")) public var ref: String?
         @Option(help: ArgumentHelp("Wait for an element showing this text, whole or as part of its title, value or label.", valueName: "text")) public var text: String?
+        @Option(help: ArgumentHelp("With --text, only elements of this role as snapshot shows it, e.g. button.", valueName: "role")) public var role: String?
         @Flag(help: "Wait for it to be gone instead.") public var gone = false
         @Option(help: "Seconds to wait.") public var timeout: Double = 10
         public init() {}
@@ -300,6 +308,7 @@ public struct HoboUI: ParsableCommand {
             if let ref, RefMap.parse(ref) == nil { throw ValidationError("--ref takes a ref such as e12") }
             // Empty text is part of everything an element shows, so the wait would say nothing.
             if text?.isEmpty == true { throw ValidationError("--text needs some text") }
+            if role != nil && text == nil { throw ValidationError("--role goes with --text") }
             // `nan` and `inf` parse as Doubles, and would wait forever.
             if !timeout.isFinite || timeout <= 0 { throw ValidationError("--timeout must be a number of seconds more than 0") }
         }

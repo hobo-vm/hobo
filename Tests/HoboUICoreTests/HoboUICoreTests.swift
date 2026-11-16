@@ -212,6 +212,31 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(inner.offscreen == 7)
     }
 
+    // A context menu hangs from the row it was opened on, but is a window of its own: neither it
+    // nor the submenu beside it is clipped by the row's list.
+    @Test func aMenuIsNotClippedByTheScrollAreaItWasOpenedIn() {
+        var refs = RefMap()
+        let submenu = Fake("AXMenu", frame: rect(260, 40, 100, 60), [Fake("AXMenuItem", "Named", frame: rect(260, 45, 100, 24))])
+        let menu = Fake("AXMenu", frame: rect(150, 20, 110, 60), [Fake("AXMenuItem", "Move to Project", frame: rect(150, 45, 110, 24), [submenu])])
+        let app = Fake("AXApplication", [Fake("AXWindow", "Main", [
+            Fake("AXScrollArea", "List", frame: rect(0, 0, 200, 300), [
+                Fake("AXRow", "Photo", frame: rect(0, 0, 200, 20), [menu]),
+                Fake("AXRow", "Below", frame: rect(0, 400, 200, 20)),
+            ]),
+        ])])
+        #expect(snapshot(app, refs: &refs).text == """
+            app Demo (com.example.Demo) pid 7
+            - window "Main" [e1]
+              - scrollarea "List" [e2] (0,0 200×300)
+                - row "Photo" [e3] (0,0 200×20)
+                  - menu [e4] (150,20 110×60)
+                    - menuitem "Move to Project" [e5] (150,45 110×24)
+                      - menu [e6] (260,40 100×60)
+                        - menuitem "Named" [e7] (260,45 100×24)
+                … 1 more offscreen
+            """)
+    }
+
     @Test func depthOneShowsWindowsOnly() {
         var refs = RefMap()
         let app = Fake("AXApplication", [Fake("AXWindow", "Main", [Fake("AXButton", "A")])])
@@ -441,6 +466,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(try HoboUI.parseAsRoot(["menu", "File > Save"]) is HoboUI.Menu)
         #expect(try HoboUI.parseAsRoot(["at", "840,412", "--json"]) is HoboUI.At)
         #expect(try HoboUI.parseAsRoot(["wait", "--app", "TextEdit"]) is HoboUI.Wait)
+        #expect((try HoboUI.parseAsRoot(["wait", "--text", "Move", "--role", "button"]) as? HoboUI.Wait)?.role == "button")
         #expect(try HoboUI.parseAsRoot(["choose", "~/Pictures", "--app", "Candela"]) is HoboUI.Choose)
         #expect(try HoboUI.parseAsRoot(["choose", #"C:\Users\hobo\a.txt"#, "--app", "notepad"]) is HoboUI.Choose)
         #expect(try HoboUI.parseAsRoot(["type", "hello", "--into", "e3"]) is HoboUI.TypeText)
@@ -450,6 +476,7 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
     @Test(arguments: [
         ["click", "nowhere"], ["click", "1,2", "--press"], ["at", "e12"], ["at"], ["click"], ["click", "e1", "--text", "OK"], ["click", "e1", "--role", "button"], ["click", "e1", "--contains"], ["click", "e1", "--in", "e2"], ["click", "--text", "OK", "--in", "list"],
         ["click", "--text", ""], ["wait", "--text", ""], ["scroll", "e5"], ["wait"], ["wait", "--ref", "e1", "--text", "x"],
+        ["wait", "--app", "X", "--role", "button"], ["wait", "--ref", "e1", "--role", "button"],
         ["key", "cmd+blah"], ["choose", "Pictures/a.png"], ["snapshot", "--depth", "0"], ["menu", " > "],
         ["wait", "--app", "X", "--timeout", "0"], ["wait", "--app", "X", "--timeout", "nan"], ["wait", "--app", "X", "--timeout", "inf"],
     ])
@@ -486,6 +513,14 @@ func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> CGRect { CGRect
         #expect(HoboUI.refOptionHint(for: ["type", "--ref", "e47", "hi"]) == nil)
         #expect(HoboUI.refOptionHint(for: ["snapshot", "--ref", "e47"]) == nil)
         #expect(HoboUI.refOptionHint(for: ["click", "e47"]) == nil)
+    }
+
+    // `at` answers for whichever app is at the point, and says so of an --app.
+    @Test func hintsThatAtTakesNoApp() {
+        #expect(HoboUI.atAppHint(for: ["at", "840,412", "--app", "Candela"])?.hasPrefix("at takes no --app") == true)
+        #expect(HoboUI.atAppHint(for: ["at", "--app=Candela", "840,412"]) != nil)
+        #expect(HoboUI.atAppHint(for: ["at", "840,412", "--jsno"]) == nil)
+        #expect(HoboUI.atAppHint(for: ["click", "840,412", "--app", "Candela", "--bogus"]) == nil)
     }
 
     @Test(arguments: [["click", "840", "412"], ["drag", "840", "412", "e2"]])
@@ -691,6 +726,41 @@ final class FakeGuest: UITransport {
     var ops: [String] { calls.map { $0["op"] as! String } }
 }
 
+/// A guest showing one app's `tree`, which answers for an element's parent and for what's at a
+/// point (the deepest element whose frame has it) from the tree.
+final class TreeGuest: UITransport {
+    let tree: [String: Any]
+    var calls: [[String: Any]] = []
+
+    init(_ tree: [String: Any]) { self.tree = tree }
+
+    func nodes(_ node: [String: Any], parent: [String: Any]?) -> [(node: [String: Any], parent: [String: Any]?)] {
+        [(node, parent)] + (node["children"] as! [[String: Any]]).flatMap { nodes($0, parent: node) }
+    }
+
+    func send(_ line: Data) throws -> Data {
+        let request = try JSONSerialization.jsonObject(with: line) as! [String: Any]
+        calls.append(request)
+        let all = nodes(tree, parent: nil)
+        let entry = all.first { $0.node["id"] as? Int == request["id"] as? Int }
+        let ok: Any = switch request["op"] as! String {
+        case "hello": ["platform": "linux", "scale": 1.0, "screen": [0, 0, 800, 600]]
+        case "apps": ["apps": [["name": "Photos", "id": "org.example.Photos", "pid": 42]], "focused": 42]
+        case "tree": tree
+        case "node": entry?.node ?? NSNull()
+        case "parent": entry?.parent ?? NSNull()
+        case "at":
+            all.last { entry in
+                guard let f = entry.node["frame"] as? [Double], let x = request["x"] as? Double, let y = request["y"] as? Double else { return false }
+                return CGRect(x: f[0], y: f[1], width: f[2], height: f[3]).contains(CGPoint(x: x, y: y))
+            }?.node ?? NSNull()
+        case "windows": [[String: Any]]()
+        default: NSNull()
+        }
+        return try JSONSerialization.data(withJSONObject: ["ok": ok])
+    }
+}
+
 @Suite struct RemoteBackendTests {
     func driver(_ guest: FakeGuest) throws -> UIDriver<RemoteBackend> {
         let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-ui-tests-\(UUID().uuidString)")
@@ -725,6 +795,52 @@ final class FakeGuest: UITransport {
             try driver(FakeGuest()).run(try HoboUI.parseAsRoot(["wait", "--text", "Save", "--gone", "--timeout", "0.1"]))
         } throws: { error in
             String(describing: error).contains(#"waiting for text "Save" to go; still there: button "Save" [e1] (20,20 160×60)"#)
+        }
+    }
+
+    @Test func waitTextWithARoleLooksOnlyAtElementsOfThatRole() throws {
+        let found = try driver(FakeGuest()).run(try HoboUI.parseAsRoot(["wait", "--text", "Sav", "--role", "Button", "--timeout", "0.1"]))
+        #expect(found.text == #"found button "Save" [e1] (20,20 160×60)"#)
+        #expect {
+            try driver(FakeGuest()).run(try HoboUI.parseAsRoot(["wait", "--text", "Save", "--role", "checkbox", "--timeout", "0.1"]))
+        } throws: { error in
+            String(describing: error).contains(#"waiting for checkbox "Save""#)
+        }
+        let gone = try driver(FakeGuest()).run(try HoboUI.parseAsRoot(["wait", "--text", "Save", "--role", "checkbox", "--gone", "--timeout", "0.1"]))
+        #expect(gone.text == #"checkbox "Save" is gone"#)
+    }
+
+    // A context menu's submenu lies beyond the list its row is in, and takes a click all the same;
+    // a row scrolled out of the list doesn't.
+    @Test func clicksAMenuItemBeyondTheScrollAreaItsMenuWasOpenedIn() throws {
+        let guest = TreeGuest([
+            "id": 1, "role": "application", "title": "Photos", "children": [
+                ["id": 2, "role": "frame", "title": "Library", "frame": [0.0, 0.0, 800.0, 600.0], "children": [
+                    ["id": 3, "role": "scroll pane", "title": "List", "frame": [0.0, 0.0, 200.0, 300.0], "children": [
+                        ["id": 4, "role": "list item", "title": "Photo", "frame": [0.0, 0.0, 200.0, 20.0], "children": [
+                            ["id": 5, "role": "popup menu", "frame": [150.0, 20.0, 110.0, 60.0], "children": [
+                                ["id": 6, "role": "menu item", "title": "Move to Project", "frame": [150.0, 45.0, 110.0, 24.0], "children": [
+                                    ["id": 7, "role": "popup menu", "frame": [260.0, 40.0, 100.0, 60.0], "children": [
+                                        ["id": 8, "role": "menu item", "title": "Named", "frame": [260.0, 45.0, 100.0, 24.0], "children": []],
+                                    ]],
+                                ]],
+                            ]],
+                        ]],
+                        ["id": 9, "role": "list item", "title": "Below", "frame": [0.0, 400.0, 200.0, 20.0], "children": []],
+                    ]],
+                ]],
+            ],
+        ])
+        let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-ui-tests-\(UUID().uuidString)")
+        let driver = UIDriver(backend: try RemoteBackend(transport: guest), store: RefStore(directory: directory))
+        let outcome = try driver.run(try HoboUI.parseAsRoot(["click", "--text", "Named", "--role", "menuitem"]))
+        #expect(outcome.text.hasPrefix(#"clicked menuitem "Named""#))
+        let click = try #require(guest.calls.first { $0["op"] as? String == "click" })
+        #expect(click["x"] as? Double == 310 && click["y"] as? Double == 57)
+        #expect {
+            try driver.run(try HoboUI.parseAsRoot(["click", "--text", "Below"]))
+        } throws: { error in
+            String(describing: error).contains("is scrolled out of view")
         }
     }
 

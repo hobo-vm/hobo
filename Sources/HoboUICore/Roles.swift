@@ -37,7 +37,9 @@ public enum UIRole {
     /// The roles of a window: an app's own, or a dialog of one.
     public static let windows: Set<String> = ["window", "dialog", "alertdialog"]
     /// What a covering element is named by in a click's failure: the window, sheet, popover or
-    /// menu it belongs to.
+    /// menu it belongs to. Each is a window of its own on screen, so a scroll area around the
+    /// element it hangs from doesn't clip it: a context menu opened on a list's row, and the
+    /// submenu beside it, show beyond the list.
     public static let containers: Set<String> = ["window", "dialog", "alertdialog", "menu"]
 
     static let macSubroles: [String: String] = [
