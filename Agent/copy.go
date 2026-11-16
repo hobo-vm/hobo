@@ -173,11 +173,16 @@ func addSource(writer *tar.Writer, source, typed string) error {
 	if filepath.Dir(absolute) == absolute {
 		return fmt.Errorf("%s: is the filesystem root (copy a directory in it)", typed)
 	}
-	return filepath.Walk(source, func(file string, info fs.FileInfo, err error) error {
+	// Walked from what it resolves to, since the walk doesn't follow a symlink it starts at.
+	root, err := filepath.EvalSymlinks(source)
+	if err != nil {
+		return err
+	}
+	return filepath.Walk(root, func(file string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		relative, err := filepath.Rel(source, file)
+		relative, err := filepath.Rel(root, file)
 		if err != nil {
 			return err
 		}

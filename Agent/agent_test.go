@@ -253,6 +253,27 @@ func TestCopyTakesTildeAsTheHomeBothWays(t *testing.T) {
 	}
 }
 
+func TestCopyFollowsASourceSymlinkToADirectory(t *testing.T) {
+	home := t.TempDir()
+	write(t, filepath.Join(home, "real/f"), "f")
+	if err := os.Symlink("real", filepath.Join(home, "link")); err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []string{"link", "link/"} {
+		destination := filepath.Join(t.TempDir(), "copy")
+		var archive, messages bytes.Buffer
+		if err := getTar(&archive, &messages, home, []string{source}); err != nil {
+			t.Fatalf("%s: %v: %s", source, err, messages.String())
+		}
+		if err := putTar(&archive, home, destination, true, false); err != nil {
+			t.Fatal(err)
+		}
+		if read(t, filepath.Join(destination, "f")) != "f" {
+			t.Fatalf("%s was not copied as the directory it points to", source)
+		}
+	}
+}
+
 func TestEntryNamesStayInside(t *testing.T) {
 	for _, name := range []string{"../x", "/etc/passwd", "a/../../x", "."} {
 		if _, err := entryName(name); err == nil {
