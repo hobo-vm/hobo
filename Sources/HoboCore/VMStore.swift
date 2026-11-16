@@ -60,9 +60,9 @@ public struct VMStore: Sendable {
         public var job: Launchd.Job?
 
         /// `hobo stop <name>`, for an error that offers a stop as the way to do something to a
-        /// running VM. A stop deletes an ephemeral VM, the one the user meant to change, so for one
-        /// the hint says so, and how to keep it. `kept` is what it says of a VM that a stop leaves
-        /// in place, nothing by default.
+        /// running VM. A stop deletes an ephemeral VM, the very VM the user meant to change, so an
+        /// ephemeral VM's hint says that instead, and how to keep it. `kept` is words to follow the
+        /// command for a VM that a stop leaves in place, such as `first`.
         public func stopHint(kept: String? = nil) -> String {
             if case .running(let config, _) = status, config.ephemeral {
                 return "hobo stop \(name) deletes it, since it is ephemeral, unless hobo set \(name) --keep comes first"
