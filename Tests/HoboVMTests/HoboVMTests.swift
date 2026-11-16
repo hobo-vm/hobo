@@ -24,15 +24,14 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["validate"], in: work) == 0)
     }
 
-    /// Creates a VM from the latest IPSW, runs it through start and stop under launchd, changes
-    /// its hardware and shares with set, shares a folder for one run, re-runs steps with provision,
-    /// then renames and deletes it. The recipe's step asserts the guest conventions and a GUI
-    /// session from inside the guest, so a VM that builds has them. It enables `[gui_testing]`, whose grants
-    /// create checks and the test checks again on a later boot. VMs go to a temp `HOBO_VMS`, whose
-    /// store hash keeps their launchd jobs apart from real ones; the IPSW goes through the real image
-    /// index, so it downloads only once.
-    @Test(.timeLimit(.minutes(150)))
-    func lifecycle() throws {
+    /// Creates a macOS VM from the latest IPSW. The recipe's step asserts the guest conventions and a
+    /// GUI session from inside the guest, so a VM that builds has them. It enables `[gui_testing]`,
+    /// whose grants create checks and the test checks again on a later boot, where captures raise no
+    /// approval dialog. Everything that doesn't depend on the build runs on a clone of the kept VM
+    /// (`macOSGuest`). VMs go to a temp `HOBO_VMS`, whose store hash keeps their launchd jobs apart
+    /// from real ones; the IPSW goes through the real image index, so it downloads only once.
+    @Test(.timeLimit(.minutes(120)))
+    func macOSBuild() throws {
         let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
         let work = FileManager.default.temporaryDirectory.appending(path: "hobo-create-\(UUID().uuidString)")
         let vms = work.appending(path: "vms")
@@ -69,8 +68,41 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(config.guestOSVersion.hasPrefix("27."))
         #expect(config.disk == 64 << 30)
         #expect(!config.macAddress.isEmpty)
-        let list = try output(hobo, ["list"], environment: env)
-        #expect(list.contains(/itest\s+stopped\s+macOS 27\./))
+        #expect(try output(hobo, ["list"], environment: env).contains(/itest\s+stopped\s+macOS 27\./))
+
+        // Never leak a running VM: only 2 macOS guests fit on a host.
+        defer { _ = try? run(hobo, ["stop", "--force", "itest"], in: work, environment: env) }
+        let started = try output(hobo, ["start", "itest"], environment: env)
+        #expect(started.contains(/itest is running \(\d+\.\d+\.\d+\.\d+\)/), "\(started)")
+        #expect(try run(hobo, ["exec", "itest", "--", "zsh", "-c", GUITestingGrants.checkCommand], in: work, environment: env) == 0)
+
+        // Create seeded the approval, so a capture raises no dialog. replayd logs its decision at the
+        // capture; finding the check it ran means this isn't passing on a log that says nothing.
+        #expect(try run(hobo, ["exec", "itest", "--gui", "--", "open", "-a", "TextEdit"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["screenshot", "itest", "-o", work.appending(path: "shot.png").path], in: work, environment: env) == 0)
+        let replayd = try output(hobo, ["exec", "itest", "--", "/usr/bin/log", "show", "--last", "10m", "--predicate", #"process == "replayd""#, "--style", "compact"], environment: env)
+        #expect(replayd.contains("requireAlertWithCanonicalBundleID"), "replayd's log has changed wording")
+        #expect(!replayd.contains("userAcknowledgementAlert"), "the approval dialog was raised")
+
+        #expect(try output(hobo, ["stop", "itest"], environment: env).contains("Stopped itest"))
+        #expect(try run(hobo, ["delete", "itest", "--yes"], in: work, environment: env) == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: vms.path).isEmpty)
+    }
+
+    /// A clone of the kept macOS VM (`KeptVM.macOS`) through start and stop under launchd, the guest
+    /// channel and `hobo ui`, the window, suspend and resume, snapshots, its hardware and shares
+    /// changed with set, a folder shared for one run, steps re-run with provision, then rename and
+    /// delete. The clone is in a temp `HOBO_VMS`, as `macOSBuild`'s VM is.
+    @Test(.enabled(if: KeptVM.enabled(KeptVM.macOS)), .timeLimit(.minutes(90)))
+    func macOSGuest() throws {
+        let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
+        let work = FileManager.default.temporaryDirectory.appending(path: "hobo-macos-\(UUID().uuidString)")
+        let vms = work.appending(path: "vms")
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: work) }
+        let env = ["HOBO_VMS": vms.path]
+        let config = try KeptVM.clone(KeptVM.macOS, to: "itest", vms: vms, work: work)
+        #expect(config.os == .macOS, "\(KeptVM.macOS) names a macOS VM")
 
         // Never leak a running VM: only 2 macOS guests fit on a host.
         defer { _ = try? run(hobo, ["stop", "--force", "itest"], in: work, environment: env) }
@@ -81,9 +113,13 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         // The guest channel: ip, exec (output and exit status), ssh, and cp both ways.
         let ip = try output(hobo, ["ip", "itest"], environment: env).trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(started.contains("(\(ip))"))
-        #expect(try output(hobo, ["exec", "itest", "--", "sw_vers", "-productVersion"], environment: env).hasPrefix("27."))
+        let major = String(config.guestOSVersion.prefix { $0.isNumber })
+        #expect(try output(hobo, ["exec", "itest", "--", "sw_vers", "-productVersion"], environment: env).hasPrefix(major + "."))
         #expect(try run(hobo, ["exec", "itest", "--", "sh", "-c", "exit 7"], in: work, environment: env) == 7)
-        #expect(try run(hobo, ["exec", "itest", "--", "zsh", "-c", GUITestingGrants.checkCommand], in: work, environment: env) == 0)
+        try #require(
+            try run(hobo, ["exec", "itest", "--", "zsh", "-c", GUITestingGrants.checkCommand], in: work, environment: env) == 0,
+            "\(KeptVM.macOS)'s VM needs [gui_testing]: build it with make test-vms"
+        )
         #expect(try output(hobo, ["ssh", "itest", "--", "whoami"], environment: env) == "hobo\n")
         // Both run in hobo's launchd bootstrap, the desktop's once it is logged in, which --gui waits for.
         #expect(try output(hobo, ["exec", "itest", "--", "launchctl", "managername"], environment: env) == "Aqua\n")
@@ -99,12 +135,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         let saved = try FileManager.default.contentsOfDirectory(atPath: work.path).filter { $0.hasPrefix("itest-") && $0.hasSuffix(".png") }
         #expect(saved.count == 1, "\(saved)")
         #expect(try output(hobo, ["exec", "itest", "--", "sh", "-c", "ls /tmp | grep -c hobo-screenshot || true"], environment: env) == "0\n")
-        // Create seeded the approval, so those captures raised no dialog. replayd logs its decision at
-        // the capture; finding the check it ran means this isn't passing on a log that says nothing.
-        let replayd = try output(hobo, ["exec", "itest", "--", "/usr/bin/log", "show", "--last", "10m", "--predicate", #"process == "replayd""#, "--style", "compact"], environment: env)
-        #expect(replayd.contains("requireAlertWithCanonicalBundleID"), "replayd's log has changed wording")
         try checkUI("itest", hobo: hobo, work: work, env: env)
-        #expect(!replayd.contains("userAcknowledgementAlert"), "the approval dialog was raised")
         let payload = work.appending(path: "payload.txt")
         try "over and back\n".write(to: payload, atomically: true, encoding: .utf8)
         #expect(try run(hobo, ["cp", payload.path, "itest:/tmp/payload.txt"], in: work, environment: env) == 0)
@@ -161,10 +192,11 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
 
         // set: CPUs, memory and a larger disk, whose APFS container the guest grows into at the next start.
         let configFile = vms.appending(path: "itest.hobovm/config.json")
-        #expect(try run(hobo, ["set", "itest", "--cpus", "5", "--memory", "6GB", "--disk", "72GB"], in: work, environment: env) == 0)
-        #expect(try run(hobo, ["set", "itest", "--disk", "60GB"], in: work, environment: env) != 0, "the disk only grows")
+        let diskGB = config.disk >> 30
+        #expect(try run(hobo, ["set", "itest", "--cpus", "5", "--memory", "6GB", "--disk", "\(diskGB + 8)GB"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["set", "itest", "--disk", "\(diskGB - 4)GB"], in: work, environment: env) != 0, "the disk only grows")
         let updated = try VMConfig.load(from: configFile)
-        #expect(updated.cpus == 5 && updated.memory == 6 << 30 && updated.disk == 72 << 30 && updated.diskGrowPending)
+        #expect(updated.cpus == 5 && updated.memory == 6 << 30 && updated.disk == (diskGB + 8) << 30 && updated.diskGrowPending)
 
         // Shares: a persistent read-only one (set) and a writable one for this run only (start --share).
         let kept = work.appending(path: "kept")
@@ -194,10 +226,10 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try String(contentsOf: scratch.appending(path: "from-guest"), encoding: .utf8) == "out\n")
         #expect(try output(hobo, ["exec", "itest", "--", "cat", "\(shared)/scratch/from-guest"], environment: env) == "out\n")
         #expect(try output(hobo, ["exec", "itest", "--", "cat", "\(shared)/kept/hello.txt"], environment: env) == "kept\n")
-        // df reports the main container's size for /. Larger than the whole original 64 GB disk means it
-        // grew (the Recovery container keeps about 5 GB of the 72).
+        // df reports the main container's size for /. Larger than the whole original disk means it
+        // grew (the Recovery container keeps about 5 GB of the 8 added).
         let rootKB = try output(hobo, ["exec", "itest", "--", "sh", "-c", "df -k / | awk 'NR == 2 { print $2 }'"], environment: env)
-        #expect(UInt64(rootKB.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0 > 64 << 20, "\(rootKB)")
+        #expect(UInt64(rootKB.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0 > config.disk >> 10, "\(rootKB)")
 
         // provision: another recipe's steps, run on the running VM.
         let again = work.appending(path: "Again.toml")
@@ -245,11 +277,12 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try FileManager.default.contentsOfDirectory(atPath: vms.path).isEmpty)
     }
 
-    /// Creates an Ubuntu VM from the recipe `init --os linux` pins (the newest LTS) and runs it
-    /// through start, the guest channel, the window and stop, then deletes it. The recipe's step
-    /// asserts the conventions cloud-init applied, from inside the guest.
+    /// Creates an Ubuntu server VM from the recipe `init --os linux --server` pins (the newest LTS),
+    /// and checks what create made of it: the conventions cloud-init applied, which the recipe's step
+    /// asserts from inside the guest, cloud-init off since, the root filesystem grown to the recipe's
+    /// disk, and no desktop. Everything else runs on a clone of the kept VM (`linuxGuest`).
     @Test(.timeLimit(.minutes(30)))
-    func linuxLifecycle() throws {
+    func linuxBuild() throws {
         let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
         let work = FileManager.default.temporaryDirectory.appending(path: "hobo-linux-\(UUID().uuidString)")
         let vms = work.appending(path: "vms")
@@ -257,7 +290,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         defer { try? FileManager.default.removeItem(at: work) }
         let env = ["HOBO_VMS": vms.path]
 
-        // --server: installing the desktop takes many minutes.
+        // --server: installing the desktop takes many minutes, and linuxDesktopBuild does it.
         #expect(try run(hobo, ["init", "--os", "linux", "--server"], in: work) == 0)
         let recipe = work.appending(path: "Hobo.toml")
         let pinned = try String(contentsOf: recipe, encoding: .utf8)
@@ -284,6 +317,80 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(!FileManager.default.fileExists(atPath: bundle.appending(path: "cidata.iso").path), "the seed is only for create")
         #expect(try output(hobo, ["list"], environment: env).contains(/litest\s+stopped\s+Ubuntu\s/))
 
+        defer { _ = try? run(hobo, ["stop", "--force", "litest"], in: work, environment: env) }
+        let started = try output(hobo, ["start", "litest"], environment: env)
+        #expect(started.contains(/litest is running \(\d+\.\d+\.\d+\.\d+\)/), "\(started)")
+        #expect(try output(hobo, ["exec", "litest", "--", "uname", "-m"], environment: env) == "aarch64\n")
+        // --server left the desktop out, so --gui fails at once rather than waiting for one.
+        let noDesktop = Date.now
+        #expect(try run(hobo, ["exec", "litest", "--gui", "--", "true"], in: work, environment: env) == 125)
+        #expect(try run(hobo, ["screenshot", "litest"], in: work, environment: env) != 0)
+        #expect(Date.now.timeIntervalSince(noDesktop) < 30)
+        // Cloud-init ran once, at create, and stays off.
+        #expect(try run(hobo, ["exec", "litest", "--", "test", "-e", "/etc/cloud/cloud-init.disabled"], in: work, environment: env) == 0)
+        // The root filesystem grew to the recipe's disk.
+        let rootBytes = try output(hobo, ["exec", "litest", "--", "df", "--output=size", "-B1", "/"], environment: env)
+        let rootSize = rootBytes.split(separator: "\n").last.flatMap { UInt64($0.trimmingCharacters(in: .whitespaces)) }
+        #expect((rootSize ?? 0) > 28 << 30, "\(rootBytes)")
+        // The console's login prompt comes a little after the agent answers.
+        try quietView("litest", env: env)
+        let console = bundle.appending(path: "console.log")
+        let promptBy = Date.now.addingTimeInterval(60)
+        while !((try? String(contentsOf: console, encoding: .utf8))?.contains("litest login:") ?? false), Date.now < promptBy {
+            Thread.sleep(forTimeInterval: 1)
+        }
+        #expect(try String(contentsOf: console, encoding: .utf8).contains("litest login:"))
+
+        #expect(try output(hobo, ["stop", "litest"], environment: env).contains("Stopped litest"))
+        #expect(try run(hobo, ["delete", "litest", "--yes"], in: work, environment: env) == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: vms.path).isEmpty)
+    }
+
+    /// Creates an Ubuntu VM with the desktop `init --os linux` adds by default, and checks what the
+    /// recipe's desktop steps made of it (decision 21): auto-login to a Wayland session that
+    /// `exec --gui` reaches, accessibility on and hobo's GNOME Shell extension enabled, and apps
+    /// reachable over AT-SPI. `linuxGuest` tests GUI work itself, on a clone of the kept VM.
+    @Test(.timeLimit(.minutes(40)))
+    func linuxDesktopBuild() throws {
+        let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
+        let work = FileManager.default.temporaryDirectory.appending(path: "hobo-linux-desktop-\(UUID().uuidString)")
+        let vms = work.appending(path: "vms")
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: work) }
+        let env = ["HOBO_VMS": vms.path]
+
+        #expect(try run(hobo, ["init", "--os", "linux"], in: work) == 0)
+        try #require(try run(hobo, ["create", "ldesk", work.appending(path: "Hobo.toml").path], in: work, environment: env) == 0)
+        defer { _ = try? run(hobo, ["stop", "--force", "ldesk"], in: work, environment: env) }
+        #expect(try run(hobo, ["start", "ldesk"], in: work, environment: env) == 0)
+
+        let session = try output(hobo, ["exec", "ldesk", "--gui", "--", "sh", "-c", "echo $XDG_SESSION_TYPE $WAYLAND_DISPLAY; whoami"], environment: env)
+        #expect(session == "wayland wayland-0\nhobo\n", "\(session)")
+        #expect(try output(hobo, ["exec", "ldesk", "--gui", "--", "gsettings", "get", "org.gnome.desktop.interface", "toolkit-accessibility"], environment: env) == "true\n")
+        #expect(try output(hobo, ["exec", "ldesk", "--gui", "--", "gsettings", "get", "org.gnome.shell", "enabled-extensions"], environment: env).contains("hobo@gsquared.app"))
+        #expect(try run(hobo, ["exec", "ldesk", "--gui", "--", "sh", "-c", "gnome-calculator >/dev/null 2>&1 &"], in: work, environment: env) == 0)
+        #expect(try run(hobo, ["ui", "ldesk", "wait", "--app", "org.gnome.Calculator", "--timeout", "30"], in: work, environment: env) == 0)
+
+        #expect(try output(hobo, ["stop", "ldesk"], environment: env).contains("Stopped ldesk"))
+        #expect(try run(hobo, ["delete", "ldesk", "--yes"], in: work, environment: env) == 0)
+    }
+
+    /// A clone of the kept Linux VM (`KeptVM.linux`, which has the desktop) through start, the guest
+    /// channel, shares, GUI work (decision 21: `exec --gui` in the Wayland session, apps driven with
+    /// `hobo ui`, and a screenshot), suspend and resume, snapshots, a grown disk, clone, ephemeral
+    /// clones and the idle timeout, then delete.
+    @Test(.enabled(if: KeptVM.enabled(KeptVM.linux)), .timeLimit(.minutes(40)))
+    func linuxGuest() throws {
+        let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
+        let work = FileManager.default.temporaryDirectory.appending(path: "hobo-linux-\(UUID().uuidString)")
+        let vms = work.appending(path: "vms")
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: work) }
+        let env = ["HOBO_VMS": vms.path]
+        let config = try KeptVM.clone(KeptVM.linux, to: "litest", vms: vms, work: work)
+        #expect(config.os == .linux, "\(KeptVM.linux) names a Linux VM")
+        let bundle = vms.appending(path: "litest.hobovm")
+
         // Shares: a persistent read-only one (set) and a writable one for this run only (start --share).
         let kept = work.appending(path: "kept")
         let scratch = work.appending(path: "scratch")
@@ -298,17 +405,6 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(started.contains("(\(ip))"))
         #expect(try output(hobo, ["exec", "litest", "--", "uname", "-m"], environment: env) == "aarch64\n")
         #expect(try output(hobo, ["ssh", "litest", "--", "whoami"], environment: env) == "hobo\n")
-        // --server left the desktop out, so --gui fails at once rather than waiting for one.
-        let noDesktop = Date.now
-        #expect(try run(hobo, ["exec", "litest", "--gui", "--", "true"], in: work, environment: env) == 125)
-        #expect(try run(hobo, ["screenshot", "litest"], in: work, environment: env) != 0)
-        #expect(Date.now.timeIntervalSince(noDesktop) < 30)
-        // Cloud-init ran once, at create, and stays off.
-        #expect(try run(hobo, ["exec", "litest", "--", "test", "-e", "/etc/cloud/cloud-init.disabled"], in: work, environment: env) == 0)
-        // The root filesystem grew to the recipe's disk.
-        let rootBytes = try output(hobo, ["exec", "litest", "--", "df", "--output=size", "-B1", "/"], environment: env)
-        let rootSize = rootBytes.split(separator: "\n").last.flatMap { UInt64($0.trimmingCharacters(in: .whitespaces)) }
-        #expect((rootSize ?? 0) > 28 << 30, "\(rootBytes)")
         let payload = work.appending(path: "payload.txt")
         try "over and back\n".write(to: payload, atomically: true, encoding: .utf8)
         #expect(try run(hobo, ["cp", payload.path, "litest:/var/tmp/payload.txt"], in: work, environment: env) == 0)
@@ -318,8 +414,6 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
             "litest", hobo: hobo, work: work, env: env,
             nicDown: ["sudo", "-n", "ip", "link", "set", "enp0s1", "down"], nicUp: ["sudo", "-n", "ip", "link", "set", "enp0s1", "up"]
         )
-        try quietView("litest", env: env)
-        #expect(try String(contentsOf: bundle.appending(path: "console.log"), encoding: .utf8).contains("litest login:"))
 
         // hobo has the host user's uid, so shared files are its own, and what it writes is the host user's.
         let shared = CloudInit.shareMountPoint
@@ -331,6 +425,39 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try String(contentsOf: fromGuest, encoding: .utf8) == "out\n")
         let owner = try FileManager.default.attributesOfItem(atPath: fromGuest.path)[.ownerAccountID] as? NSNumber
         #expect(owner?.uint32Value == getuid())
+
+        // Plain exec has no display; --gui waits for the session, then has the desktop's.
+        #expect(try output(hobo, ["exec", "litest", "--", "sh", "-c", "echo ${WAYLAND_DISPLAY:-none}"], environment: env) == "none\n")
+        let session = try output(hobo, ["exec", "litest", "--gui", "--", "sh", "-c", "echo $XDG_SESSION_TYPE $WAYLAND_DISPLAY; whoami"], environment: env)
+        try #require(session == "wayland wayland-0\nhobo\n", "\(KeptVM.linux)'s VM needs the desktop: build it with make test-vms (\(session))")
+        #expect(try run(hobo, ["exec", "litest", "--gui", "--", "sh", "-c", "exit 7"], in: work, environment: env) == 7)
+
+        // An app started with exec --gui shows up over AT-SPI, which can drive it.
+        let calculator = Process()
+        calculator.executableURL = URL(filePath: hobo)
+        calculator.arguments = ["exec", "litest", "--gui", "--", "gnome-calculator"]
+        calculator.environment = ProcessInfo.processInfo.environment.merging(env) { $1 }
+        calculator.standardOutput = FileHandle.nullDevice
+        calculator.standardError = FileHandle.nullDevice
+        try calculator.run()
+        defer { if calculator.isRunning { calculator.terminate() } }
+        #expect(try run(hobo, ["ui", "litest", "wait", "--app", "org.gnome.Calculator", "--timeout", "30"], in: work, environment: env) == 0)
+        try checkLinuxUI("litest", hobo: hobo, work: work, env: env)
+
+        // The screenshot is the whole 1920x1200 display, twice (the second shows no permission
+        // dialog left by the first), and leaves nothing in ~/Pictures.
+        for attempt in 1...2 {
+            let shot = work.appending(path: "shot\(attempt).png")
+            #expect(try output(hobo, ["screenshot", "litest", "-o", shot.path], environment: env) == shot.standardizedFileURL.path + "\n")
+            let size = try output("/usr/bin/sips", ["-g", "pixelWidth", "-g", "pixelHeight", shot.path], environment: env)
+            #expect(size.contains("pixelWidth: 1920") && size.contains("pixelHeight: 1200"), "\(size)")
+        }
+        #expect(try output(hobo, ["exec", "litest", "--", "sh", "-c", "ls ~/Pictures | wc -l"], environment: env) == "0\n")
+
+        // Cancelling exec --gui (the client going away) ends the app too.
+        calculator.terminate()
+        calculator.waitUntilExit()
+        #expect(try run(hobo, ["exec", "litest", "--", "sh", "-c", "sleep 2; ! pgrep -f [g]nome-calculator"], in: work, environment: env) == 0)
 
         // suspend and resume: the clock is set with Linux's own command (it would be behind by at
         // least the 10 s suspended, against 5 s allowed), and the shares keep working with no
@@ -352,13 +479,14 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
 
         #expect(try output(hobo, ["stop", "litest"], environment: env).contains("Stopped litest"))
         // With no shares the device is still attached, so /mnt/hobo is an empty mount, not the disk.
-        // The disk grows too: at the next start the root filesystem outgrows the whole original 32 GB
+        // The disk grows too: at the next start the root filesystem outgrows the whole original
         // disk, and the pending flag clears.
-        #expect(try run(hobo, ["set", "litest", "--unshare", "kept", "--disk", "40GB"], in: work, environment: env) == 0)
+        let diskGB = config.disk >> 30
+        #expect(try run(hobo, ["set", "litest", "--unshare", "kept", "--disk", "\(diskGB + 8)GB"], in: work, environment: env) == 0)
         #expect(try run(hobo, ["start", "litest"], in: work, environment: env) == 0)
         let grownBytes = try output(hobo, ["exec", "litest", "--", "df", "--output=size", "-B1", "/"], environment: env)
         let grownSize = grownBytes.split(separator: "\n").last.flatMap { UInt64($0.trimmingCharacters(in: .whitespaces)) }
-        #expect((grownSize ?? 0) > 36 << 30, "\(grownBytes)")
+        #expect((grownSize ?? 0) > (diskGB + 4) << 30, "\(grownBytes)")
         #expect(try VMConfig.load(from: bundle.appending(path: "config.json")).diskGrowPending == false)
         #expect(try output(hobo, ["exec", "litest", "--", "findmnt", "-n", "-o", "FSTYPE", shared], environment: env) == "virtiofs\n")
         #expect(try output(hobo, ["exec", "litest", "--", "ls", "-A", shared], environment: env) == "")
@@ -478,68 +606,13 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["exec", vm, "--"] + nicUp, in: work, environment: env) == 0)
     }
 
-    /// Creates an Ubuntu VM with the desktop `init --os linux` adds by default and tests GUI work in it
-    /// (decision 21): `exec --gui` in the Wayland session, apps driven with `hobo ui`, and a
-    /// screenshot, taken twice so the second shows no permission dialog left by the first.
-    @Test(.timeLimit(.minutes(40)))
-    func linuxDesktop() throws {
-        let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
-        let work = FileManager.default.temporaryDirectory.appending(path: "hobo-linux-desktop-\(UUID().uuidString)")
-        let vms = work.appending(path: "vms")
-        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: work) }
-        let env = ["HOBO_VMS": vms.path]
-
-        #expect(try run(hobo, ["init", "--os", "linux"], in: work) == 0)
-        try #require(try run(hobo, ["create", "ldesk", work.appending(path: "Hobo.toml").path], in: work, environment: env) == 0)
-        defer { _ = try? run(hobo, ["stop", "--force", "ldesk"], in: work, environment: env) }
-        #expect(try run(hobo, ["start", "ldesk"], in: work, environment: env) == 0)
-
-        // Plain exec has no display; --gui waits for the session, then has the desktop's.
-        #expect(try output(hobo, ["exec", "ldesk", "--", "sh", "-c", "echo ${WAYLAND_DISPLAY:-none}"], environment: env) == "none\n")
-        let session = try output(hobo, ["exec", "ldesk", "--gui", "--", "sh", "-c", "echo $XDG_SESSION_TYPE $WAYLAND_DISPLAY; whoami"], environment: env)
-        #expect(session == "wayland wayland-0\nhobo\n", "\(session)")
-        #expect(try run(hobo, ["exec", "ldesk", "--gui", "--", "sh", "-c", "exit 7"], in: work, environment: env) == 7)
-        #expect(try output(hobo, ["exec", "ldesk", "--gui", "--", "gsettings", "get", "org.gnome.desktop.interface", "toolkit-accessibility"], environment: env) == "true\n")
-
-        // An app started with exec --gui shows up over AT-SPI, which can drive it.
-        let calculator = Process()
-        calculator.executableURL = URL(filePath: hobo)
-        calculator.arguments = ["exec", "ldesk", "--gui", "--", "gnome-calculator"]
-        calculator.environment = ProcessInfo.processInfo.environment.merging(env) { $1 }
-        calculator.standardOutput = FileHandle.nullDevice
-        calculator.standardError = FileHandle.nullDevice
-        try calculator.run()
-        defer { if calculator.isRunning { calculator.terminate() } }
-        #expect(try run(hobo, ["ui", "ldesk", "wait", "--app", "org.gnome.Calculator", "--timeout", "30"], in: work, environment: env) == 0)
-        try checkLinuxUI("ldesk", hobo: hobo, work: work, env: env)
-
-        // The screenshot is the whole 1920x1200 display, twice, and leaves nothing in ~/Pictures.
-        for attempt in 1...2 {
-            let shot = work.appending(path: "shot\(attempt).png")
-            #expect(try output(hobo, ["screenshot", "ldesk", "-o", shot.path], environment: env) == shot.standardizedFileURL.path + "\n")
-            let size = try output("/usr/bin/sips", ["-g", "pixelWidth", "-g", "pixelHeight", shot.path], environment: env)
-            #expect(size.contains("pixelWidth: 1920") && size.contains("pixelHeight: 1200"), "\(size)")
-        }
-        #expect(try output(hobo, ["exec", "ldesk", "--", "sh", "-c", "ls ~/Pictures | wc -l"], environment: env) == "0\n")
-
-        // Cancelling exec --gui (the client going away) ends the app too.
-        calculator.terminate()
-        calculator.waitUntilExit()
-        #expect(try run(hobo, ["exec", "ldesk", "--", "sh", "-c", "sleep 2; ! pgrep -f [g]nome-calculator"], in: work, environment: env) == 0)
-
-        #expect(try output(hobo, ["stop", "ldesk"], environment: env).contains("Stopped ldesk"))
-        #expect(try run(hobo, ["delete", "ldesk", "--yes"], in: work, environment: env) == 0)
-    }
-
     /// `hobo ui` on a Windows guest (designs/hobo-ui-linux-windows.md), in an ephemeral clone of the
-    /// Windows VM `HOBO_WINDOWS_VM` names (in the real store: building one needs an ISO the test
-    /// can't download), against Notepad and File Explorer, checked through their files. Skipped
-    /// without one.
-    @Test(.enabled(if: environment["HOBO_WINDOWS_VM"] != nil), .timeLimit(.minutes(20)))
+    /// kept Windows VM (`KeptVM.windows`, in the real store), against Notepad and File Explorer,
+    /// checked through their files.
+    @Test(.enabled(if: KeptVM.enabled(KeptVM.windows)), .timeLimit(.minutes(20)))
     func windowsUI() throws {
         let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
-        let source = try #require(environment["HOBO_WINDOWS_VM"])
+        let source = try KeptVM.source(KeptVM.windows)
         let work = FileManager.default.temporaryDirectory.appending(path: "hobo-windows-ui-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: work) }

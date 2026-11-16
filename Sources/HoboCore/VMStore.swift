@@ -188,12 +188,14 @@ public struct VMStore: Sendable {
     /// recipe and `config.json` but a new MAC (`macAddress`), and `ephemeral` as asked. `copy`
     /// copies the platform files from the source bundle to the new one and gives the new one its
     /// own machine identifier; it is HoboVM's, which knows each guest OS's files. The new bundle is
-    /// marked as being built until it is complete, and deleted if anything fails.
+    /// marked as being built until it is complete, and deleted if anything fails. `source` is found
+    /// in `sourceStore`, this store by default: the integration tests clone a kept VM from the real
+    /// store into their own.
     public func clone(
-        _ source: String, to destination: String, ephemeral: Bool, macAddress: String,
+        _ source: String, from sourceStore: VMStore? = nil, to destination: String, ephemeral: Bool, macAddress: String,
         log: (String) -> Void, copy: (_ from: URL, _ to: URL, VMConfig) throws -> Void
     ) throws -> VM {
-        let vm = try find(source)
+        let vm = try (sourceStore ?? self).find(source)
         try checkStopped(vm)
         let config: VMConfig
         switch vm.status {

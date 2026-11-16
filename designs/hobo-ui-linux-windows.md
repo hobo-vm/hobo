@@ -57,8 +57,8 @@
   so `menu` takes whichever menu wasn't open before it expanded the item.
 - File Explorer's folder windows and its shell are both `explorer.exe`, so `--app explorer` is
   ambiguous there and a test gives the window's pid.
-- Windows' integration test (`windowsUI`) runs in an ephemeral clone of the VM
-  `HOBO_WINDOWS_VM` names, and is skipped without one: the test can't download an ISO.
+- Windows' integration test (`windowsUI`) runs in an ephemeral clone of the kept VM
+  `HOBO_WINDOWS_VM` names (`windows11`, built by `make test-vms`): the test can't download an ISO.
 - The Linux backend writes uinput itself (ioctls and `input_event` structs) rather than through
   python3-evdev, which Ubuntu 26.04 doesn't package for arm64; it waits until gnome-shell has
   opened the new devices, since events before then are lost.

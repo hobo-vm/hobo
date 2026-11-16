@@ -3,22 +3,23 @@ import HoboCore
 import Testing
 
 /// A real `hobo create` from the Windows on Arm ISO named by HOBO_WINDOWS_ISO, which Hobo can't
-/// download, then everything that behaves differently on Windows. Opt-in on top of HOBO_INTEGRATION
-/// (`HOBO_WINDOWS_ISO=<path> make integration-test`). VMs go to a temp `HOBO_VMS`, as in
-/// `HoboVMIntegrationTests`. One test per build, since a build takes 8 minutes; clones keep the steps apart.
+/// download, and what create made of it. Opt-in on top of HOBO_INTEGRATION
+/// (`HOBO_WINDOWS_ISO=<path> make integration-test`), since a build takes 8 minutes; everything
+/// that doesn't depend on the build runs on a clone of the kept VM (`WindowsGuestTests`). VMs go to
+/// a temp `HOBO_VMS`, as in `HoboVMIntegrationTests`.
 @Suite(.enabled(if: integrationEnabled && environment["HOBO_WINDOWS_ISO"] != nil), .serialized)
 struct WindowsIntegrationTests {
-    @Test(.timeLimit(.minutes(60)))
-    func windowsGuest() throws {
+    /// The recipe's steps run with their environment and their text intact, and setup has finished,
+    /// so hobo stays logged on, after a restart too.
+    @Test(.timeLimit(.minutes(40)))
+    func windowsBuild() throws {
         let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
         let iso = try #require(environment["HOBO_WINDOWS_ISO"])
         let work = FileManager.default.temporaryDirectory.appending(path: "hobo-windows-\(UUID().uuidString)")
-        let share = work.appending(path: "share")
-        try FileManager.default.createDirectory(at: share, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: work) }
-        let session = Session(hobo: hobo, directory: work, vms: work.appending(path: "vms"))
-        var started: [String] = []
-        defer { for vm in started { _ = try? session.run(["stop", "--force", vm]) } }
+        let session = WindowsSession(hobo: hobo, directory: work, vms: work.appending(path: "vms"))
+        defer { _ = try? session.run(["stop", "--force", "vm"]) }
 
         // The recipe, from init, with a step that sees its environment and its own text, and fails the build if it can't.
         #expect(try session.run(["init", "--os", "windows", iso]).status == 0)
@@ -41,23 +42,16 @@ struct WindowsIntegrationTests {
         // UTF-8 with no byte order mark, as Mac editors write it: PowerShell must still read the é as one letter.
         try "if ('é'.Length -ne 1) { exit 3 }\n".write(to: work.appending(path: "bomless.ps1"), atomically: true, encoding: .utf8)
         #expect(try session.run(["validate"]).status == 0)
-        try #require(try session.run(["create", "base"]).status == 0)
+        try #require(try session.run(["create", "vm"]).status == 0)
 
-        let config = try VMConfig.load(from: work.appending(path: "vms/base.hobovm/config.json"))
+        let config = try VMConfig.load(from: work.appending(path: "vms/vm.hobovm/config.json"))
         #expect(config.os == .windows)
         #expect(config.guestOSVersion.contains("Windows"))
-
-        // A clone runs alongside its source, each with its own address.
-        #expect(try session.run(["clone", "base", "vm"]).status == 0)
-        started.append("vm")
         try #require(try session.run(["start", "vm"]).status == 0)
-        let list = try session.run(["list"]).text
-        let address = try session.run(["ip", "vm"]).text.trimmingCharacters(in: .whitespacesAndNewlines)
-        #expect(list.contains(address), "list shows the address")
-
-        func powerShell(_ line: String, gui: Bool = false) throws -> Session.Result {
-            try session.run(["exec", "vm"] + (gui ? ["--gui"] : []) + ["--", "powershell.exe", "-NoProfile", "-Command", line])
+        func powerShell(_ line: String) throws -> WindowsSession.Result {
+            try session.run(["exec", "vm", "--", "powershell.exe", "-NoProfile", "-Command", line])
         }
+        #expect(try powerShell(#"Get-Content C:\Users\hobo\provisioned.txt"#).text.contains("it's here"))
 
         // Setup has finished: hobo stays logged on past the point where an unfinished OOBE logs it
         // off (about a minute after logon) and clears the auto-login settings, here and after a restart.
@@ -71,9 +65,91 @@ struct WindowsIntegrationTests {
         #expect(try session.run(["stop", "vm"]).status == 0)
         try #require(try session.run(["start", "vm"]).status == 0)
         try staysLoggedOn("after a restart")
+        #expect(try session.run(["stop", "vm"]).status == 0)
+    }
+
+    /// `[windows] resizable_display`: the patched viogpudo, test signing, a 1920×1200 desktop, and one
+    /// that follows the window. Whether the window shows it intact can only be seen from the host, by eye.
+    @Test(.timeLimit(.minutes(30)))
+    func resizableDisplay() throws {
+        let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
+        let iso = try #require(environment["HOBO_WINDOWS_ISO"])
+        let work = FileManager.default.temporaryDirectory.appending(path: "hobo-windows-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: work) }
+        let session = WindowsSession(hobo: hobo, directory: work, vms: work.appending(path: "vms"))
+        defer { _ = try? session.run(["stop", "--force", "vm"]) }
+
+        #expect(try session.run(["init", "--os", "windows", iso]).status == 0)
+        let recipe = work.appending(path: "Hobo.toml")
+        let resizable = try String(contentsOf: recipe, encoding: .utf8)
+            .replacingOccurrences(of: "# [windows]\n# resizable_display = true", with: "[windows]\nresizable_display = true")
+        #expect(resizable.contains("\n[windows]\n"), "the template offers it")
+        try resizable.write(to: recipe, atomically: true, encoding: .utf8)
+        try #require(try session.run(["create", "vm"]).status == 0)
+        #expect(try VMConfig.load(from: work.appending(path: "vms/vm.hobovm/config.json")).resizableDisplay)
+
+        try #require(try session.run(["start", "vm"]).status == 0)
+        func powerShell(_ line: String) throws -> String {
+            try session.run(["exec", "vm", "--", "powershell.exe", "-NoProfile", "-Command", line]).text
+        }
+        #expect(try powerShell("bcdedit /enum '{current}' | Select-String testsigning").contains("Yes"))
+        let device = try powerShell("$v = Get-CimInstance Win32_VideoController; $v.Status + ' ' + $v.DriverVersion")
+        #expect(device.contains("OK"), "the test-signed driver loaded: \(device)")
+        #expect(!device.contains("30200"), "not virtio-win's 0.1.302 build: \(device)")
+
+        let shot = work.appending(path: "shot.png")
+        func desktopSize() throws -> (width: Int, height: Int) {
+            #expect(try session.run(["screenshot", "vm", "--output", shot.path]).status == 0)
+            let png = try Data(contentsOf: shot)
+            let field = { (offset: Int) in png[offset..<offset + 4].reduce(0) { $0 << 8 | Int($1) } }
+            return (field(16), field(20))
+        }
+        let configured = try desktopSize()
+        #expect(configured == (1920, 1200))
+
+        // The desktop follows the window, which is sized in points and keeps the display's shape.
+        #expect(try session.run(["view", "vm"]).status == 0)
+        var followed = configured
+        for _ in 0..<15 where followed == configured {
+            Thread.sleep(forTimeInterval: 2)
+            followed = try desktopSize()
+        }
+        #expect(followed != configured, "the desktop stayed at the display's configured size")
+        let aspect = { (size: (width: Int, height: Int)) in Double(size.width) / Double(size.height) }
+        #expect(abs(aspect(followed) - aspect(configured)) < 0.01, "\(followed)")
+    }
+
+}
+
+/// A clone of the kept Windows VM (`KeptVM.windows`) through everything that behaves differently on
+/// Windows: exec and --gui, the clock, screenshots, SSH, copies and rm, cancelling, suspend and
+/// resume, a live snapshot, a grown disk, shares and an ephemeral clone. The clone is in a temp
+/// `HOBO_VMS`, as `WindowsIntegrationTests`' VMs are.
+@Suite(.enabled(if: KeptVM.enabled(KeptVM.windows)), .serialized)
+struct WindowsGuestTests {
+    @Test(.timeLimit(.minutes(40)))
+    func windowsGuest() throws {
+        let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
+        let work = FileManager.default.temporaryDirectory.appending(path: "hobo-windows-\(UUID().uuidString)")
+        let share = work.appending(path: "share")
+        try FileManager.default.createDirectory(at: share, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: work) }
+        let vms = work.appending(path: "vms")
+        let session = WindowsSession(hobo: hobo, directory: work, vms: vms)
+        var started: [String] = ["vm"]
+        defer { for vm in started { _ = try? session.run(["stop", "--force", vm]) } }
+        let config = try KeptVM.clone(KeptVM.windows, to: "vm", vms: vms, work: work)
+        #expect(config.os == .windows, "\(KeptVM.windows) names a Windows VM")
+        try #require(try session.run(["start", "vm"]).status == 0)
+        let address = try session.run(["ip", "vm"]).text.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(try session.run(["list"]).text.contains(address), "list shows the address")
+
+        func powerShell(_ line: String, gui: Bool = false) throws -> WindowsSession.Result {
+            try session.run(["exec", "vm"] + (gui ? ["--gui"] : []) + ["--", "powershell.exe", "-NoProfile", "-Command", line])
+        }
 
         // Plain exec: output, exit statuses, quoting, PowerShell commands, binary output.
-        #expect(try powerShell(#"Get-Content C:\Users\hobo\provisioned.txt"#).text.contains("it's here"))
         #expect(try session.run(["exec", "vm", "--", "cmd.exe", "/c", "exit 7"]).status == 7)
         #expect(try session.run(["exec", "vm", "--", "nosuchprogram"]).status == 127)
         // Found, but not something Windows can start.
@@ -157,10 +233,11 @@ struct WindowsIntegrationTests {
 
         // Growing the disk and a persistent share: Windows still boots, and takes the new space.
         try "from host".write(to: share.appending(path: "host.txt"), atomically: true, encoding: .utf8)
-        #expect(try session.run(["set", "vm", "--disk", "80GB", "--share", share.path]).status == 0)
+        let diskGB = config.disk >> 30
+        #expect(try session.run(["set", "vm", "--disk", "\(diskGB + 16)GB", "--share", share.path]).status == 0)
         try #require(try session.run(["start", "vm"]).status == 0)
         let size = try powerShell("(Get-Volume -DriveLetter C).Size").text.trimmingCharacters(in: .whitespacesAndNewlines)
-        #expect((UInt64(size) ?? 0) > 70 << 30)
+        #expect((UInt64(size) ?? 0) > (diskGB + 6) << 30, "\(size)")
         #expect(try powerShell(#"Get-Content Z:\share\host.txt"#).text.contains("from host"))
         #expect(try powerShell(#"'from guest' | Set-Content Z:\share\guest.txt"#).status == 0)
         #expect(FileManager.default.fileExists(atPath: share.appending(path: "guest.txt").path))
@@ -176,102 +253,51 @@ struct WindowsIntegrationTests {
         #expect(try session.run(["stop", "vm"]).status == 0)
 
         // An ephemeral clone goes when it stops.
-        let ephemeral = try session.run(["start", "base", "--ephemeral", "--json"])
+        let ephemeral = try session.run(["start", "vm", "--ephemeral", "--json"])
         #expect(ephemeral.status == 0)
         let name = try #require(ephemeral.text.firstMatch(of: /"name":"([^"]+)"/)?.1)
         started.append(String(name))
         #expect(try session.run(["stop", String(name)]).status == 0)
         #expect(!(try session.run(["list"]).text.contains(String(name))))
     }
+}
 
-    /// `[windows] resizable_display`: the patched viogpudo, test signing, a 1920×1200 desktop, and one
-    /// that follows the window. Whether the window shows it intact can only be seen from the host, by eye.
-    @Test(.timeLimit(.minutes(30)))
-    func resizableDisplay() throws {
-        let hobo = try #require(environment["HOBO_BIN"], "run via make integration-test")
-        let iso = try #require(environment["HOBO_WINDOWS_ISO"])
-        let work = FileManager.default.temporaryDirectory.appending(path: "hobo-windows-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: work) }
-        let session = Session(hobo: hobo, directory: work, vms: work.appending(path: "vms"))
-        defer { _ = try? session.run(["stop", "--force", "vm"]) }
-
-        #expect(try session.run(["init", "--os", "windows", iso]).status == 0)
-        let recipe = work.appending(path: "Hobo.toml")
-        let resizable = try String(contentsOf: recipe, encoding: .utf8)
-            .replacingOccurrences(of: "# [windows]\n# resizable_display = true", with: "[windows]\nresizable_display = true")
-        #expect(resizable.contains("\n[windows]\n"), "the template offers it")
-        try resizable.write(to: recipe, atomically: true, encoding: .utf8)
-        try #require(try session.run(["create", "vm"]).status == 0)
-        #expect(try VMConfig.load(from: work.appending(path: "vms/vm.hobovm/config.json")).resizableDisplay)
-
-        try #require(try session.run(["start", "vm"]).status == 0)
-        func powerShell(_ line: String) throws -> String {
-            try session.run(["exec", "vm", "--", "powershell.exe", "-NoProfile", "-Command", line]).text
-        }
-        #expect(try powerShell("bcdedit /enum '{current}' | Select-String testsigning").contains("Yes"))
-        let device = try powerShell("$v = Get-CimInstance Win32_VideoController; $v.Status + ' ' + $v.DriverVersion")
-        #expect(device.contains("OK"), "the test-signed driver loaded: \(device)")
-        #expect(!device.contains("30200"), "not virtio-win's 0.1.302 build: \(device)")
-
-        let shot = work.appending(path: "shot.png")
-        func desktopSize() throws -> (width: Int, height: Int) {
-            #expect(try session.run(["screenshot", "vm", "--output", shot.path]).status == 0)
-            let png = try Data(contentsOf: shot)
-            let field = { (offset: Int) in png[offset..<offset + 4].reduce(0) { $0 << 8 | Int($1) } }
-            return (field(16), field(20))
-        }
-        let configured = try desktopSize()
-        #expect(configured == (1920, 1200))
-
-        // The desktop follows the window, which is sized in points and keeps the display's shape.
-        #expect(try session.run(["view", "vm"]).status == 0)
-        var followed = configured
-        for _ in 0..<15 where followed == configured {
-            Thread.sleep(forTimeInterval: 2)
-            followed = try desktopSize()
-        }
-        #expect(followed != configured, "the desktop stayed at the display's configured size")
-        let aspect = { (size: (width: Int, height: Int)) in Double(size.width) / Double(size.height) }
-        #expect(abs(aspect(followed) - aspect(configured)) < 0.01, "\(followed)")
+/// Runs the signed hobo against a store of the test's own.
+struct WindowsSession {
+    struct Result {
+        var status: Int32
+        var data: Data
+        var text: String { String(decoding: data, as: UTF8.self) }
     }
 
-    private struct Session {
-        struct Result {
-            var status: Int32
-            var data: Data
-            var text: String { String(decoding: data, as: UTF8.self) }
-        }
+    var hobo: String
+    var directory: URL
+    var vms: URL
 
-        var hobo: String
-        var directory: URL
-        var vms: URL
+    func start(_ arguments: [String]) throws -> Process {
+        let process = Process()
+        process.executableURL = URL(filePath: hobo)
+        process.arguments = arguments
+        process.currentDirectoryURL = directory
+        process.environment = environment.merging(["HOBO_VMS": vms.path]) { $1 }
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        try process.run()
+        return process
+    }
 
-        func start(_ arguments: [String]) throws -> Process {
-            let process = Process()
-            process.executableURL = URL(filePath: hobo)
-            process.arguments = arguments
-            process.currentDirectoryURL = directory
-            process.environment = environment.merging(["HOBO_VMS": vms.path]) { $1 }
-            process.standardInput = FileHandle.nullDevice
-            process.standardOutput = FileHandle.nullDevice
-            try process.run()
-            return process
-        }
-
-        func run(_ arguments: [String]) throws -> Result {
-            let process = Process()
-            process.executableURL = URL(filePath: hobo)
-            process.arguments = arguments
-            process.currentDirectoryURL = directory
-            process.environment = environment.merging(["HOBO_VMS": vms.path]) { $1 }
-            process.standardInput = FileHandle.nullDevice
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            try process.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            return Result(status: process.terminationStatus, data: data)
-        }
+    func run(_ arguments: [String]) throws -> Result {
+        let process = Process()
+        process.executableURL = URL(filePath: hobo)
+        process.arguments = arguments
+        process.currentDirectoryURL = directory
+        process.environment = environment.merging(["HOBO_VMS": vms.path]) { $1 }
+        process.standardInput = FileHandle.nullDevice
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        try process.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return Result(status: process.terminationStatus, data: data)
     }
 }

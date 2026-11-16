@@ -236,8 +236,9 @@ HOBO_SIGN_IDENTITY="Developer ID Application: …" make install
 make sign                    # stage and sign .build/hobo (bin/hobo, share/hobo) without installing it
 PREFIX=~/.local make install # install somewhere else
 make test                    # README check, then unit tests
-make integration-test        # tests that drive the signed binary
-HOBO_WINDOWS_ISO=<path> make integration-test   # also build and test a Windows guest from that ISO
+make test-vms                # build the kept VMs the guest tests clone (macos27, ubuntu26; windows11 with HOBO_WINDOWS_ISO=<path>)
+make integration-test        # tests that drive the signed binary: builds, and clones of the kept VMs
+HOBO_WINDOWS_ISO=<path> make integration-test   # also build a Windows guest from that ISO
 make readme                  # regenerate the README's features from docs/features
 ```
 

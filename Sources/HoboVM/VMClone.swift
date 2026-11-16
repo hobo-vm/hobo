@@ -8,9 +8,11 @@ extension VMStore {
     /// stopped VM `source`, with a new machine identifier and MAC so both can run at once. The
     /// clone keeps the source's aux storage and hardware model, which it must: a macOS clone with
     /// fresh aux storage never boots.
-    public func cloneVM(_ source: String, to destination: String, ephemeral: Bool = false, log: (String) -> Void) throws -> VM {
+    public func cloneVM(
+        _ source: String, from sourceStore: VMStore? = nil, to destination: String, ephemeral: Bool = false, log: (String) -> Void
+    ) throws -> VM {
         try clone(
-            source, to: destination, ephemeral: ephemeral, macAddress: VZMACAddress.randomLocallyAdministered().string, log: log
+            source, from: sourceStore, to: destination, ephemeral: ephemeral, macAddress: VZMACAddress.randomLocallyAdministered().string, log: log
         ) { from, to, config in
             try vmBundle(at: from, config: config).copyPlatformFiles(to: to)
             try vmBundle(at: to, config: config).writeNewMachineIdentifier()

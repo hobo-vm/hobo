@@ -1,0 +1,6 @@
+# The kept Windows VM the guest tests clone (HOBO_WINDOWS_VM, windows11 by default): `make test-vms`
+# builds it, adding [source] for the installer HOBO_WINDOWS_ISO names, which hobo can't download.
+
+cpus   = 4
+memory = "8GB"
+disk   = "64GB"

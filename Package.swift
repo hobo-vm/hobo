@@ -46,6 +46,6 @@ let package = Package(
         .testTarget(name: "HoboControlTests", dependencies: ["HoboControl", "HoboCore"]),
         .testTarget(name: "hoboTests", dependencies: ["hobo"]),
         .testTarget(name: "HoboUICoreTests", dependencies: ["HoboUICore"]),
-        .testTarget(name: "HoboVMTests", dependencies: ["HoboCore", "HoboControl", "HoboVM", "HoboUICore"]),
+        .testTarget(name: "HoboVMTests", dependencies: ["HoboCore", "HoboControl", "HoboVM", "HoboUICore"], exclude: ["recipes"]),
     ]
 )

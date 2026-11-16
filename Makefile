@@ -7,7 +7,7 @@ BIN := $(STAGE)/bin/hobo
 PREFIX ?= /usr/local
 
 .DEFAULT_GOAL := help
-.PHONY: help build sign install test integration-test readme readme-check windows-ui windows-ui-check site site-preview clean
+.PHONY: help build sign install test integration-test test-vms readme readme-check windows-ui windows-ui-check site site-preview clean
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -61,9 +61,18 @@ site-preview: ## Serve the site with live reload from docs/, and open it in the 
 # The test runner can't hold the entitlement, so VM tests drive the signed binary. A host-wide
 # lock queues runs from different worktrees: only 2 macOS guests fit on a host.
 INTEGRATION_LOCK := $(or $(HOBO_HOME),$(HOME)/.hobo)/integration.lock
+# The kept VMs the guest tests clone, built from Tests/HoboVMTests/recipes by test-vms. Set one
+# empty to leave that guest out; a missing one fails its tests.
+HOBO_MACOS_VM ?= macos27
+HOBO_LINUX_VM ?= ubuntu26
+HOBO_WINDOWS_VM ?= windows11
+KEPT_VMS = HOBO_MACOS_VM=$(HOBO_MACOS_VM) HOBO_LINUX_VM=$(HOBO_LINUX_VM) HOBO_WINDOWS_VM=$(HOBO_WINDOWS_VM)
 integration-test: sign ## Tests that drive the signed binary
 	@mkdir -p $(dir $(INTEGRATION_LOCK))
-	HOBO_INTEGRATION=1 HOBO_BIN=$(abspath $(BIN)) lockf $(INTEGRATION_LOCK) swift test --filter HoboVMTests
+	$(KEPT_VMS) HOBO_INTEGRATION=1 HOBO_BIN=$(abspath $(BIN)) lockf $(INTEGRATION_LOCK) swift test --filter HoboVMTests
+
+test-vms: sign ## Build whichever kept VM the guest tests clone is missing (Windows needs HOBO_WINDOWS_ISO)
+	$(KEPT_VMS) HOBO_BIN=$(abspath $(BIN)) scripts/test-vms.sh
 
 clean: ## Remove build products
 	swift package clean

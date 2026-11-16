@@ -51,6 +51,20 @@ import Testing
         #expect(cloned.macAddress != config.macAddress && !cloned.ephemeral)
     }
 
+    /// The integration tests clone a kept VM from the real store into their own: the clone lands in
+    /// this store, and the source stays where it was.
+    @Test func cloneTakesItsSourceFromAnotherStore() throws {
+        defer { cleanUp() }
+        let other = VMStore(directory: store.directory.appending(path: "other"), home: store.home, launchd: store.launchd)
+        defer { try? FileManager.default.removeItem(at: other.directory) }
+        let vm = try other.cloneVM("dev", from: store, to: "exp") { _ in }
+        #expect(vm.bundle.deletingLastPathComponent().standardizedFileURL == other.directory.standardizedFileURL)
+        #expect(try other.find("exp").name == "exp")
+        #expect(throws: (any Error).self) { try other.find("dev") }
+        #expect(try store.find("dev").name == "dev")
+        #expect(throws: (any Error).self) { try store.find("exp") }
+    }
+
     /// A clone whose VM process never ran can't delete itself, so `startEphemeral` does.
     @Test func anEphemeralCloneThatFailsToStartIsDeleted() async throws {
         defer { cleanUp() }

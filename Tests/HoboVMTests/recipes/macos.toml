@@ -1,0 +1,13 @@
+# The kept macOS VM the guest tests clone (HOBO_MACOS_VM, macos27 by default): `make test-vms`
+# builds it. SIP stays on, so the build needs no hand step in recoveryOS; [gui_testing] works
+# with it on.
+
+cpus   = 4
+memory = "8GB"
+disk   = "80GB"
+
+[source]
+ipsw = "latest"
+
+[gui_testing]
+enabled = true

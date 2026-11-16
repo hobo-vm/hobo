@@ -982,6 +982,13 @@ global VMs on 2026-11-01.
     - `hobo`: CLI plus hidden `_vm-run` and `mcp` subcommands
     - `HoboVMTests` boot real VMs only with `HOBO_INTEGRATION=1`. The test runner can't hold the
       virtualization entitlement, so they drive the signed `hobo` binary (`make integration-test`).
+      Each guest OS has a build test, checking only what `create` makes of a recipe, and a guest
+      test on a clone of a kept VM (`macos27`, `ubuntu26`, `windows11`, from `Tests/HoboVMTests/recipes`
+      by `make test-vms`) for everything else, so a run covers all three without waiting on a build
+      for each, and a create bug can't hide a guest one (decided 2026-11-15). The clone goes into the
+      test's own store (`VMStore.clone(from:)`), keeping its launchd job apart from real ones. A
+      missing kept VM fails its tests rather than skip them; building Windows from its ISO, which hobo
+      can't download, stays opt-in (`HOBO_WINDOWS_ISO`).
       There is no CI; GitHub is a backup.
 24. **Repo.** `ggal625/hobo`, private, Apache-2.0, `main`.
 25. **Naming.** The hobo-and-trains metaphor (Boxcar, roundhouse, depot) was dropped on
