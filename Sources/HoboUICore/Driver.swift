@@ -517,8 +517,8 @@ public struct UIDriver<Backend: UIBackend> {
         let deadline = Date().addingTimeInterval(seconds)
         while true {
             if let value = body() { return value }
-            // Not `>=`, which Foundation before 27.2's release lacks for Date (see `VMStore.isBuilder`).
-            if !(Date() < deadline) { return nil }
+            // `<`, not `>=`, which Foundation before 27.2's release lacks for Date (see `VMStore.isBuilder`).
+            guard Date() < deadline else { return nil }
             backend.pause(0.05)
         }
     }
@@ -719,7 +719,7 @@ public struct UIDriver<Backend: UIBackend> {
                 // The app has quit: its elements and text went with it.
                 return Outcome(text: "\(what) is gone")
             }
-            if !(Date() < deadline) { break }
+            guard Date() < deadline else { break }
             backend.pause(0.1)
         }
         let snapshot = (try? app(c.target.app)).flatMap(snapshotNow)
