@@ -78,7 +78,9 @@ public enum AgentGuidance {
         to a field's text unless given `--replace`. With an \
         open or save panel or dialog showing, `choose <path>` picks the file or folder in it; don't type a \
         path into a panel, which loses a character. Refs keep their numbers across snapshots; a stale \
-        one fails rather than hit something else. Coordinates are screenshot pixels. Check results \
+        one fails rather than hit something else. Coordinates are screenshot pixels, and \
+        `screenshot --crop` takes a frame as a snapshot prints it (`--crop "840,412 400×300"`) to save just \
+        that window or element. Check results \
         in the app's own state where you can (its files or database through `exec`), not only in \
         screenshots.
         - On a macOS guest, plain `exec` runs in a background session, though `open`, System Events \

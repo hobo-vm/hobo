@@ -9,6 +9,8 @@ import Testing
 /// files. Needs no VM, so it runs without HOBO_INTEGRATION.
 @Suite struct VMCloneTests {
     let store: VMStore
+    /// What `launchctl list` prints: no jobs, until a test adds a running VM's.
+    let jobs = VMSettingsApplyTests.JobList()
     let config = VMConfig(
         os: .macOS, cpus: 4, memory: 8 << 30, disk: 80 << 30, macAddress: "5a:00:00:00:00:01",
         guestOSVersion: "27.2.0 (26B123)", created: Date(timeIntervalSince1970: 1_800_000_000),
@@ -20,7 +22,7 @@ import Testing
         store = VMStore(
             directory: temp.appending(path: "hobo-vms-\(UUID().uuidString)"),
             home: HoboHome(root: temp.appending(path: "hobo-home-\(UUID().uuidString)")),
-            launchd: Launchd { arguments in (0, arguments == ["list"] ? "PID\tStatus\tLabel\n" : "") }
+            launchd: Launchd { [jobs] arguments in (0, arguments == ["list"] ? jobs.value.withLock { $0 } : "") }
         )
         _ = try store.beginCreate("dev")
         for name in MacVMBundle.platformFiles {
@@ -73,5 +75,31 @@ import Testing
             _ = try await VMLifecycle(store: store) { _ in }.startEphemeral(from: "dev", shares: [missing])
         }
         #expect(store.list().map(\.name) == ["dev"])
+    }
+
+    /// With Apple's two macOS VMs already running, the start would only be refused once the clone
+    /// was made and booting, so it is refused first. A running Linux guest takes no slot.
+    @Test func anEphemeralStartWithNoMacSlotFreeMakesNoClone() async throws {
+        defer { cleanUp() }
+        for (index, name) in ["one", "two"].enumerated() {
+            _ = try store.cloneVM("dev", to: name) { _ in }
+            jobs.value.withLock { $0 += "\(100 + index)\t0\t\(store.job(for: name).label)\n" }
+        }
+        let lifecycle = VMLifecycle(store: store) { _ in }
+        await #expect(throws: LifecycleError.macVMLimit(running: ["one", "two"])) {
+            _ = try await lifecycle.startEphemeral(from: "dev")
+        }
+        #expect(store.list().map(\.name) == ["dev", "one", "two"])
+        // A plain start is refused the same way, and says which VMs hold the slots.
+        let refusal = await #expect(throws: LifecycleError.self) { _ = try await lifecycle.start("dev") }
+        #expect(refusal == .macVMLimit(running: ["one", "two"]))
+        #expect(refusal?.description.contains("at most 2 macOS VMs at once, and one and two are running") == true)
+
+        var linux = config
+        linux.os = .linux
+        #expect(throws: Never.self) { try lifecycle.checkMacSlot(for: linux) }
+
+        try linux.write(to: store.bundle(for: "two").appending(path: VMStore.configFile))
+        #expect(throws: Never.self) { try lifecycle.checkMacSlot(for: config) }
     }
 }

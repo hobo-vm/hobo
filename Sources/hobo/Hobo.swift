@@ -761,6 +761,10 @@ func writeOutput(_ stream: GuestStream, _ data: Data) throws {
     }
 }
 
+extension ScreenshotCrop: ExpressibleByArgument {
+    public init?(argument: String) { self.init(argument) }
+}
+
 struct Screenshot: OutputCommand {
     /// The path that means this process's stdout.
     private static let standardOutput = "-"
@@ -770,7 +774,8 @@ struct Screenshot: OutputCommand {
         discussion: """
             Captures from inside the guest's desktop session, which on macOS needs a VM built from a recipe with [gui_testing], \
             and on Linux a desktop (left out by init --os linux --server). \
-            Prints the file's path; by default it is a new <vm>-<timestamp>.png in the current directory.
+            Prints the file's path; by default it is a new <vm>-<timestamp>.png in the current directory. \
+            --crop keeps one rectangle of the screen, such as an element's frame from hobo ui snapshot.
             """
     )
 
@@ -782,6 +787,13 @@ struct Screenshot: OutputCommand {
 
     @Option(name: [.customShort("o"), .customLong("output")], help: ArgumentHelp("The same as <path>.", valueName: "path"))
     var outputOption: String?
+
+    // Unconditional, since a window partly off the screen's left has a frame that starts with "-".
+    @Option(parsing: .unconditional, help: ArgumentHelp(
+        "Keep only this rectangle, in screenshot pixels from the top left. Also takes a frame as hobo ui snapshot prints it: \"x,y width×height\".",
+        valueName: "x,y,width,height"
+    ))
+    var crop: ScreenshotCrop?
 
     /// Where the PNG goes: the positional path or `--output`, whichever was given.
     private var output: String? { path ?? outputOption }
@@ -797,7 +809,8 @@ struct Screenshot: OutputCommand {
     }
 
     func execute(_: Output) async throws -> Reply {
-        let screenshot = try GuestChannel().screenshot(name)
+        var screenshot = try GuestChannel().screenshot(name)
+        if let crop { screenshot = try screenshot.cropped(to: crop) }
         if output == Self.standardOutput {
             try FileHandle.standardOutput.write(contentsOf: screenshot.png)
             return Reply(ScreenshotResult(name: screenshot.name, path: Self.standardOutput), text: nil)
