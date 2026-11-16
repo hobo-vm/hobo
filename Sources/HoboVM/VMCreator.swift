@@ -315,8 +315,8 @@ public struct VMCreator {
             try await ssh.upload(agent, to: Conventions.agentUpload)
             try await ssh.upload(contents: Conventions.script, to: "/tmp/hobo-conventions.sh")
             try await ssh.check("\(passwordSudo) /bin/bash /tmp/hobo-conventions.sh && rm /tmp/hobo-conventions.sh", what: "conventions")
-            // With the cookie, this boot stays on Setup Assistant's license agreement and never logs
-            // in; without it, the next one logs straight in.
+            // A boot that started with the cookie stays on Setup Assistant's license agreement and
+            // never logs in, so this one is restarted; the next, with the cookie gone, logs straight in.
             if try await ssh.run(Conventions.removeTermsCookieCommand, quiet: true) == 0 {
                 log("Restarting past Setup Assistant's license agreement")
                 try await shutDown(vm, shell: ssh, command: "\(passwordSudo) shutdown -h now")
