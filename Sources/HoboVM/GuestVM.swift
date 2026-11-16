@@ -41,7 +41,7 @@ public final class GuestVM {
 
     /// Boots the guest.
     public func start() async throws {
-        try await machine.start()
+        try await explainingLimit { try await machine.start() }
     }
 
     /// Boots a macOS guest, into recoveryOS with `recovery`. `provisioning` only takes effect on
@@ -50,7 +50,7 @@ public final class GuestVM {
         let options = VZMacOSVirtualMachineStartOptions()
         options.startUpFromMacOSRecovery = recovery
         if let provisioning { try options.setGuestProvisioning(provisioning) }
-        try await machine.start(options: options)
+        try await explainingLimit { try await machine.start(options: options) }
     }
 
     public func pause() async throws { try await machine.pause() }
@@ -62,7 +62,19 @@ public final class GuestVM {
 
     /// Restores state saved by `saveState` into a VM that hasn't started; it is left paused. VZ
     /// refuses state saved under another configuration.
-    public func restoreState(from url: URL) async throws { try await machine.restoreMachineStateFrom(url: url) }
+    public func restoreState(from url: URL) async throws {
+        try await explainingLimit { try await machine.restoreMachineStateFrom(url: url) }
+    }
+
+    /// VZ's own words for its limit on macOS VMs ("the maximum supported number of active
+    /// virtual machines has been reached") say neither what the limit is nor what to do about it.
+    private func explainingLimit(_ body: () async throws -> Void) async throws {
+        do {
+            try await body()
+        } catch let error as VZError where error.code == .virtualMachineLimitExceeded {
+            throw GuestVMError.tooManyMacVMs
+        }
+    }
 
     /// Powered off or crashed: either way there is no guest left to reach.
     public var isStopped: Bool { machine.state == .stopped || machine.state == .error }
@@ -124,5 +136,17 @@ private final class StopObserver: NSObject, @MainActor VZVirtualMachineDelegate 
 
     func virtualMachine(_ virtualMachine: VZVirtualMachine, didStopWithError error: any Error) {
         onStop?(error)
+    }
+}
+
+public enum GuestVMError: Error, CustomStringConvertible {
+    case tooManyMacVMs
+
+    public var description: String {
+        switch self {
+        case .tooManyMacVMs:
+            "Apple lets a Mac run at most two macOS VMs at once, counting other apps' (VirtualBuddy, UTM, Parallels), "
+                + "and two are running: hobo list shows hobo's, and hobo stop one makes room"
+        }
     }
 }
