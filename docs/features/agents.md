@@ -50,6 +50,9 @@ $ hobo exec dev --json -- true
 - A failure is `{"error":…}` (or an `error` event) on stdout, with exit status 1. The message goes
   to stderr too, so piping stdout into `jq` doesn't hide it.
 - Sizes are bytes and dates ISO 8601.
+- A VM (in `list`, and from `create`, `clone`, `set` and `rename`) has its `name` and `state` at the
+  top and what it is set to under `config`: `.config.os`, `.config.cpus`, `.config.ephemeral`,
+  `.config.guiTesting`.
 - `exec` and `cp` send the guest's output to stderr, print `{"exitStatus":…}`, and exit with that
   status.
 

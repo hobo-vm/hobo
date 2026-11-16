@@ -273,7 +273,11 @@ import Testing
         launchctl.list = "PID\tStatus\tLabel\n4242\t0\t\(store.job(for: "dev").label)\n"
         let busy = VMStoreError.busy("dev", reason: "running (hobo stop dev)")
         #expect(throws: busy) { try store.delete("dev") }
-        #expect(throws: busy) { try store.rename("dev", to: "other") }
+        // A rename also says how to keep the guest's memory, since a suspended VM can be renamed.
+        let busyRename = VMStoreError.busy(
+            "dev", reason: "running (hobo suspend dev keeps what it is doing through a rename; hobo stop dev shuts it down)"
+        )
+        #expect(throws: busyRename) { try store.rename("dev", to: "other") }
         #expect(!launchctl.calls.contains { $0.first == "bootout" })
     }
 

@@ -348,7 +348,7 @@ struct List: OutputCommand {
     @Flag(name: .shortAndLong, help: "Also list each VM's snapshots, each with what deleting it alone would free.")
     var verbose = false
 
-    @Flag(help: "Print each VM's state, size, snapshots and configuration, and the totals, as JSON (sizes in bytes).")
+    @Flag(help: #"Print {"vms":[{"name":…,"state":…,"snapshots":[…],"config":{…},…}],"totalBytes":…,…} (sizes in bytes). What a VM is set to (os, cpus, memory, ephemeral, guiTesting, …) is under its config."#)
     var json = false
 
     static let jsonStyle = Output.JSONStyle.document
@@ -1151,7 +1151,10 @@ struct SnapshotDelete: OutputCommand {
 }
 
 struct Rename: OutputCommand {
-    static let configuration = CommandConfiguration(abstract: "Rename a stopped VM.")
+    static let configuration = CommandConfiguration(
+        abstract: "Rename a stopped or suspended VM.",
+        discussion: "To rename a running VM without losing what it is doing, hobo suspend it, rename it, and hobo start it under its new name."
+    )
 
     @Argument(help: "Current name.")
     var old: String

@@ -146,11 +146,16 @@ public struct VMStore: Sendable {
     /// Saved state fits only the disk, configuration and platform identity it was saved with, so
     /// anything that changes those must refuse a suspended VM. Only operations that move or remove
     /// the bundle as a unit (delete, rename, discard) pass `allowSuspended`. `allowRunning` is for a
-    /// caller about to power the VM off (`delete --force`).
-    public func checkStopped(_ vm: VM, allowSuspended: Bool = false, allowRunning: Bool = false) throws {
+    /// caller about to power the VM off (`delete --force`). `runningHint` is what a running VM's
+    /// error says to do about it, `hobo stop <name>` by default.
+    public func checkStopped(
+        _ vm: VM, allowSuspended: Bool = false, allowRunning: Bool = false, runningHint: String? = nil
+    ) throws {
         if case .building = vm.status { throw VMStoreError.busy(vm.name, reason: "being built") }
         // The job, not the status: a running VM whose config.json has gone bad still runs.
-        if !allowRunning, vm.job?.pid != nil { throw VMStoreError.busy(vm.name, reason: "running (hobo stop \(vm.name))") }
+        if !allowRunning, vm.job?.pid != nil {
+            throw VMStoreError.busy(vm.name, reason: "running (\(runningHint ?? "hobo stop \(vm.name)"))")
+        }
         if !allowSuspended, case .suspended = vm.status {
             throw VMStoreError.busy(vm.name, reason: "suspended (hobo discard \(vm.name) throws its saved state away)")
         }
@@ -179,7 +184,11 @@ public struct VMStore: Sendable {
         try Self.validate(new)
         // A case-only rename matches the VM itself, which is fine.
         if let existing = existingName(matching: new), existing != vm.name { throw VMStoreError.exists(existing) }
-        try checkStopped(vm, allowSuspended: true)
+        // Only the process stands in the way, so a suspend, which keeps the guest's memory, is enough.
+        try checkStopped(
+            vm, allowSuspended: true,
+            runningHint: "hobo suspend \(vm.name) keeps what it is doing through a rename; hobo stop \(vm.name) shuts it down"
+        )
         try FileManager.default.moveItem(at: vm.bundle, to: bundle(for: new))
         forgetJob(of: vm.name)
     }

@@ -66,4 +66,5 @@ hobo rename dev-6b62 repro-1234
 ```
 
 `--keep` turns an ephemeral VM into a regular one, even while it's running, so an experiment that
-found something can stay.
+found something can stay. `rename` needs it stopped or suspended, so to keep what it is running,
+`hobo suspend` it first and `hobo start` it under its new name.

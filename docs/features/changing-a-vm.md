@@ -55,7 +55,7 @@ ignored. Write steps to be safe to repeat, and iterate on them here instead of w
 ## Rename, keep, delete
 
 ```sh
-hobo rename dev old-dev       # stopped VMs only
+hobo rename dev old-dev       # stopped or suspended VMs only
 hobo set dev-6b62 --keep      # an ephemeral VM stays when it stops
 hobo delete old-dev
 ```
