@@ -125,7 +125,8 @@ struct WindowsIntegrationTests {
         let back = work.appending(path: "back.txt")
         #expect(try session.run(["cp", "vm:C:/Users/hobo/copy.txt", back.path]).status == 0)
         #expect(try String(contentsOf: back, encoding: .utf8) == "copied")
-        #expect(try session.run(["rm", "vm:C:/Users/hobo/copy.txt"]).status == 0)
+        // rm takes a path rooted without a drive from the root of the home's drive, not from the home.
+        #expect(try session.run(["rm", "vm:/Users/hobo/copy.txt"]).status == 0)
         #expect(try session.run(["rm", "vm:C:/Users/hobo/copy.txt"]).status != 0)
 
         // Cancelling ends the command in the guest, --gui or not.
