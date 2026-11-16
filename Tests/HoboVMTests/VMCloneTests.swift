@@ -90,6 +90,10 @@ import Testing
             _ = try await lifecycle.startEphemeral(from: "dev")
         }
         #expect(store.list().map(\.name) == ["dev", "one", "two"])
+        // A plain start is refused the same way, and says which VMs hold the slots.
+        let refusal = await #expect(throws: LifecycleError.self) { _ = try await lifecycle.start("dev") }
+        #expect(refusal == .macVMLimit(running: ["one", "two"]))
+        #expect(refusal?.description.contains("at most 2 macOS VMs at once, and one and two are running") == true)
 
         var linux = config
         linux.os = .linux
