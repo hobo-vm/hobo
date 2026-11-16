@@ -336,7 +336,9 @@ public struct VMStore: Sendable {
         guard sysctl(&mib, u_int(mib.count), &info, &size, nil, 0) == 0, size > 0 else { return false }
         let start = info.kp_proc.p_starttime
         let started = Date(timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
-        return started <= markerWritten
+        // Not `<=`: Xcode 27.2's SDK weak-links Date's `<=` and `>=`, which Foundation before
+        // 27.2's release doesn't have, so calling either crashes there. `<` and `>` are in all.
+        return !(started > markerWritten)
     }
 
     /// Bytes `directory` occupies on the host, leaving out any top-level entry named `excluded`.

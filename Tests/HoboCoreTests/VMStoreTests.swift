@@ -364,7 +364,7 @@ import Testing
         guard case .stopped(let cloned) = vm.status else { Issue.record("not stopped: \(vm.status)"); return }
         #expect(cloned.macAddress == "5a:00:00:00:00:02")
         #expect(cloned.ephemeral)
-        #expect(cloned.created >= before.addingTimeInterval(-1))
+        #expect(cloned.created > before.addingTimeInterval(-1))
         var expected = cloned
         expected.macAddress = config.macAddress
         expected.created = config.created
