@@ -139,8 +139,7 @@ struct WindowsGuestTests {
         let session = WindowsSession(hobo: hobo, directory: work, vms: vms)
         var started: [String] = ["vm"]
         defer { for vm in started { _ = try? session.run(["stop", "--force", vm]) } }
-        let config = try KeptVM.clone(KeptVM.windows, to: "vm", vms: vms, work: work)
-        #expect(config.os == .windows, "\(KeptVM.windows) names a Windows VM")
+        let config = try KeptVM.clone(KeptVM.windows, os: .windows, to: "vm", vms: vms, work: work)
         try #require(try session.run(["start", "vm"]).status == 0)
         let address = try session.run(["ip", "vm"]).text.trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(try session.run(["list"]).text.contains(address), "list shows the address")

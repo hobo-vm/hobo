@@ -101,8 +101,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: work) }
         let env = ["HOBO_VMS": vms.path]
-        let config = try KeptVM.clone(KeptVM.macOS, to: "itest", vms: vms, work: work)
-        #expect(config.os == .macOS, "\(KeptVM.macOS) names a macOS VM")
+        let config = try KeptVM.clone(KeptVM.macOS, os: .macOS, to: "itest", vms: vms, work: work)
 
         // Never leak a running VM: only 2 macOS guests fit on a host.
         defer { _ = try? run(hobo, ["stop", "--force", "itest"], in: work, environment: env) }
@@ -387,8 +386,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: work) }
         let env = ["HOBO_VMS": vms.path]
-        let config = try KeptVM.clone(KeptVM.linux, to: "litest", vms: vms, work: work)
-        #expect(config.os == .linux, "\(KeptVM.linux) names a Linux VM")
+        let config = try KeptVM.clone(KeptVM.linux, os: .linux, to: "litest", vms: vms, work: work)
         let bundle = vms.appending(path: "litest.hobovm")
 
         // Shares: a persistent read-only one (set) and a writable one for this run only (start --share).

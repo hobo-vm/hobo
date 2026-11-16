@@ -30,14 +30,17 @@ enum KeptVM {
 
     /// Clones the kept VM `variable` names from the real store to `name` in the test's own store
     /// `vms` (whose launchd jobs are kept apart from real ones), and writes its recipe to
-    /// `work/Hobo.toml`, as a test that built it would have. Returns the clone's config.
+    /// `work/Hobo.toml`, as a test that built it would have. A kept VM that isn't an `os` guest fails
+    /// the test here, before it runs commands meant for another OS. Returns the clone's config.
     @discardableResult
-    static func clone(_ variable: String, to name: String, vms: URL, work: URL) throws -> VMConfig {
+    static func clone(_ variable: String, os: VMConfig.OS, to name: String, vms: URL, work: URL) throws -> VMConfig {
         let source = try source(variable)
         let clone = try VMStore(directory: vms).cloneVM(source, from: .standard(), to: name) { _ in }
         try FileManager.default.copyItem(
             at: clone.bundle.appending(path: VMStore.recipeFile), to: work.appending(path: "Hobo.toml")
         )
-        return try VMConfig.load(from: clone.bundle.appending(path: VMStore.configFile))
+        let config = try VMConfig.load(from: clone.bundle.appending(path: VMStore.configFile))
+        try #require(config.os == os, "\(variable) names \(source), which isn't a \(os) VM")
+        return config
     }
 }
