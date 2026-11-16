@@ -1,13 +1,11 @@
 # The kept Linux VM the guest tests clone (HOBO_LINUX_VM, ubuntu26 by default): `make test-vms`
-# builds it. Ubuntu with the desktop, as `hobo init --os linux` writes it.
+# builds it. Ubuntu with the desktop steps `hobo init --os linux` writes.
 
 cpus   = 4
 memory = "4GB"
 disk   = "32GB"
 
 [source]
-# A cloud image's URL or local path, with its SHA-256. Pick another from `hobo images --os linux`
-# and run `hobo init --os linux <version> --force` (before adding steps here).
 # Ubuntu 26.04 LTS (Resolute Raccoon), release 20261016
 image  = "https://cloud-images.ubuntu.com/server/releases/resolute/release-20261016/ubuntu-26.04-server-cloudimg-arm64.img"
 sha256 = "8eb876c2ccc4b6ff89e4a65d511815923b285e04503ba465809bf587f763da24"
@@ -52,16 +50,3 @@ printf '%s\n' /org/gnome/desktop/interface/toolkit-accessibility /org/gnome/shel
 dconf update
 systemctl --global mask gnome-initial-setup-first-login.service gnome-initial-setup-upgrade-login.service
 '''
-
-# Steps run once each, in order, in the guest. Paths are relative to this file.
-#
-# [[provision]]
-# type       = "shell"
-# path       = "setup.sh"
-# privileged = false        # run as hobo instead of root
-# env        = { GREETING = "hello" }
-#
-# [[provision]]
-# type        = "file"
-# source      = "files/bashrc"
-# destination = "/home/hobo/.bashrc"
