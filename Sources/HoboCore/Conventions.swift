@@ -83,14 +83,22 @@ public enum Conventions {
         """
     }
 
+    /// Run after the conventions script: removes the cookie that makes Setup Assistant show the
+    /// license agreement before the first login, and succeeds only if there was one. macOS 27.2.1's
+    /// unattended setup leaves it, and the first boot then waits on that pane for good, in
+    /// Setup Assistant's own session (`_mbsetupuser`), instead of logging in (checked 2026-11-16).
+    public static let removeTermsCookieCommand = "sudo -n rm /var/db/.AppleSetupTermsOfService 2>/dev/null"
+
     /// Root script run at the end of the conventions boot: waits up to 5 minutes for the first
     /// auto-login to finish, signalled by the user's tccd opening the TCC.db it creates then (also
     /// what `[gui_testing]` writes into). SSH answers well before the login is done, and shutting
     /// down before it is leaves the next boot, the one recipe steps run in, with no GUI session at
-    /// all (checked on macOS 27.2, 2026-11-02); later boots log in either way.
+    /// all (checked on macOS 27.2, 2026-11-02); later boots log in either way. Only the user's own
+    /// tccd counts: Setup Assistant's user (`_mbsetupuser`) has a tccd and a TCC.db of its own while
+    /// it is on the console (`removeTermsCookieCommand`).
     public static let waitForLoginScript = """
         for attempt in $(seq 60); do
-          lsof -c tccd 2>/dev/null | grep -q '/ProtectedSystem/.*/TCC\\.db$' && exit 0
+          lsof -a -c tccd -u \(username) 2>/dev/null | grep -q '/ProtectedSystem/.*/TCC\\.db$' && exit 0
           sleep 5
         done
         echo 'the first login did not finish within 5 minutes' >&2

@@ -193,7 +193,11 @@ global VMs on 2026-11-01.
        per-VM key is deferred (decided 2026-11-01, Beads hobo-cip). The boot then waits (up to
        5 min) for the first auto-login to finish, signalled by the user's tccd opening its TCC.db:
        SSH answers well before then, and shutting down early left the next boot, where recipe steps
-       run, with no GUI session at all (2026-11-02, macOS 27.2);
+       run, with no GUI session at all (2026-11-02, macOS 27.2). Only the user's own tccd counts:
+       Setup Assistant's user (`_mbsetupuser`) has one too. On macOS 27.2.1 the unattended setup
+       leaves `/var/db/.AppleSetupTermsOfService`, and with it the first boot sits on Setup
+       Assistant's license agreement in `_mbsetupuser`'s session and never logs in, so create
+       removes the cookie and, if there was one, restarts before it waits (2026-11-16);
     4. `[security]` if it turns SIP off (decision 17): the one step that needs a person, in
        recoveryOS, then a boot to check it and set the AMFI boot-arg;
     5. TCC grants written from the host into the stopped guest's Data volume (decision 17): Full

@@ -285,7 +285,7 @@ public struct VMCreator {
         // The installer leaves its VM running; boot a fresh one for unattended setup.
         try await installer.forceStop()
 
-        let vm = try GuestVM(bundle: bundle, machine: machine)
+        var vm = try GuestVM(bundle: bundle, machine: machine)
 
         let provisioning = VZMacGuestProvisioningOptions()
         provisioning.fullName = Conventions.fullName
@@ -297,10 +297,14 @@ public struct VMCreator {
         try await vm.start(provisioning: provisioning)
         // Until the conventions script installs the insecure key, the guest only takes the password.
         let auth = GuestSSH.Auth.password(Conventions.password)
-        do {
+        func reach(_ vm: GuestVM) async throws -> GuestSSH {
             let ip = try await vm.waitForIPAddress(timeout: .seconds(20 * 60))
             let ssh = GuestSSH(host: ip, auth: auth)
             try await ssh.waitUntilReachable(timeout: .seconds(20 * 60))
+            return ssh
+        }
+        do {
+            var ssh = try await reach(vm)
             // Passwordless sudo doesn't exist until the conventions script has run.
             let passwordSudo = "echo \(shellQuote(Conventions.password)) | sudo -S -p ''"
             log("Applying guest conventions")
@@ -311,6 +315,15 @@ public struct VMCreator {
             try await ssh.upload(agent, to: Conventions.agentUpload)
             try await ssh.upload(contents: Conventions.script, to: "/tmp/hobo-conventions.sh")
             try await ssh.check("\(passwordSudo) /bin/bash /tmp/hobo-conventions.sh && rm /tmp/hobo-conventions.sh", what: "conventions")
+            // With the cookie, this boot stays on Setup Assistant's license agreement and never logs
+            // in; without it, the next one logs straight in.
+            if try await ssh.run(Conventions.removeTermsCookieCommand, quiet: true) == 0 {
+                log("Restarting past Setup Assistant's license agreement")
+                try await shutDown(vm, shell: ssh, command: "\(passwordSudo) shutdown -h now")
+                vm = try GuestVM(bundle: bundle, machine: machine)
+                try await vm.start(provisioning: nil)
+                ssh = try await reach(vm)
+            }
             log("Waiting for the first login")
             try await ssh.upload(contents: Conventions.waitForLoginScript, to: "/tmp/hobo-wait-login.sh")
             try await ssh.check("sudo -n /bin/bash /tmp/hobo-wait-login.sh && rm /tmp/hobo-wait-login.sh", what: "waiting for the first login")
