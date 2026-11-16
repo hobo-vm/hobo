@@ -27,6 +27,10 @@ build "${HOBO_LINUX_VM-ubuntu26}" "$recipes/linux.toml"
 windows=${HOBO_WINDOWS_VM-windows11}
 if [ -n "$windows" ] && ! exists "$windows"; then
     iso=${HOBO_WINDOWS_ISO:?"$windows needs HOBO_WINDOWS_ISO, the path of a Windows on Arm installer ISO"}
+    if [ ! -f "$iso" ]; then
+        echo "HOBO_WINDOWS_ISO is $iso, which isn't a file" >&2
+        exit 1
+    fi
     # Absolute: the recipe is in $work, and a recipe's paths are relative to it.
     iso=$(cd "$(dirname "$iso")" && pwd)/$(basename "$iso")
     cp "$recipes/windows.toml" "$work/windows.toml"
