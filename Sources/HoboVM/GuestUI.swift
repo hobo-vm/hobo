@@ -21,7 +21,8 @@ enum GuestUI {
         onOutput: @escaping @Sendable (GuestStream, Data) -> Void
     ) async throws -> Int32 {
         let json = arguments.contains("--json")
-        let command: any ParsableCommand
+        // Handed to the driver's thread and used nowhere else, so safe though ParsableCommand isn't Sendable.
+        nonisolated(unsafe) let command: any ParsableCommand
         do {
             command = try HoboUI.parseAsRoot(arguments)
         } catch {
@@ -56,11 +57,11 @@ enum GuestUI {
         }
         do {
             let outcome = try UIDriver(backend: try RemoteBackend(transport: session), store: RefStore(directory: refs)).run(command)
-            try? session.close()
+            _ = try? session.close()
             emit(UIOutput.success(outcome, json: json))
             return 0
         } catch {
-            try? session.close()
+            _ = try? session.close()
             emit(UIOutput.failure(error, json: json, program: "hobo ui"))
             return 1
         }
