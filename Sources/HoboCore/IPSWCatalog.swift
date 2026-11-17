@@ -73,7 +73,7 @@ public enum IPSWCatalog {
 
     /// The images a host on macOS `hostMajor` can build a VM from: a guest can't be newer than its
     /// host, nor older than `minimumGuestMajor`.
-    public static func runnable(_ images: [Image], hostMajor: Int) -> [Image] {
+    public static func buildable(_ images: [Image], hostMajor: Int) -> [Image] {
         images.filter { $0.major >= minimumGuestMajor && $0.major <= hostMajor }
     }
 

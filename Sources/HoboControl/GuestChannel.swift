@@ -42,7 +42,7 @@ public struct GuestChannel: Sendable {
 
     /// Captures the guest's screen from inside its desktop session (decision 17).
     public func screenshot(_ name: String) throws -> GuestScreenshot {
-        // Refuses a VM being built or stopped by name, before its config.json is asked for.
+        // Says that a VM is being built or stopped, before its config.json is read.
         let (vm, _) = try runningJob(name)
         var png = Data()
         var errors = Data()

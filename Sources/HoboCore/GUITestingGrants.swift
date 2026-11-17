@@ -67,7 +67,7 @@ public enum GUITestingGrants {
     /// creates it at the user's first login, which the conventions boot waits for
     /// (`Conventions.waitForLoginScript`). The grants run before any recipe step, so the setup user
     /// is the only one (uid 501 and up are people). Before macOS 27 it is in the user's Library,
-    /// where a guest that old has it and a newer one doesn't.
+    /// which is looked in first: a newer guest has no TCC.db there.
     static func userDatabase(in dataVolume: URL) throws -> URL {
         let legacy = dataVolume.appending(path: "Users/\(Conventions.username)/Library/Application Support/com.apple.TCC/TCC.db")
         if FileManager.default.fileExists(atPath: legacy.path) { return legacy }

@@ -196,7 +196,7 @@ struct Images: OutputCommand {
                 let image = try IPSWCatalog.image(build: build, in: catalog)
                 return Reply(image, text: details(image))
             }
-            var images = IPSWCatalog.runnable(catalog, hostMajor: IPSWCatalog.hostMajor)
+            var images = IPSWCatalog.buildable(catalog, hostMajor: IPSWCatalog.hostMajor)
             if !all { images = IPSWCatalog.latestPerMajor(images) }
             return Reply(images, text: table(images))
         case .linux:

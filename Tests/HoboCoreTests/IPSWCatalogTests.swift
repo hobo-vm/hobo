@@ -56,8 +56,8 @@ import Testing
     }
 
     @Test func hidesGuestsNewerThanTheHostOrOlderThanHoboBuilds() throws {
-        #expect(IPSWCatalog.runnable(try images, hostMajor: 27).map(\.major) == [27, 27, 27, 26, 26])
-        #expect(IPSWCatalog.runnable(try images, hostMajor: 28).map(\.major) == [28, 27, 27, 27, 26, 26])
+        #expect(IPSWCatalog.buildable(try images, hostMajor: 27).map(\.major) == [27, 27, 27, 26, 26])
+        #expect(IPSWCatalog.buildable(try images, hostMajor: 28).map(\.major) == [28, 27, 27, 27, 26, 26])
     }
 
     @Test func latestKeepsTheNewestOfEachMajor() throws {
@@ -67,7 +67,7 @@ import Testing
     @Test func findsBuildsIgnoringCase() throws {
         #expect(try IPSWCatalog.image(build: "26a434", in: images, hostMajor: 27).version == "27.0.1")
         #expect(throws: CatalogError.unknownBuild("26Z1")) { try IPSWCatalog.image(build: "26Z1", in: images, hostMajor: 27) }
-        // Details for any build, runnable or not; pinning one needs the host to run it.
+        // Details for any build, buildable or not; pinning one needs hobo to build a VM from it.
         #expect(try IPSWCatalog.image(build: "27A100", in: images).version == "28.0")
         #expect(throws: CatalogError.unknownBuild("26Z1")) { try IPSWCatalog.image(build: "26Z1", in: images) }
         #expect(throws: CatalogError.unsupportedBuild("27A100", version: "28.0", hostMajor: 27)) {
