@@ -205,10 +205,9 @@ public struct VMCreator {
             macAddress: .randomLocallyAdministered()
         )
         let os = image.operatingSystemVersion
+        let version = "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
         // Before the install: an older guest's setup is untried.
-        guard os.majorVersion >= IPSWCatalog.minimumGuestMajor else {
-            throw VMError.guestTooOld("\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)")
-        }
+        guard os.majorVersion >= IPSWCatalog.minimumGuestMajor else { throw VMError.guestTooOld(version) }
 
         let bundle = try MacVMBundle.create(at: directory, hardwareModel: requirements.hardwareModel, diskBytes: recipe.disk.bytes)
         try await installAndApplyConventions(bundle, ipsw: ipsw, machine: machine, seeded: SeededSetup.isNeeded(guestMajor: os.majorVersion))
@@ -240,7 +239,7 @@ public struct VMCreator {
         return VMConfig(
             os: .macOS, cpus: machine.cpus, memory: machine.memory, disk: recipe.disk.bytes,
             macAddress: machine.macAddress.string,
-            guestOSVersion: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion) (\(image.buildVersion))",
+            guestOSVersion: "\(version) (\(image.buildVersion))",
             created: .now, recipeSHA256: recipeSHA256, sourceSHA256: sourceSHA256,
             sip: security.sip, amfi: security.amfi, guiTesting: recipe.guiTesting != nil
         )
