@@ -38,7 +38,8 @@ func guestPath(home, path string) string {
 // Into a directory that exists they go in under those names; otherwise a single source becomes
 // destination itself, as `scp a b` makes b. Without replace a directory that is already there is
 // merged into, as scp does; with it, whatever a source would land on is removed first. Unlike scp,
-// the directories above a destination that isn't there are made, for a file as for a directory.
+// the directories above a destination that isn't there are made, for a file as for a directory;
+// the host does the same for a copy out of the guest (GuestAgent.get).
 // typed is the destination as the user typed it, which guestPath resolves against home.
 func putTar(input io.Reader, home, typed string, single, replace bool) error {
 	destination := guestPath(home, typed)

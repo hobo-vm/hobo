@@ -239,6 +239,34 @@ import Testing
         #expect(try FileManager.default.contentsOfDirectory(atPath: host.path) == ["renamed"])
     }
 
+    /// `hobo cp vm:a.txt out/logs/a.txt` makes `out/logs`, as a copy into the guest makes the
+    /// directories above its destination; a copy that brings nothing leaves none behind.
+    @Test func getMakesTheDirectoriesAboveADestinationThatIsntThere() async throws {
+        let dir = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try Data("a".utf8).write(to: dir.appending(path: "a.txt"))
+        let stream = try tar(["-c", "-f", "-", "-C", dir.path, "a.txt"])
+        let agent = guestAgent { _, socket in
+            try socket.writeFrame(.data, stream)
+            try socket.writeFrame(.data, Data())
+            try sendExit(0, on: socket)
+        }
+        let destination = dir.appending(path: "out/logs/a.txt")
+        #expect(try await agent.copy(GuestCopy(direction: .fromGuest, sources: ["a.txt"], destination: destination.path)) { _, _ in } == 0)
+        #expect(try String(contentsOf: destination, encoding: .utf8) == "a")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: destination.deletingLastPathComponent().path) == ["a.txt"])
+
+        let empty = try tar(["-c", "-f", "-", "-T", "/dev/null"])
+        let nothing = guestAgent { _, socket in
+            try socket.writeFrame(.data, empty)
+            try socket.writeFrame(.data, Data())
+            try sendExit(1, on: socket)
+        }
+        let missing = GuestCopy(direction: .fromGuest, sources: ["gone"], destination: dir.appending(path: "other/deep/gone").path)
+        #expect(try await nothing.copy(missing) { _, _ in } == 1)
+        #expect(!FileManager.default.fileExists(atPath: dir.appending(path: "other").path))
+    }
+
     /// `hobo cp --replace vm:tree out/`: the tree that was in `out` goes, its neighbours stay, and
     /// no staging directory is left.
     @Test func getWithReplaceRemovesWhatASourceLandsOn() async throws {

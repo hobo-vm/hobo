@@ -189,8 +189,10 @@ public struct GuestAgent: GuestShell {
     }
 
     /// Receives the sources as a tar stream and extracts it with the host's `tar`, as `scp` would:
-    /// into a directory that exists, or a single source as the destination itself. With `replace`,
-    /// what a source lands on in that directory is removed first, once the whole copy has arrived.
+    /// into a directory that exists, or a single source as the destination itself. The directories
+    /// above a destination that isn't there are made, as the agent's `putTar` makes them in the
+    /// guest, and removed again by a copy that brings nothing. With `replace`, what a source lands on
+    /// in that directory is removed first, once the whole copy has arrived.
     private func get(_ copy: GuestCopy, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
         let destination = URL(filePath: copy.destination)
         var isDirectory: ObjCBool = false
@@ -211,8 +213,19 @@ public struct GuestAgent: GuestShell {
         let stagingParent = intoDirectory ? destination : destination.deletingLastPathComponent()
         let staging = stagingParent.appending(path: ".hobo-cp-\(UUID().uuidString)")
         let extractInto = staged ? staging : destination
-        if staged { try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false) }
-        defer { if staged { try? FileManager.default.removeItem(at: staging) } }
+        // The directories this copy makes above the destination, deepest first.
+        var made: [URL] = []
+        var missing = stagingParent
+        while !FileManager.default.fileExists(atPath: missing.path) {
+            made.append(missing)
+            missing = missing.deletingLastPathComponent()
+        }
+        if staged { try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true) }
+        defer {
+            if staged { try? FileManager.default.removeItem(at: staging) }
+            // rmdir leaves one that holds something, which is every one of them once the copy has landed.
+            for directory in made where rmdir(directory.path) != 0 { break }
+        }
 
         let tar = HostTar(arguments: ["-x", "-f", "-", "-C", extractInto.path])
         let input = try tar.startWriting()
