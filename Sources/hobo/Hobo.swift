@@ -693,7 +693,7 @@ struct Copy: OutputCommand {
     static let configuration = CommandConfiguration(
         commandName: "cp",
         abstract: "Copy files between the host and a running VM.",
-        discussion: "One side names the guest as <vm>:<path>, as in hobo cp dev:/var/log/system.log . (guest to host) or hobo cp ./app dev:/tmp/ (host to guest); a guest path that is relative, or starts ~/, is from the hobo user's home, as for hobo rm. A directory is copied with everything in it, and placed as scp would: inside a destination directory that exists, under its own name, otherwise as the destination itself. Copying onto a directory that is already there merges into it; --replace removes it first."
+        discussion: "One side names the guest as <vm>:<path>, as in hobo cp dev:/var/log/system.log . (guest to host) or hobo cp ./app dev:/tmp/ (host to guest); a guest path that is relative, or starts ~/, is from the hobo user's home, as for hobo rm. A directory is copied with everything in it, and placed as scp would: inside a destination directory that exists, under its own name, otherwise as the destination itself, and the directories above it are made in the guest if they aren't there. Copying onto a directory that is already there merges into it; --replace removes it first."
     )
 
     /// Accepted because `cp -r` and `scp -r` are habit; a directory is copied whole without it.

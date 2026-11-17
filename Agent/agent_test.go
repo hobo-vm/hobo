@@ -253,6 +253,26 @@ func TestCopyTakesTildeAsTheHomeBothWays(t *testing.T) {
 	}
 }
 
+func TestPutMakesTheDirectoriesAboveAFileThatIsntThere(t *testing.T) {
+	home := t.TempDir()
+	write(t, filepath.Join(home, "agent.plist"), "p")
+	var archive, messages bytes.Buffer
+	if err := getTar(&archive, &messages, home, []string{"agent.plist"}); err != nil {
+		t.Fatalf("%v: %s", err, messages.String())
+	}
+	if err := putTar(&archive, home, "Library/LaunchAgents/agent.plist", true, false); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, filepath.Join(home, "Library/LaunchAgents/agent.plist")) != "p" {
+		t.Fatal("the file was not copied under the directories it names")
+	}
+	// A destination that must be a directory is still not made.
+	archive.Reset()
+	if err := putTar(&archive, home, "Missing/Deeper/", true, false); err == nil || !strings.Contains(err.Error(), "no such directory") {
+		t.Fatalf("trailing slash: %v", err)
+	}
+}
+
 func TestCopyFollowsASourceSymlinkToADirectory(t *testing.T) {
 	home := t.TempDir()
 	write(t, filepath.Join(home, "real/f"), "f")

@@ -37,7 +37,8 @@ func guestPath(home, path string) string {
 // putTar extracts a tar stream from stdin. Its top-level entries are the sources' base names.
 // Into a directory that exists they go in under those names; otherwise a single source becomes
 // destination itself, as `scp a b` makes b. Without replace a directory that is already there is
-// merged into, as scp does; with it, whatever a source would land on is removed first.
+// merged into, as scp does; with it, whatever a source would land on is removed first. Unlike scp,
+// the directories above a destination that isn't there are made, for a file as for a directory.
 // typed is the destination as the user typed it, which guestPath resolves against home.
 func putTar(input io.Reader, home, typed string, single, replace bool) error {
 	destination := guestPath(home, typed)
@@ -53,6 +54,7 @@ func putTar(input io.Reader, home, typed string, single, replace bool) error {
 	}
 	// Removed as each source's first entry arrives, so a copy that brings nothing removes nothing.
 	replaced := map[string]bool{}
+	madeParent := false
 	reader := tar.NewReader(input)
 	for {
 		header, err := reader.Next()
@@ -69,6 +71,14 @@ func putTar(input io.Reader, home, typed string, single, replace bool) error {
 		if top, _, _ := strings.Cut(name, "/"); replace && !replaced[top] {
 			replaced[top] = true
 			if err := os.RemoveAll(placement(destination, top, intoDirectory)); err != nil {
+				return err
+			}
+		}
+		// Made as the first entry arrives, so a copy that brings nothing makes nothing. A directory
+		// source makes them itself; this is for a file.
+		if !intoDirectory && !madeParent {
+			madeParent = true
+			if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 				return err
 			}
 		}
