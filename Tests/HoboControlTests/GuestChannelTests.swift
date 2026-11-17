@@ -247,6 +247,27 @@ import Testing
         }
     }
 
+    /// Only an older macOS is refused: a Windows guest has a driver of its own, and its version
+    /// ("Windows 11…") has no macOS major to compare.
+    @Test func uiReachesAMacOS27GuestAndAWindowsGuest() async throws {
+        defer { cleanUp() }
+        let channel = channel
+        let requests = Mutex<[ControlRequest]>([])
+        let server = try serve { request, _ in
+            requests.withLock { $0.append(request) }
+            return .exited(3)
+        }
+        defer { server.close() }
+        #expect(try await offPool { try channel.ui("dev", arguments: ["snapshot"]) { _, _ in } } == 3)
+        let file = try store.find("dev").bundle.appending(path: VMStore.configFile)
+        var config = try VMConfig.load(from: file)
+        config.os = .windows
+        config.guestOSVersion = "Windows 11 Pro 25H2"
+        try config.write(to: file)
+        #expect(try await offPool { try channel.ui("dev", arguments: ["snapshot"]) { _, _ in } } == 3)
+        #expect(requests.withLock { $0 } == [.ui(arguments: ["snapshot"]), .ui(arguments: ["snapshot"])])
+    }
+
     @Test func aRefusalIsAnError() throws {
         defer { cleanUp() }
         let server = try serve { _, _ in .error("dev is stopping") }
