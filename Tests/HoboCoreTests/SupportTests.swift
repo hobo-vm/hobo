@@ -123,6 +123,28 @@ import Testing
         #expect(try entries()[url.absoluteString]?.path == fetched.file.standardizedFileURL.path)
     }
 
+    @Test func refusesADownloadBiggerThanTheFreeSpace() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = try HTTPServer(directory: served)
+        defer { server.stop() }
+        let url = server.url(for: "mac.ipsw")
+        var small = index
+        small.availableSpace = { _ in 1000 }
+
+        let error = await #expect(throws: ImageError.self) { try await small.fetch(url, expectedSHA256: nil) { _, _ in } }
+        guard case .insufficientSpace(url.absoluteString, needed: Int64(payload.count), _) = error else {
+            Issue.record("\(String(describing: error))")
+            return
+        }
+        #expect(try downloaded().isEmpty)
+
+        // A volume whose free space can't be told doesn't stop a download.
+        var unknown = index
+        unknown.availableSpace = { _ in nil }
+        _ = try await unknown.fetch(url, expectedSHA256: nil) { _, _ in }
+        #expect(try downloaded() == ["mac.ipsw"])
+    }
+
     @Test func corruptIndexIsTreatedAsEmpty() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: index.indexFile.deletingLastPathComponent(), withIntermediateDirectories: true)

@@ -30,7 +30,7 @@ hobo create mac
 ```
 
 - The IPSW is downloaded to `~/Downloads`, verified, and installed with no clicks. The `hobo`
-  user is logged in at boot.
+  user is logged in at boot. A download bigger than the disk's free space is refused as it starts.
 - A guest can't be newer than the host. Running a beta guest needs Apple's Device Support package
   (or the matching Xcode beta) on the host, and `create` names it if it's missing.
 - macOS allows at most **2 running macOS guests** per host. Linux and Windows guests don't count.

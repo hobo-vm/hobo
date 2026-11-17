@@ -8,10 +8,21 @@ import Foundation
 public struct ImageIndex: Sendable {
     public var indexFile: URL
     public var downloads: URL
+    /// The bytes free for a download into a directory, or nil if that can't be told. A download
+    /// bigger than this is refused as it starts, not when the disk fills hours later.
+    public var availableSpace: @Sendable (URL) -> Int64?
 
-    public init(indexFile: URL, downloads: URL) {
+    public init(
+        indexFile: URL, downloads: URL, availableSpace: @escaping @Sendable (URL) -> Int64? = ImageIndex.volumeSpace
+    ) {
         self.indexFile = indexFile
         self.downloads = downloads
+        self.availableSpace = availableSpace
+    }
+
+    /// What the volume holding `directory` has free for a file the user asked for.
+    public static func volumeSpace(_ directory: URL) -> Int64? {
+        try? directory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage
     }
 
     public static func standard(home: HoboHome = .standard()) -> ImageIndex {
@@ -62,7 +73,8 @@ public struct ImageIndex: Sendable {
         try? FileManager.default.removeItem(at: part)
         defer { try? FileManager.default.removeItem(at: part) }
         log("Downloading \(key) to \(destination.path)")
-        try await Download(url: url, destination: part, progress: progress).run()
+        let downloads = downloads, availableSpace = availableSpace
+        try await Download(url: url, destination: part, availableSpace: { availableSpace(downloads) }, progress: progress).run()
 
         let sha = try Self.sha256(of: part, log: log)
         if let expectedSHA256, sha != expectedSHA256 {
@@ -165,14 +177,21 @@ public struct ImageIndex: Sendable {
 public enum ImageError: Error, Equatable, CustomStringConvertible {
     case checksumMismatch(String, expected: String, actual: String)
     case httpStatus(String, Int)
+    case insufficientSpace(String, needed: Int64, available: Int64)
 
     public var description: String {
         switch self {
         case .checksumMismatch(let what, let expected, let actual):
             "sha256 mismatch for \(what): expected \(expected), got \(actual)"
         case .httpStatus(let url, let status): "download of \(url) failed with HTTP \(status)"
+        case .insufficientSpace(let url, let needed, let available):
+            "not enough disk space to download \(url): it needs \(Self.size(needed)), and \(Self.size(available)) is free"
         }
     }
+}
+
+extension ImageError {
+    private static func size(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
 }
 
 extension SHA256 {
@@ -203,15 +222,23 @@ extension JSONEncoder {
 }
 
 /// One download task that reports progress and moves the finished file to `destination`.
-private final class Download: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+/// It starts as a data task, so that the response's headers are seen before a byte is written: a
+/// file that won't fit is refused then. A download task reports the size only with its progress,
+/// which a small file can finish without.
+private final class Download: NSObject, URLSessionDataDelegate, URLSessionDownloadDelegate, @unchecked Sendable {
     let url: URL
     let destination: URL
+    let availableSpace: @Sendable () -> Int64?
     let progress: @Sendable (Int64, Int64) -> Void
     private var continuation: CheckedContinuation<Void, Error>?
 
-    init(url: URL, destination: URL, progress: @escaping @Sendable (Int64, Int64) -> Void) {
+    init(
+        url: URL, destination: URL, availableSpace: @escaping @Sendable () -> Int64?,
+        progress: @escaping @Sendable (Int64, Int64) -> Void
+    ) {
         self.url = url
         self.destination = destination
+        self.availableSpace = availableSpace
         self.progress = progress
     }
 
@@ -220,9 +247,25 @@ private final class Download: NSObject, URLSessionDownloadDelegate, @unchecked S
         defer { session.finishTasksAndInvalidate() }
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
-            session.downloadTask(with: url).resume()
+            session.dataTask(with: url).resume()
         }
     }
+
+    func urlSession(
+        _ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+        completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void
+    ) {
+        // A server that doesn't say how big the file is gives -1, and the download goes ahead.
+        let needed = response.expectedContentLength
+        if let available = availableSpace(), needed > available {
+            completionHandler(.cancel)
+            finish(ImageError.insufficientSpace(url.absoluteString, needed: needed, available: available))
+        } else {
+            completionHandler(.becomeDownload)
+        }
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didBecome downloadTask: URLSessionDownloadTask) {}
 
     func urlSession(
         _ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
