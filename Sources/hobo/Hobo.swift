@@ -348,7 +348,7 @@ struct List: OutputCommand {
     @Flag(name: .shortAndLong, help: "Also list each VM's snapshots, each with what deleting it alone would free.")
     var verbose = false
 
-    @Flag(help: #"Print {"vms":[{"name":…,"state":…,"snapshots":[…],"config":{…},…}],"totalBytes":…,…} (sizes in bytes). What a VM is set to (os, cpus, memory, ephemeral, guiTesting, …) is under its config."#)
+    @Flag(help: #"Print {"vms":[…],"totalBytes":…,…} (sizes in bytes). Each VM has its name, state and snapshots at the top, and what it is set to (os, cpus, memory, ephemeral, guiTesting, …) under "config"."#)
     var json = false
 
     static let jsonStyle = Output.JSONStyle.document
