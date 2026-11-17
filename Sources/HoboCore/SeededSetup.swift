@@ -82,12 +82,10 @@ public enum SeededSetup {
         return """
             exec >> \(log) 2>&1
             set -x
-            attempt=0
-            until id \(user) >/dev/null 2>&1; do
+            for attempt in $(seq 30); do
               sysadminctl -addUser \(user) -fullName \(shellQuote(Conventions.fullName)) -password \(shellQuote(Conventions.password)) -admin
-              attempt=$((attempt + 1))
-              [ $attempt -ge 30 ] && break
-              id \(user) >/dev/null 2>&1 || sleep 2
+              id \(user) >/dev/null 2>&1 && break
+              sleep 2
             done
             createhomedir -c -u \(user)
             printf '\(kcpassword)' > /etc/kcpassword
