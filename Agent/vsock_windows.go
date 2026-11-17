@@ -23,6 +23,9 @@ var (
 	procSend    = ws2.NewProc("send")
 )
 
+// The most a frame carries on its way out: a whole frame, except on macOS (vsock_darwin.go).
+const maxWrite = maxFrame
+
 const (
 	viosockDevice = `\??\Viosock`
 	ioctlGetAF    = 0x0801300C

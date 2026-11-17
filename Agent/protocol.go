@@ -87,8 +87,8 @@ func (f *frameWriter) write(kind byte, payload []byte) error {
 	defer f.mu.Unlock()
 	for {
 		chunk := payload
-		if len(chunk) > maxFrame {
-			chunk = chunk[:maxFrame]
+		if len(chunk) > maxWrite {
+			chunk = chunk[:maxWrite]
 		}
 		var header [5]byte
 		header[0] = kind

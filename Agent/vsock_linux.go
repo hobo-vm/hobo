@@ -10,6 +10,9 @@ import (
 // AF_VSOCK through raw system calls: the syscall package has no sockaddr for it, and the agent
 // takes no dependencies (the build runs in SwiftPM's sandbox, without network access).
 
+// The most a frame carries on its way out: a whole frame, except on macOS (vsock_darwin.go).
+const maxWrite = maxFrame
+
 const afVsock = 40
 
 // struct sockaddr_vm.

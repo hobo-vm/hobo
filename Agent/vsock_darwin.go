@@ -12,6 +12,12 @@ import (
 
 const afVsock = 40
 
+// The most a frame carries on its way out. A macOS 15 guest's vsock loses data when it is sent in
+// the 32 KB writes io.Copy makes: the host, 1 to 2 MB into a command's output, reads a frame
+// header out of the middle of the stream. With 4 KB writes 40 MB arrives intact (checked on
+// 15.6.1, 2026-11-17; macOS 27 takes either).
+const maxWrite = 4096
+
 type sockaddrVM struct {
 	length    uint8
 	family    uint8

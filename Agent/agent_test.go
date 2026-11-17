@@ -16,7 +16,8 @@ import (
 func TestFramesRoundTrip(t *testing.T) {
 	var buffer bytes.Buffer
 	frames := &frameWriter{w: &buffer}
-	big := bytes.Repeat([]byte("x"), maxFrame+10)
+	// One byte too many for two frames of the most a frame carries out.
+	big := bytes.Repeat([]byte("x"), 2*maxWrite+1)
 	if err := frames.write(frameStdout, big); err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +25,7 @@ func TestFramesRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got []byte
-	for range 2 {
+	for range 3 {
 		kind, payload, err := readFrame(&buffer)
 		if err != nil || kind != frameStdout {
 			t.Fatalf("kind %q, err %v", kind, err)
