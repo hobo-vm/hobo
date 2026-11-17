@@ -68,6 +68,11 @@ public struct VMConfig: Codable, Equatable, Sendable {
         self.resizableDisplay = resizableDisplay
     }
 
+    /// A macOS guest's major version (27 of `27.2.0 (26B123)`); nil for another OS.
+    public var macOSMajor: Int? {
+        os == .macOS ? IPSWCatalog.major(of: guestOSVersion) : nil
+    }
+
     /// The guest OS for people, e.g. `macOS 27.2.0 (26B123)` or `Ubuntu 26.04`.
     public var osDescription: String {
         os == .macOS ? "macOS \(guestOSVersion)" : guestOSVersion

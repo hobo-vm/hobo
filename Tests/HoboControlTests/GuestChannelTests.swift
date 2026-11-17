@@ -228,6 +228,25 @@ import Testing
         #expect(throws: GuestChannelError.notRunning("dev")) { try channel.screenshot("dev") }
     }
 
+    @Test func aVMBeingBuiltSaysSo() throws {
+        defer { cleanUp() }
+        _ = try store.beginCreate("half")
+        #expect(throws: VMStoreError.busy("half", reason: "being built")) { try channel.screenshot("half") }
+        #expect(throws: VMStoreError.busy("half", reason: "being built")) { try channel.exec("half", command: ["true"]) { _, _ in } }
+    }
+
+    @Test func uiRefusesAMacOSGuestOlderThanItsDriverRunsOn() throws {
+        defer { cleanUp() }
+        var config = try VMConfig.load(from: store.bundle(for: "dev").appending(path: VMStore.configFile))
+        config.guestOSVersion = "15.6.1 (24G90)"
+        try config.write(to: store.bundle(for: "dev").appending(path: VMStore.configFile))
+        let server = try serve { _, _ in .exited(0) }
+        defer { server.close() }
+        #expect(throws: GuestChannelError.uiNeedsNewerGuest("dev", "macOS 15.6.1 (24G90)")) {
+            try channel.ui("dev", arguments: ["snapshot"]) { _, _ in }
+        }
+    }
+
     @Test func aRefusalIsAnError() throws {
         defer { cleanUp() }
         let server = try serve { _, _ in .error("dev is stopping") }

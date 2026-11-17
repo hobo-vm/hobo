@@ -66,9 +66,15 @@ public enum IPSWCatalog {
         }
     }
 
-    /// The images a host on macOS `hostMajor` can run: a guest can't be newer than its host.
+    /// The oldest macOS a VM can be built from. A guest older than 27 ignores
+    /// `VZMacGuestProvisioningOptions` and is set up by `SeededSetup` instead, which is checked
+    /// back to this version.
+    public static let minimumGuestMajor = 15
+
+    /// The images a host on macOS `hostMajor` can build a VM from: a guest can't be newer than its
+    /// host, nor older than `minimumGuestMajor`.
     public static func runnable(_ images: [Image], hostMajor: Int) -> [Image] {
-        images.filter { $0.major <= hostMajor }
+        images.filter { $0.major >= minimumGuestMajor && $0.major <= hostMajor }
     }
 
     /// The newest image of each major version, in the order given (newest first).
@@ -86,9 +92,10 @@ public enum IPSWCatalog {
     }
 
     /// The image with build number `build` (ignoring case), which a host on `hostMajor` must be
-    /// able to run.
+    /// able to build a VM from.
     public static func image(build: String, in images: [Image], hostMajor: Int) throws -> Image {
         let image = try image(build: build, in: images)
+        if image.major < minimumGuestMajor { throw CatalogError.tooOldBuild(image.build, version: image.version) }
         if image.major > hostMajor {
             throw CatalogError.unsupportedBuild(image.build, version: image.version, hostMajor: hostMajor)
         }
@@ -150,6 +157,7 @@ public enum CatalogError: Error, Equatable, CustomStringConvertible {
     case unreadable(String)
     case unknownBuild(String)
     case unsupportedBuild(String, version: String, hostMajor: Int)
+    case tooOldBuild(String, version: String)
 
     public var description: String {
         switch self {
@@ -158,6 +166,8 @@ public enum CatalogError: Error, Equatable, CustomStringConvertible {
         case .unknownBuild(let build): "no macOS IPSW with build \(build) (run `hobo images` to list them)"
         case .unsupportedBuild(let build, let version, let hostMajor):
             "build \(build) is macOS \(version), newer than this host (macOS \(hostMajor)); run `hobo images` to list the ones it can run"
+        case .tooOldBuild(let build, let version):
+            "build \(build) is macOS \(version), and hobo builds VMs from macOS \(IPSWCatalog.minimumGuestMajor) or later (run `hobo images` to list them)"
         }
     }
 }

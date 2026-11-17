@@ -140,6 +140,7 @@ public enum VMError: Error, CustomStringConvertible {
     case unsupportedHardwareModel
     case invalidMachineIdentifier
     case unsupportedRestoreImage
+    case guestTooOld(String)
     case cloneFailed(String, String)
     case replaceFailed(String, String)
     case commandFailed(String, Int32)
@@ -165,6 +166,8 @@ public enum VMError: Error, CustomStringConvertible {
         case .unsupportedHardwareModel: "the VM's hardware model is not supported on this host"
         case .invalidMachineIdentifier: "the VM's machine identifier is invalid"
         case .unsupportedRestoreImage: "this host cannot run the IPSW's macOS version"
+        case .guestTooOld(let version):
+            "the IPSW is macOS \(version), and hobo builds VMs from macOS \(IPSWCatalog.minimumGuestMajor) or later (run `hobo images` to list them)"
         case .cloneFailed(let name, let reason): "cloning \(name) failed: \(reason)"
         case .replaceFailed(let name, let reason): "replacing \(name) failed: \(reason)"
         case .commandFailed(let command, let status): "\(command) exited with status \(status)"

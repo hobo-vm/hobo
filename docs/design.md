@@ -66,8 +66,12 @@ global VMs on 2026-11-01.
    either: its output is reference text (decision 19).
 5. **Language.** Swift: swift-argument-parser, TOMLKit, modelcontextprotocol/swift-sdk.
 6. **Platform.** Apple Silicon only, macOS 27+, for `VZMacGuestProvisioningOptions` (unattended macOS
-   setup with SSH) and ASIF disks. Apple's licence (enforced by the framework) caps hosts at
-   2 concurrent macOS guests; Linux and Windows guests are uncapped.
+   setup with SSH) and ASIF disks. macOS guests go back to 15 (`IPSWCatalog.minimumGuestMajor`,
+   2026-11-17); `images` and `init` leave older builds out and `create` refuses their IPSW before
+   installing. A guest older than 27 ignores the provisioning options and its first boot stays on
+   Setup Assistant (seen with 15.6.1), so 15 and 26 get seeded setup instead (decision 10, step 2).
+   Apple's licence (enforced by the framework) caps hosts at 2 concurrent macOS guests; Linux and
+   Windows guests are uncapped.
 
 ### Storage
 
@@ -186,7 +190,20 @@ global VMs on 2026-11-01.
        obscurely, so `create` names the missing package. Disks under ~50 GB can fail macOS updates;
        the default is 80 GB;
     2. base install: `VZMacOSInstaller`, then a first boot with `VZMacGuestProvisioningOptions`
-       (`hobo`/`hobo`, auto-login, Remote Login);
+       (`hobo`/`hobo`, auto-login, Remote Login). A guest older than 27 ignores those options, so
+       create seeds its Data volume instead, mounted on the host before the first boot
+       (`SeededSetup`, 2026-11-17): `/var/db/.AppleSetupDone`, which skips Setup Assistant, and a
+       LaunchDaemon that makes the user with `sysadminctl`, sets up auto-login (`/etc/kcpassword`
+       and `autoLoginUser`), marks Setup Assistant's per-user panes as seen, and turns Remote Login
+       on last. launchd only loads a root-owned daemon, and a file made through the host's mount
+       belongs to uid 99 (the mount ignores ownership), so the plist is one of the install's own
+       empty root-owned `/etc` files (`find.codes`), renamed into place and written into, which
+       keeps its owner; the script empties it and moves it back. Rejected: writing launchd's
+       `disabled.plist` to enable sshd (the first boot rewrites it), writing the user straight
+       into dslocal (works, but hand-builds a password hash where `sysadminctl` is the system's
+       own tool), and scripting Setup Assistant with keystrokes (one script per macOS version).
+       The seeded boot doesn't log in, since loginwindow is up before auto-login is set, so create
+       always restarts it before waiting for the first login;
     3. conventions, over password SSH: passwordless sudo, hobo's own insecure ed25519 key (2026-11-08) in
        `authorized_keys`, no sleep/screensaver, no automatic updates, and hobo-agent's stub with its
        LaunchDaemon (decision 15). The insecure key stays: a
@@ -410,6 +427,9 @@ global VMs on 2026-11-01.
       the control socket's JSON lines, so output and copies go unencoded. Closing the connection
       cancels a request, and the agent kills the command's process group (`SIGTERM`, then
       `SIGKILL` after 5 s).
+    - A macOS guest's agent sends at most 4 KB a frame (2026-11-17): a macOS 15 guest's vsock
+      loses data sent in io.Copy's 32 KB writes, and the host then reads a frame header out of the
+      middle of a command's output, 1 to 2 MB in. macOS 27 guests take either.
     - `exec` runs a command line in `hobo`'s login shell, as sshd does, with a login's
       environment (`HOME`, `USER`, `SHELL`, a system `PATH`, and on Linux the user's runtime
       directory), so the commands written for SSH (`sudo -n …`, the GUI scripts) run unchanged.
@@ -656,7 +676,9 @@ global VMs on 2026-11-01.
         synthetic trees), a resource of `HoboVM` by `HoboUIPlugin`: host and guest are both arm64
         macOS, so the tool SwiftPM builds for the host is the guest's binary. Not in the Go agent,
         which would need cgo for AX and CGEvent. It ships in `share/hobo` with the other payloads
-        (decision 22).
+        (decision 22). Being built for the host's macOS 27, it doesn't load in an older macOS guest
+        (dyld: "built for macOS 27.0 which is newer than running OS"), so `hobo ui` refuses one
+        (`Conventions.uiToolMinimumMajor`, 2026-11-17); building it for macOS 15 is open.
       - Delivery: a `ui` control request runs `exec --gui` of `hobo-ui` with a `tool` field, and the
         agent fetches the tool on first use each boot (`Agent/tool.go`), over the stub's fetch port
         by a name no stub sends (`ui-darwin-arm64`), into its run directory, root's, which a boot

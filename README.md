@@ -59,7 +59,7 @@ Full guide → [hobo.gsquared.app/recipes](https://hobo.gsquared.app/recipes/)
 Hobo runs macOS, Ubuntu Linux and Windows 11 on Arm guests, all on Apple's Virtualization
 framework, all built from a recipe and used through the same commands. macOS installs unattended
 from Apple's IPSW, Linux from Ubuntu's cloud images, and Windows from a Microsoft ISO without ever
-showing Setup.
+showing Setup. macOS guests go back to macOS 15 (Sequoia); the host needs macOS 27.
 
 ```sh
 hobo init --os linux && hobo create ubuntu

@@ -205,9 +205,13 @@ public struct VMCreator {
             macAddress: .randomLocallyAdministered()
         )
         let os = image.operatingSystemVersion
+        // Before the install: an older guest's setup is untried.
+        guard os.majorVersion >= IPSWCatalog.minimumGuestMajor else {
+            throw VMError.guestTooOld("\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)")
+        }
 
         let bundle = try MacVMBundle.create(at: directory, hardwareModel: requirements.hardwareModel, diskBytes: recipe.disk.bytes)
-        try await installAndApplyConventions(bundle, ipsw: ipsw, machine: machine)
+        try await installAndApplyConventions(bundle, ipsw: ipsw, machine: machine, seeded: SeededSetup.isNeeded(guestMajor: os.majorVersion))
         if !recipe.security.sip {
             try await disableSIP(bundle, machine: machine, disableAMFI: !recipe.security.amfi)
         }
@@ -277,7 +281,8 @@ public struct VMCreator {
         }
     }
 
-    private func installAndApplyConventions(_ bundle: MacVMBundle, ipsw: URL, machine: Machine) async throws {
+    /// `seeded`: the guest is too old for `VZMacGuestProvisioningOptions`, and gets `SeededSetup`.
+    private func installAndApplyConventions(_ bundle: MacVMBundle, ipsw: URL, machine: Machine, seeded: Bool) async throws {
         let installer = try GuestVM(bundle: bundle, machine: machine)
         log("Installing macOS (this takes a while)")
         let progress = ProgressLine(log: log)
@@ -287,18 +292,27 @@ public struct VMCreator {
 
         var vm = try GuestVM(bundle: bundle, machine: machine)
 
-        let provisioning = VZMacGuestProvisioningOptions()
-        provisioning.fullName = Conventions.fullName
-        provisioning.username = Conventions.username
-        provisioning.password = Conventions.password
-        provisioning.logsInAutomatically = Conventions.logsInAutomatically
-        provisioning.enablesRemoteLogin = Conventions.enablesRemoteLogin
-        log("First boot with unattended setup")
-        try await vm.start(provisioning: provisioning)
+        if seeded {
+            // The installer's VM is stopped and nothing has booted the disk, so it is free to mount.
+            log("Seeding the first boot's setup")
+            try GuestDataVolume.withMounted(bundle.disk) { try SeededSetup.apply(dataVolume: $0) }
+            log("First boot with seeded setup")
+            try await vm.start(provisioning: nil)
+        } else {
+            let provisioning = VZMacGuestProvisioningOptions()
+            provisioning.fullName = Conventions.fullName
+            provisioning.username = Conventions.username
+            provisioning.password = Conventions.password
+            provisioning.logsInAutomatically = Conventions.logsInAutomatically
+            provisioning.enablesRemoteLogin = Conventions.enablesRemoteLogin
+            log("First boot with unattended setup")
+            try await vm.start(provisioning: provisioning)
+        }
         // Until the conventions script installs the insecure key, the guest only takes the password.
         let auth = GuestSSH.Auth.password(Conventions.password)
         func reach(_ vm: GuestVM) async throws -> GuestSSH {
             let ip = try await vm.waitForIPAddress(timeout: .seconds(20 * 60))
+            log("Guest is on the network at \(ip); waiting for SSH")
             let ssh = GuestSSH(host: ip, auth: auth)
             try await ssh.waitUntilReachable(timeout: .seconds(20 * 60))
             return ssh
@@ -317,8 +331,10 @@ public struct VMCreator {
             try await ssh.check("\(passwordSudo) /bin/bash /tmp/hobo-conventions.sh && rm /tmp/hobo-conventions.sh", what: "conventions")
             // A boot that started with the cookie stays on Setup Assistant's license agreement and
             // never logs in, so this one is restarted; the next, with the cookie gone, logs straight in.
-            if try await ssh.run(Conventions.removeTermsCookieCommand, quiet: true) == 0 {
-                log("Restarting past Setup Assistant's license agreement")
+            // A seeded boot doesn't log in either: its auto-login was set up after loginwindow started.
+            let hadTermsCookie = try await ssh.run(Conventions.removeTermsCookieCommand, quiet: true) == 0
+            if hadTermsCookie || seeded {
+                log(hadTermsCookie ? "Restarting past Setup Assistant's license agreement" : "Restarting to log in")
                 try await shutDown(vm, shell: ssh, command: "\(passwordSudo) shutdown -h now")
                 vm = try GuestVM(bundle: bundle, machine: machine)
                 try await vm.start(provisioning: nil)

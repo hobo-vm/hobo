@@ -42,6 +42,10 @@ public enum Conventions {
     /// Where hobo-ui keeps the `username` user's refs between commands, made by the agent.
     public static let uiStateDirectory = "/var/run/hobo-agent/ui/\(username)"
 
+    /// The oldest macOS hobo-ui runs on: it is built with the rest of hobo, for macOS 27, and an
+    /// older guest's dyld refuses it.
+    public static let uiToolMinimumMajor = 27
+
     /// The guest command for `hobo ui <vm> <arguments>`.
     public static func uiCommand(_ arguments: [String]) -> [String] {
         ["/usr/bin/env", "HOBO_UI_STATE=\(uiStateDirectory)", uiToolPath] + arguments
@@ -97,10 +101,11 @@ public enum Conventions {
     /// down before it is leaves the next boot, the one recipe steps run in, with no GUI session at
     /// all (checked on macOS 27.2, 2026-11-02); later boots log in either way. Only the user's own
     /// tccd counts: Setup Assistant's user (`_mbsetupuser`) has a tccd and a TCC.db of its own while
-    /// it is on the console.
+    /// it is on the console. Before macOS 27 the user's TCC.db is in their Library
+    /// (`GUITestingGrants.userDatabase`).
     public static let waitForLoginScript = """
         for attempt in $(seq 60); do
-          lsof -a -c tccd -u \(username) 2>/dev/null | grep -q '/ProtectedSystem/.*/TCC\\.db$' && exit 0
+          lsof -a -c tccd -u \(username) 2>/dev/null | grep -q -e '/ProtectedSystem/.*/TCC\\.db$' -e ' /Users/\(username)/Library/.*/TCC\\.db$' && exit 0
           sleep 5
         done
         echo 'the first login did not finish within 5 minutes' >&2

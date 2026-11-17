@@ -59,7 +59,8 @@ grants goes to `hobo-agent`.
 ## Drive an app with hobo ui
 
 `hobo ui` drives a macOS, Linux or Windows guest's apps through accessibility, from the host, with
-nothing to install in the guest. `snapshot` prints an app's windows as a tree, each element with a ref to act
+nothing to install in the guest (a macOS guest needs macOS 27; `exec --gui` and `screenshot` work on
+older ones). `snapshot` prints an app's windows as a tree, each element with a ref to act
 on:
 
 ```console

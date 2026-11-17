@@ -32,12 +32,18 @@ public struct GuestChannel: Sendable {
 
     /// `hobo ui`: runs hobo-ui in a macOS guest with `arguments` and returns its exit status.
     public func ui(_ name: String, arguments: [String], onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
-        try stream(.ui(arguments: arguments), name: name, onOutput: onOutput)
+        let (vm, _) = try runningJob(name)
+        let config = try VMConfig.load(from: vm.bundle.appending(path: VMStore.configFile))
+        if let major = config.macOSMajor, major < Conventions.uiToolMinimumMajor {
+            throw GuestChannelError.uiNeedsNewerGuest(vm.name, config.osDescription)
+        }
+        return try stream(.ui(arguments: arguments), name: name, onOutput: onOutput)
     }
 
     /// Captures the guest's screen from inside its desktop session (decision 17).
     public func screenshot(_ name: String) throws -> GuestScreenshot {
-        let vm = try store.find(name)
+        // Refuses a VM being built or stopped by name, before its config.json is asked for.
+        let (vm, _) = try runningJob(name)
         var png = Data()
         var errors = Data()
         let config = try VMConfig.load(from: vm.bundle.appending(path: VMStore.configFile))
@@ -87,6 +93,8 @@ public struct GuestChannel: Sendable {
 
     private func runningJob(_ name: String) throws -> (VMStore.VM, VMJob) {
         let vm = try store.find(name)
+        // Its VM runs inside `hobo create` until the build is done, with no socket to reach it by.
+        if case .building = vm.status { throw VMStoreError.busy(vm.name, reason: "being built") }
         guard vm.job?.pid != nil else { throw GuestChannelError.notRunning(vm.name) }
         return (vm, store.job(for: vm.name))
     }
@@ -115,12 +123,15 @@ public enum GuestChannelError: Error, Equatable, CustomStringConvertible {
     case notRunning(String)
     case noIPAddress(String, String?)
     case screenshotFailed(String, String)
+    case uiNeedsNewerGuest(String, String)
 
     public var description: String {
         switch self {
         case .notRunning(let name): "\(name) is not running (hobo start \(name))"
         case .noIPAddress(let name, let detail): "\(name) has no IP yet\(detail.map { " (\($0))" } ?? "")"
         case .screenshotFailed(let name, let reason): "can't screenshot \(name): \(reason)"
+        case .uiNeedsNewerGuest(let name, let os):
+            "hobo ui needs a guest on macOS \(Conventions.uiToolMinimumMajor) or later, and \(name) runs \(os); exec --gui and screenshot work there"
         }
     }
 }

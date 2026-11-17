@@ -61,7 +61,8 @@ Ubuntu 26.04 LTS  26.04    Resolute Raccoon   20261016  2031-05-29    940.4 MB
 Ubuntu 24.04 LTS  24.04    Noble Numbat       20261017  2029-05-31    616.5 MB
 ```
 
-Only the newest build of each version is listed; `--all` lists every one. `hobo images 26B123`
+Only the newest build of each version is listed; `--all` lists every one. macOS before 15 isn't
+listed, and `create` refuses it. `hobo images 26B123`
 shows one build's URL, SHA-256 and size. There's no catalog for Windows: bring a Windows on Arm
 ISO from [Microsoft](https://www.microsoft.com/en-us/software-download/windows11arm64).
 

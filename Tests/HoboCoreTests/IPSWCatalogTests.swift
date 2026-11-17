@@ -19,14 +19,16 @@ import Testing
         let firmwares = [
             ("26.6.2", "25G83", "2026-08-17"), ("27.0.1", "26A434", "2026-09-28"), ("28.0", "27A100", "2027-09-14"),
             ("27.2", "26B123", "2026-10-26"), ("26.10", "25H10", "2026-12-01"), ("27.0", "26A428", "2026-09-14"),
+            ("14.8", "23J21", "2025-09-15"),
         ].map { firmware($0.0, $0.1, day: $0.2) }.joined(separator: ",")
-        // Deliberately out of order, with a 28.x newer than the host and a two-digit minor.
+        // Deliberately out of order, with a 28.x newer than the host, a two-digit minor, and a
+        // 14.x older than hobo builds.
         return Data("{\"name\": \"Apple Virtual Machine 1\", \"firmwares\": [\(firmwares)]}".utf8)
     }
 
     @Test func decodesNewestVersionFirst() throws {
         let images = try images
-        #expect(images.map(\.build) == ["27A100", "26B123", "26A434", "26A428", "25H10", "25G83"])
+        #expect(images.map(\.build) == ["27A100", "26B123", "26A434", "26A428", "25H10", "25G83", "23J21"])
         let image = images[1]
         #expect(image.name == "macOS 27 Golden Gate")
         #expect(image.version == "27.2" && image.major == 27)
@@ -53,13 +55,13 @@ import Testing
         #expect(try decoder.decode([IPSWCatalog.Image].self, from: HoboJSON.document(images)) == images)
     }
 
-    @Test func hidesGuestsNewerThanTheHost() throws {
+    @Test func hidesGuestsNewerThanTheHostOrOlderThanHoboBuilds() throws {
         #expect(IPSWCatalog.runnable(try images, hostMajor: 27).map(\.major) == [27, 27, 27, 26, 26])
-        #expect(IPSWCatalog.runnable(try images, hostMajor: 28).count == 6)
+        #expect(IPSWCatalog.runnable(try images, hostMajor: 28).map(\.major) == [28, 27, 27, 27, 26, 26])
     }
 
     @Test func latestKeepsTheNewestOfEachMajor() throws {
-        #expect(IPSWCatalog.latestPerMajor(try images).map(\.build) == ["27A100", "26B123", "25H10"])
+        #expect(IPSWCatalog.latestPerMajor(try images).map(\.build) == ["27A100", "26B123", "25H10", "23J21"])
     }
 
     @Test func findsBuildsIgnoringCase() throws {
@@ -70,6 +72,11 @@ import Testing
         #expect(throws: CatalogError.unknownBuild("26Z1")) { try IPSWCatalog.image(build: "26Z1", in: images) }
         #expect(throws: CatalogError.unsupportedBuild("27A100", version: "28.0", hostMajor: 27)) {
             try IPSWCatalog.image(build: "27A100", in: images, hostMajor: 27)
+        }
+        #expect(try IPSWCatalog.image(build: "25G83", in: images, hostMajor: 27).version == "26.6.2")
+        #expect(try IPSWCatalog.image(build: "23J21", in: images).version == "14.8")
+        #expect(throws: CatalogError.tooOldBuild("23J21", version: "14.8")) {
+            try IPSWCatalog.image(build: "23J21", in: images, hostMajor: 27)
         }
     }
 

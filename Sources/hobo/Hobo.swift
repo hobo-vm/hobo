@@ -236,6 +236,8 @@ struct Images: OutputCommand {
         ])
         if image.major > IPSWCatalog.hostMajor {
             text += "\n\nThis Mac (macOS \(IPSWCatalog.hostMajor)) can't run it: the guest is newer than the host."
+        } else if image.major < IPSWCatalog.minimumGuestMajor {
+            text += "\n\nhobo can't build a VM from it: it builds from macOS \(IPSWCatalog.minimumGuestMajor) or later."
         }
         return text
     }

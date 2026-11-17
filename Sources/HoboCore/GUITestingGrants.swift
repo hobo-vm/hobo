@@ -66,8 +66,11 @@ public enum GUITestingGrants {
     /// `/private/var/containers/Data/ProtectedSystem`, found by the container's metadata. tccd
     /// creates it at the user's first login, which the conventions boot waits for
     /// (`Conventions.waitForLoginScript`). The grants run before any recipe step, so the setup user
-    /// is the only one (uid 501 and up are people).
+    /// is the only one (uid 501 and up are people). Before macOS 27 it is in the user's Library,
+    /// where a guest that old has it and a newer one doesn't.
     static func userDatabase(in dataVolume: URL) throws -> URL {
+        let legacy = dataVolume.appending(path: "Users/\(Conventions.username)/Library/Application Support/com.apple.TCC/TCC.db")
+        if FileManager.default.fileExists(atPath: legacy.path) { return legacy }
         let containers = dataVolume.appending(path: "private/var/containers/Data/ProtectedSystem")
         let entries = (try? FileManager.default.contentsOfDirectory(at: containers, includingPropertiesForKeys: nil)) ?? []
         let found = entries.filter { container in

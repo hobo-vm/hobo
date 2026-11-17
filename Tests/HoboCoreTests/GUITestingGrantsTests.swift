@@ -107,6 +107,17 @@ import Testing
         }
     }
 
+    /// A guest older than macOS 27 keeps the user's TCC.db in their Library, with no tccd container.
+    @Test func findsTheUserDatabaseOfAGuestOlderThan27() throws {
+        let volume = Volume()
+        try volume.make(userContainers: [])
+        defer { try? FileManager.default.removeItem(at: volume.root) }
+        let legacy = volume.root.appending(path: "Users/hobo/Library/Application Support/com.apple.TCC/TCC.db")
+        try Self.makeDatabase(legacy)
+        try GUITestingGrants.apply(GUITestingGrants.defaultClients, dataVolume: volume.root)
+        #expect(try Self.query(legacy, "SELECT count(*) FROM access WHERE service = 'kTCCServiceAppleEvents'") != ["0"])
+    }
+
     /// A missing TCC.db means the guest isn't laid out as expected: fail, don't create an empty one.
     @Test func missingSystemDatabaseFailsWithoutCreatingOne() throws {
         let volume = Volume()
