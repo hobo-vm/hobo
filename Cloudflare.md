@@ -7,7 +7,7 @@ never publishes it.
 ## Worker settings
 
 In the Cloudflare dashboard, **Workers & Pages → Create → Import a repository**, then pick
-`ggal625/hobo`.
+`hobo-vm/hobo`.
 
 | Setting | Value |
 | --- | --- |
@@ -40,5 +40,6 @@ zone must be on the same Cloudflare account; Cloudflare adds the DNS record and 
 ## Later
 
 - Once signed builds ship, the home page's download button links to the latest GitHub Release:
-  `https://github.com/ggal625/hobo/releases/latest`.
-- The repo is private for now; Workers Builds can still read it through the Cloudflare GitHub app.
+  `https://github.com/hobo-vm/hobo/releases/latest`.
+- The repo stays private until the first release and Homebrew tap ship; Workers Builds reads it
+  through the Cloudflare GitHub app, which needs access to the `hobo-vm` organization.

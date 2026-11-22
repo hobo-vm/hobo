@@ -155,7 +155,7 @@ public struct WindowsVMBundle: VMBundle {
     static let shareTag = "hobo"
 
     /// Windows' boot loader spins forever without PMU emulation, which VZ only offers through a
-    /// private setter (`spikes/windows-qemu/README.md`, finding 21; Beads hobo-9ni rechecks it).
+    /// private setter (`spikes/windows-qemu/README.md`, finding 21; issue #9 rechecks it).
     private static func enablePMUEmulation(on platform: VZGenericPlatformConfiguration) throws {
         let setter = NSSelectorFromString("_setPerformanceMonitoringUnitEmulationEnabled:")
         guard platform.responds(to: setter) else { throw VMError.windowsUnsupportedHere }

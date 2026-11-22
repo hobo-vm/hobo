@@ -13,7 +13,7 @@ description: Install hobo, build a VM from a recipe, and log in.
 ## Install
 
 ```sh
-git clone https://github.com/ggal625/hobo.git
+git clone https://github.com/hobo-vm/hobo.git
 cd hobo
 make install      # builds and signs hobo, installs /usr/local/bin/hobo and /usr/local/share/hobo
 ```

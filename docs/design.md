@@ -153,10 +153,10 @@ global VMs on 2026-11-01.
    `set --unshare <name|folder>` runs before `--share`, so one call can make a share read-only.
    `config.json` keeps `shares: [{name, path, readOnly}]` with absolute paths. Shares change only
    on a stopped VM, like the rest of `set`, and `start --share` refuses a running one (live
-   changes are deferred, Beads hobo-z12). A persistent share whose folder has gone (an unplugged
+   changes are deferred, issue #3). A persistent share whose folder has gone (an unplugged
    drive) is left out of that run with a warning and stays in `config.json`; a missing
    `start --share` folder is refused. Recipes declare no shares (host state, decision 3); defaults
-   with recipe-relative paths are deferred (Beads hobo-a0t).
+   with recipe-relative paths are deferred (issue #4).
    Shares must be folders: virtio-fs rejects volume roots, so Hobo refuses them up front. Guests
    don't Spotlight-index shares, and some guests have shown shared files' creation dates as
    2001-01-01. A macOS guest's disk grow is two steps, verified end to end on a macOS 27.2 guest (2026-11-01, 80 →
@@ -207,7 +207,7 @@ global VMs on 2026-11-01.
     3. conventions, over password SSH: passwordless sudo, hobo's own insecure ed25519 key (2026-11-08) in
        `authorized_keys`, no sleep/screensaver, no automatic updates, and hobo-agent's stub with its
        LaunchDaemon (decision 15). The insecure key stays: a
-       per-VM key is deferred (decided 2026-11-01, Beads hobo-cip). The boot then waits (up to
+       per-VM key is deferred (decided 2026-11-01, issue #33). The boot then waits (up to
        5 min) for the first auto-login to finish, signalled by the user's tccd opening its TCC.db:
        SSH answers well before then, and shutting down early left the next boot, where recipe steps
        run, with no GUI session at all (2026-11-02, macOS 27.2). Only the user's own tccd counts:
@@ -544,7 +544,7 @@ global VMs on 2026-11-01.
       follow it only with `[windows] resizable_display`; otherwise the display is a fixed 1024×768
       and the window scales it (decision 20).
     - **Shared clipboard** (decided 2026-11-11), for a person at the window; agents use `exec`
-      with `pbpaste` and the like. Text only (UTF-8, up to 16 MiB; images are Beads hobo-6od), only
+      with `pbpaste` and the like. Text only (UTF-8, up to 16 MiB; images are issue #41), only
       while the window shows, always on with no setting, for macOS and Windows guests:
       - Only while it shows, so a headless VM (every agent session, which may be running untrusted
         code) never sees the host's clipboard, which holds passwords and tokens, and a guest's
@@ -583,7 +583,7 @@ global VMs on 2026-11-01.
         what it reads (`wireText` on each side).
       - Linux guests don't share yet (`VMBundle.sharesClipboard`): reading GNOME's clipboard on
         Wayland from outside a focused app needs the data-control protocol, which mutter may not
-        have. Beads hobo-56t spikes `wl-paste --watch` from an agent-started process on
+        have. Issue #14 spikes `wl-paste --watch` from an agent-started process on
         Ubuntu 26.04, with SPICE the fallback.
     Agents drive the UI **inside the guest**:
     - Commands from hobo-agent (and from SSH) are outside the GUI session's own TCC approvals, and
@@ -673,7 +673,7 @@ global VMs on 2026-11-01.
       parses a frame as `ui snapshot` prints it (`x,y w×h`), so cropping to a window or an element
       is a snapshot and a paste; a rectangle reaching past the screen keeps what is on it. An
       agent had been cropping with `sips` afterwards. `--app <name>`, cropping to an app's windows
-      by asking `hobo-ui` for their frames, is Beads work. Decided 2026-11-16.
+      by asking `hobo-ui` for their frames, is issue #30. Decided 2026-11-16.
     - Linux guests have their own `exec --gui` and `screenshot` (decision 21), and Windows guests
       theirs (decision 20).
     - A host-side framebuffer screenshot for wedged guests is deferred.
@@ -818,7 +818,7 @@ global VMs on 2026-11-01.
       emulation, which VZ offers only through `VZGenericPlatformConfiguration`'s private
       `_setPerformanceMonitoringUnitEmulationEnabled:`. Hobo checks for the selector and fails with
       a clear error. A macOS release may remove it, which ends Windows guests until there's another
-      way; Beads hobo-9ni rechecks on each release, with QEMU the fallback.
+      way; issue #9 rechecks on each release, with QEMU the fallback.
     - **A framebuffer driver of our own.** Windows Boot Manager needs a linear framebuffer, and VZ's
       GOP is Blt-only. `Firmware/WindowsBoot` holds a small UEFI driver and a loader, built from
       source by a SwiftPM build plugin with `clang` and `lld-link` (`brew install lld`), so no binary
@@ -877,7 +877,7 @@ global VMs on 2026-11-01.
         mode loads the driver without it. The cost is a "Test Mode" watermark on the desktop, in
         screenshots too, and a guest that loads any test-signed driver, which software checking
         code integrity may notice; hence opt-in. Once a signed virtio-win release has the fix, the
-        default becomes resizable and the option goes (Beads tracks this).
+        default becomes resizable and the option goes (issue #11).
       - **Following the window** (2026-11-08, hobo-s1u). VZ reconfigures the display, and the
         driver takes the new size as its custom mode and pulses a named event
         (`VioGpuResolutionEvent<id>`), but Windows switches modes only when something in the desktop
@@ -1002,8 +1002,8 @@ global VMs on 2026-11-01.
     entitlements. So a release needs neither a Developer ID nor notarization. Nothing on the host keys
     off hobo's signing identity (no keychain items or TCC grants of its own), so a signature that
     changes with each build costs nothing.
-    **Distribution** (hobo-8bi): once the repo is public, GitHub Releases carry a tarball of the staged
-    tree, and a tap (`ggal625/homebrew-hobo`) has a formula that installs it and ad-hoc signs `bin/hobo`
+    **Distribution** (issue #13): once the repo is public, GitHub Releases carry a tarball of the staged
+    tree, and a tap (`hobo-vm/homebrew-tap`, so `brew install hobo-vm/tap/hobo`) has a formula that installs it and ad-hoc signs `bin/hobo`
     with the entitlements in `install`.
     **The GUI was dropped.** Hobo.app's library window (list, lifecycle, settings, New VM) duplicated
     `list` and `set` for a tool driven by people at a terminal and by agents through the CLI and MCP,
@@ -1034,8 +1034,13 @@ global VMs on 2026-11-01.
       test's own store (`VMStore.clone(from:)`), keeping its launchd job apart from real ones. A
       missing kept VM fails its tests rather than skip them; building Windows from its ISO, which hobo
       can't download, stays opt-in (`HOBO_WINDOWS_ISO`).
-      There is no CI; GitHub is a backup.
-24. **Repo.** `ggal625/hobo`, private, Apache-2.0, `main`.
+      There is no CI, since the tests need a macOS 27 host and prepared VMs.
+24. **Repo.** `hobo-vm/hobo` (a free GitHub organization), Apache-2.0, `main`. Private until the
+    first release and Homebrew tap ship, then public. Maintainers have the Maintain role; once public,
+    `main` takes no force-pushes or deletion, and changes from anyone but the owner come in by PR with
+    one approval. Work is tracked in GitHub Issues: `P0`–`P4` labels for priority, `deferred` for
+    shelved work, `slot:<name>` for work that needs a scarce host resource (one in progress at a
+    time). Decided 2026-11-22.
 25. **Naming.** The hobo-and-trains metaphor (Boxcar, roundhouse, depot) was dropped on
     2026-11-01: the recipe is plain `Hobo.toml`.
 26. **Logo.** A bindle, a stick with a tied red bandana bag, on a cream macOS icon tile (decided
@@ -1067,7 +1072,7 @@ global VMs on 2026-11-01.
     a remark plugin turns their links to each other into site URLs. Cloudflare Workers Builds
     deploys it from this repo (`Cloudflare.md`). Starlight over MkDocs Material, which is in
     maintenance mode, and over a hand-rolled generator, which would have to rebuild search and
-    navigation. Screenshots live in `docs/images/`; regenerating them with demo VMs is Beads work.
+    navigation. Screenshots live in `docs/images/`; regenerating them with demo VMs is issue #12.
 
 ## Milestones
 
@@ -1087,7 +1092,7 @@ builds in a given directory; `ImageIndex` (the `~/Downloads` + `images.json` ind
 - **M4, Linux guests:** done (2026-11-02): `[source] image`, cloud-init conventions, `images`/`init --os linux`; GUI testing (`exec --gui`, `screenshot`, AT-SPI) on 2026-11-07.
 - **M5, Windows guests:** on VZ (decision 20): `[source] iso`, `init --os windows`, install with our
   own WinPE script, `exec --gui` in the desktop session, UI Automation.
-- **Later:** see Beads (`bd list --status deferred`).
+- **Later:** see GitHub Issues labelled `deferred` or `later`.
 
 ## Comparison with Tart and Lume
 

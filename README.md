@@ -244,6 +244,11 @@ make readme                  # regenerate the README's features from docs/featur
 
 The design record is [docs/design.md](docs/design.md).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, testing in VMs, and how changes get merged.
+
 ## License
 
-Apache-2.0
+Apache-2.0. The license doesn't cover the name "Hobo" or the logo, so please give a fork
+that you distribute a different name.

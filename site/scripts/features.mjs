@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 export const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 export const siteURL = 'https://hobo.gsquared.app';
-export const repoURL = 'https://github.com/ggal625/hobo';
+export const repoURL = 'https://github.com/hobo-vm/hobo';
 export const featuresDir = 'docs/features';
 export const moreMarker = '<!-- more -->';
 
