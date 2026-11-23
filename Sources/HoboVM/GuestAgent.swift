@@ -277,9 +277,20 @@ public struct GuestAgent: GuestShell {
         return status
     }
 
-    /// The last component of a guest path, which a Windows guest may write with backslashes.
-    static func baseName(ofGuestPath path: String) -> String {
-        path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
+    /// The name the agent's tar sends a guest path under: its last component once `.` and `..` are
+    /// resolved, which a Windows guest may write with backslashes. Nil when that name is the home
+    /// directory's or above it (`~`, `.`, `x/..`), which only the guest knows, or a root's.
+    static func baseName(ofGuestPath path: String) -> String? {
+        var components: [Substring] = []
+        for component in path.split(whereSeparator: { $0 == "/" || $0 == "\\" }) {
+            switch component {
+            case ".": continue
+            case "..": if components.popLast() == nil { return nil }
+            default: components.append(component)
+            }
+        }
+        if components == ["~"] && !path.hasPrefix("/") { return nil }
+        return components.last.map(String.init)
     }
 
     // MARK: Requests

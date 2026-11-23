@@ -320,6 +320,18 @@ import Testing
         #expect(try FileManager.default.contentsOfDirectory(atPath: tree.deletingLastPathComponent().path) == ["tree"])
     }
 
+    /// The host matches a guest source to a destination of its own name by the name the agent's tar
+    /// sends it under, so `.` and `..` are resolved, and a name only the guest knows matches nothing.
+    @Test func aGuestSourceIsNamedAsTheAgentSendsIt() {
+        #expect(GuestAgent.baseName(ofGuestPath: "x/tree/") == "tree")
+        #expect(GuestAgent.baseName(ofGuestPath: #"C:\x\tree\."#) == "tree")
+        #expect(GuestAgent.baseName(ofGuestPath: "x/tree/sub/..") == "tree")
+        #expect(GuestAgent.baseName(ofGuestPath: "/~") == "~")
+        for home in ["~", "~/", ".", "", "x/..", "..", "/"] {
+            #expect(GuestAgent.baseName(ofGuestPath: home) == nil, "\(home)")
+        }
+    }
+
     /// A guest that has nothing to send (its source is missing) fails the copy, and what `--replace`
     /// would have removed is still there.
     @Test func getWithReplaceKeepsTheDestinationWhenNothingArrives() async throws {
