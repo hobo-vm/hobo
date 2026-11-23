@@ -71,6 +71,10 @@ make test
 make integration-test
 make release-test
 [ -f "$TARBALL" ] || undo_release_commit "no ${TARBALL}"
+# Checked again: the tests run long enough for someone to push, and the push of main comes last,
+# after the tag and the release are public.
+git fetch -q origin main
+[ -z "$(git rev-list HEAD..origin/main)" ] || undo_release_commit "origin/main got new commits during the tests"
 
 echo
 echo "hobo ${VERSION}"
