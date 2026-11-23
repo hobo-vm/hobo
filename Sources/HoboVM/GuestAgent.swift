@@ -652,7 +652,7 @@ private final class GetExtraction: @unchecked Sendable {
     /// first entry) is the destination directory's own name, tar extracts into its parent, so the
     /// source lands on that directory.
     func start(sourceName: String?) throws {
-        if let sourceName, sourceName == destination.lastPathComponent { destination.deleteLastPathComponent() }
+        if sourceName == destination.lastPathComponent { destination.deleteLastPathComponent() }
         // A single source lands in a staging directory beside the destination, then takes its name.
         // Sources that replace what's in a directory are staged inside it, then moved into place.
         let staged = !intoDirectory || replace
@@ -680,9 +680,8 @@ private final class GetExtraction: @unchecked Sendable {
             let first = TarStream.firstEntryName(held)
             if first == .incomplete, !endOfStream, held.count < Self.headerLimit { return }
             try start(sourceName: Self.topLevelName(of: first))
-            let held = self.held
-            self.held = Data()
             if !held.isEmpty { try input?.write(contentsOf: held) }
+            held = Data()
         } else if !endOfStream {
             try input?.write(contentsOf: payload)
         }
