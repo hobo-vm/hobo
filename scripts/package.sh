@@ -60,12 +60,11 @@ if brew list --formula hobo > /dev/null 2>&1; then
     had_hobo=1
     # Uninstalled first, so the install is from this tarball whatever was there before.
     brew uninstall --formula --force hobo > /dev/null
+else
+    # On exit, so a failed brew test doesn't leave its hobo installed either.
+    trap 'brew uninstall --formula --force hobo > /dev/null 2>&1 || true' EXIT
 fi
 HOMEBREW_NO_AUTO_UPDATE=1 brew install --formula "$TEST_TAP/hobo"
 brew test "$TEST_TAP/hobo"
 echo "package: brew installed and tested hobo $version from $tarball"
-if [ $had_hobo = 1 ]; then
-    echo "package: the hobo Homebrew had installed is now this build"
-else
-    brew uninstall --formula hobo > /dev/null
-fi
+[ $had_hobo = 0 ] || echo "package: the hobo Homebrew had installed is now this build"
