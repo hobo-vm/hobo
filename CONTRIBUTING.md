@@ -70,8 +70,9 @@ release, commits the formula to the tap, and pushes `main` last.
 
 `make release-test` is the part to run when you change the packaging. It writes the tarball and
 the formula to `.build/dist`, installs the formula with Homebrew from the local tarball (through
-a local tap, `hobo-vm/release-test`) and runs `brew test`. Nothing is published, and the hobo it
-installs replaces a brewed one.
+a local tap, `hobo-vm/release-test`) and runs `brew test`. Nothing is published. If Homebrew
+already had a hobo installed, this build replaces it; otherwise the test uninstalls its own, so
+it doesn't shadow a `make install` build.
 
 The formula is generated from `packaging/hobo.rb.in`: edit that, never the tap's copy, which the
 next release overwrites.

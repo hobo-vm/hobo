@@ -8,7 +8,9 @@
 #
 # With --test, also installs the formula with Homebrew from the local tarball (a file:// URL, in
 # a local tap, hobo-vm/release-test) and runs its test: the path a user's `brew install` takes,
-# with nothing published. It leaves that hobo installed. Run as `make release-test`.
+# with nothing published. Run as `make release-test`. A hobo that Homebrew had installed already
+# is replaced by this one; otherwise the test uninstalls its own afterwards, so that it doesn't
+# shadow a `make install` build on PATH.
 set -euo pipefail
 
 REPO="hobo-vm/hobo"
@@ -51,8 +53,17 @@ command -v brew > /dev/null || die "brew not found"
 brew tap | grep -qx "$TEST_TAP" || brew tap-new --no-git "$TEST_TAP" > /dev/null
 tap_formula="$(brew --repository "$TEST_TAP")/Formula/hobo.rb"
 formula "file://$PWD/$tarball" "$tap_formula"
-# Uninstalled first, so the install is from this tarball whatever was there before.
-brew uninstall --formula --force hobo > /dev/null 2>&1 || true
+had_hobo=0
+if brew list --formula hobo > /dev/null 2>&1; then
+    had_hobo=1
+    # Uninstalled first, so the install is from this tarball whatever was there before.
+    brew uninstall --formula --force hobo > /dev/null
+fi
 HOMEBREW_NO_AUTO_UPDATE=1 brew install --formula "$TEST_TAP/hobo"
 brew test "$TEST_TAP/hobo"
 echo "package: brew installed and tested hobo $version from $tarball"
+if [ $had_hobo = 1 ]; then
+    echo "package: the hobo Homebrew had installed is now this build"
+else
+    brew uninstall --formula hobo > /dev/null
+fi
