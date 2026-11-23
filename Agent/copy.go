@@ -39,9 +39,9 @@ func guestPath(home, path string) string {
 // destination itself, as `scp a b` makes b. Without replace a directory that is already there is
 // merged into, as scp does; with it, whatever a source would land on is removed first. Unlike scp,
 // a single source onto a directory of its own name (a.app onto /Applications/a.app) is that
-// directory, not a new one inside it, unless typed ends in a slash or names it as `.`; and the directories above a
-// destination that isn't there are made, for a file as for a directory. The host does the same
-// for a copy out of the guest (GuestAgent.get).
+// directory, not a new one inside it, unless typed ends in a slash or names it as `.` or `~`; and
+// the directories above a destination that isn't there are made, for a file as for a directory.
+// The host does the same for a copy out of the guest (GuestAgent.get).
 // typed is the destination as the user typed it, which guestPath resolves against home.
 func putTar(input io.Reader, home, typed string, single, replace bool) error {
 	destination := guestPath(home, typed)
@@ -72,9 +72,11 @@ func putTar(input io.Reader, home, typed string, single, replace bool) error {
 			return err
 		}
 		top, _, _ := strings.Cut(name, "/")
-		// The first entry is the source's top-level name. It is matched against the name as typed,
-		// so `.` or `~` (a directory that happens to share the source's name) is still copied into.
-		if intoDirectory && single && !endsInSeparator(typed) && top == filepath.Base(typed) {
+		// A single source onto a directory of its own name becomes that directory. top is the
+		// source's name; it is matched against the destination as typed, not as resolved, so `.` or
+		// `~` naming a directory that happens to share the source's name is still copied into.
+		ontoItsOwnName := single && !endsInSeparator(typed) && top == filepath.Base(typed)
+		if intoDirectory && ontoItsOwnName {
 			intoDirectory = false
 		}
 		if replace && !replaced[top] {

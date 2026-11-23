@@ -189,17 +189,18 @@ public struct GuestAgent: GuestShell {
     }
 
     /// Receives the sources as a tar stream and extracts it with the host's `tar`, as `scp` would:
-    /// into a directory that exists, or a single source as the destination itself, as it is onto a
-    /// directory of its own name. The directories above a destination that isn't there are made, as the agent's `putTar` makes them in the
-    /// guest, and removed again by a copy that brings nothing. With `replace`, what a source lands on
+    /// into a directory that exists, or a single source as the destination itself, which it also is
+    /// when the destination is a directory of the source's own name. The directories above a
+    /// destination that isn't there are made, as the agent's `putTar` makes them in the guest, and
+    /// removed again by a copy that brings nothing. With `replace`, what a source lands on
     /// in that directory is removed first, once the whole copy has arrived.
     private func get(_ copy: GuestCopy, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
         var destination = URL(filePath: copy.destination)
         var isDirectory: ObjCBool = false
         let intoDirectory = FileManager.default.fileExists(atPath: destination.path, isDirectory: &isDirectory) && isDirectory.boolValue
         // A single source onto a directory of its own name is that directory, as the agent's
-        // putTar takes it, unless the destination ends in a slash: copied into the parent, it
-        // lands on it under that name.
+        // putTar takes it, unless the destination ends in a slash. Copying into the parent instead
+        // lands the source on that directory under its own name.
         if intoDirectory, copy.sources.count == 1, !copy.destination.hasSuffix("/"),
             Self.baseName(ofGuestPath: copy.sources[0]) == destination.lastPathComponent {
             destination.deleteLastPathComponent()
