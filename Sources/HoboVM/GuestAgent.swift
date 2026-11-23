@@ -623,9 +623,9 @@ final class HostTar: Sendable {
     }
 }
 
-/// A copy out of the guest's extraction (`GuestAgent.get`): the host's `tar` extracting the stream,
-/// and what it extracted moved into place. Which directory that is can wait on the name the single
-/// source arrives under, its first entry's, so the stream is held until that entry's header is in.
+/// Extracts a copy out of the guest (`GuestAgent.get`) with the host's `tar`, then moves what it
+/// extracted into place. Where tar extracts can depend on the name the single source arrives under,
+/// its first entry's, so the stream is held until that entry's header is in.
 /// Used by one thread at a time: the one reading the answer, then the copy's.
 private final class GetExtraction: @unchecked Sendable {
     /// The most of the stream held for the first entry's name; past it, the name decides nothing.
@@ -648,8 +648,9 @@ private final class GetExtraction: @unchecked Sendable {
         self.replace = replace
     }
 
-    /// Makes where tar extracts and starts it. A source named as the destination directory is
-    /// (`sourceName`, the stream's first entry's top-level name) lands on it, in its parent.
+    /// Makes where tar extracts and starts it. When `sourceName` (the top-level name of the stream's
+    /// first entry) is the destination directory's own name, tar extracts into its parent, so the
+    /// source lands on that directory.
     func start(sourceName: String?) throws {
         if let sourceName, sourceName == destination.lastPathComponent { destination.deleteLastPathComponent() }
         // A single source lands in a staging directory beside the destination, then takes its name.
@@ -673,22 +674,25 @@ private final class GetExtraction: @unchecked Sendable {
 
     /// A data frame's payload: the stream, or its end when empty.
     func receive(_ payload: Data) throws {
+        let endOfStream = payload.isEmpty
         if tar == nil {
             held += payload
             let first = TarStream.firstEntryName(held)
-            if case .incomplete = first, !payload.isEmpty, held.count < Self.headerLimit { return }
-            if case .name(let name) = first {
-                try start(sourceName: name.split(separator: "/").first { $0 != "." }.map(String.init))
-            } else {
-                try start(sourceName: nil)
-            }
+            if first == .incomplete, !endOfStream, held.count < Self.headerLimit { return }
+            try start(sourceName: Self.topLevelName(of: first))
             let held = self.held
             self.held = Data()
             if !held.isEmpty { try input?.write(contentsOf: held) }
-        } else if !payload.isEmpty {
+        } else if !endOfStream {
             try input?.write(contentsOf: payload)
         }
-        if payload.isEmpty { try? input?.close() }
+        if endOfStream { try? input?.close() }
+    }
+
+    /// The first component of an entry's name other than `.`, which is the source's own name.
+    private static func topLevelName(of entry: TarStream.FirstEntry) -> String? {
+        guard case .name(let name) = entry else { return nil }
+        return name.split(separator: "/").first { $0 != "." }.map(String.init)
     }
 
     /// Ends the stream, starting tar on what was held if it hadn't started, and waits for tar.
@@ -753,10 +757,10 @@ enum TarStream {
         var longName: String?
         while true {
             guard bytes.count >= offset + 512 else { return .incomplete }
-            let header = bytes[offset..<offset + 512]
+            let header = Array(bytes[offset..<offset + 512])
             if header.allSatisfy({ $0 == 0 }) { return .none }
-            guard let size = number(header.dropFirst(124).prefix(12)), size >= 0 else { return .none }
-            let typeflag = header[offset + 156]
+            guard let size = number(header[124..<136]), size >= 0 else { return .none }
+            let typeflag = header[156]
             let data = offset + 512
             switch typeflag {
             case UInt8(ascii: "x"), UInt8(ascii: "g"), UInt8(ascii: "L"), UInt8(ascii: "K"):
@@ -767,9 +771,9 @@ enum TarStream {
                 offset = data + (size + 511) / 512 * 512
             default:
                 if let longName { return .name(longName) }
-                let name = string(header.prefix(100))
-                let magic = Array(header.dropFirst(257).prefix(6))
-                let prefix = magic == Array("ustar\0".utf8) ? string(header.dropFirst(345).prefix(155)) : ""
+                let name = string(header[0..<100])
+                let magic = Array(header[257..<263])
+                let prefix = magic == Array("ustar\0".utf8) ? string(header[345..<500]) : ""
                 return .name(prefix.isEmpty ? name : prefix + "/" + name)
             }
         }
