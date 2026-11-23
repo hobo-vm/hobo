@@ -50,7 +50,9 @@ echo "package: $DIST/hobo.rb"
 
 command -v brew > /dev/null || die "brew not found"
 # Homebrew installs formulae only from taps, so the test formula goes in a local one.
-brew tap | grep -qx "$TEST_TAP" || brew tap-new --no-git "$TEST_TAP" > /dev/null
+# Not grep -q: it exits at the first match, and under pipefail a brew still writing then fails
+# the pipeline, which would run tap-new on a tap that exists.
+brew tap | grep -x "$TEST_TAP" > /dev/null || brew tap-new --no-git "$TEST_TAP" > /dev/null
 tap_formula="$(brew --repository "$TEST_TAP")/Formula/hobo.rb"
 formula "file://$PWD/$tarball" "$tap_formula"
 had_hobo=0
