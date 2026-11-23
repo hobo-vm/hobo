@@ -195,16 +195,9 @@ public struct GuestAgent: GuestShell {
     /// removed again by a copy that brings nothing. With `replace`, what a source lands on in that
     /// directory is removed first, once the whole copy has arrived.
     private func get(_ copy: GuestCopy, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
-        var destination = URL(filePath: copy.destination)
+        let destination = URL(filePath: copy.destination)
         var isDirectory: ObjCBool = false
         let intoDirectory = FileManager.default.fileExists(atPath: destination.path, isDirectory: &isDirectory) && isDirectory.boolValue
-        // A single source onto a directory of its own name is that directory, as the agent's
-        // putTar takes it, unless the destination ends in a slash. Copying into the parent instead
-        // lands the source on that directory under its own name.
-        if intoDirectory, copy.sources.count == 1, !copy.destination.hasSuffix("/"),
-            Self.baseName(ofGuestPath: copy.sources[0]) == destination.lastPathComponent {
-            destination.deleteLastPathComponent()
-        }
         if !intoDirectory {
             if copy.destination.hasSuffix("/") {
                 onOutput(.stderr, Data("\(copy.destination): no such directory\n".utf8))
@@ -215,82 +208,34 @@ public struct GuestAgent: GuestShell {
                 return 1
             }
         }
-        // A single source lands in a staging directory beside the destination, then takes its name.
-        // Sources that replace what's in a directory are staged inside it, then moved into place.
-        let staged = !intoDirectory || copy.replace
-        let stagingParent = intoDirectory ? destination : destination.deletingLastPathComponent()
-        let staging = stagingParent.appending(path: ".hobo-cp-\(UUID().uuidString)")
-        let extractInto = staged ? staging : destination
-        // The directories this copy makes above the destination, deepest first.
-        var made: [URL] = []
-        var missing = stagingParent
-        while !FileManager.default.fileExists(atPath: missing.path) {
-            made.append(missing)
-            missing = missing.deletingLastPathComponent()
-        }
-        if staged { try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true) }
-        defer {
-            if staged { try? FileManager.default.removeItem(at: staging) }
-            // rmdir leaves one that holds something, which is every one of them once the copy has landed.
-            for directory in made where rmdir(directory.path) != 0 { break }
-        }
-
-        let tar = HostTar(arguments: ["-x", "-f", "-", "-C", extractInto.path])
-        let input = try tar.startWriting()
+        // A single source onto a directory of its own name is that directory, as the agent's
+        // putTar takes it, unless the destination ends in a slash. Its name is the one it arrives
+        // under, so where tar extracts waits for the stream's first entry.
+        let mayBeOntoItsOwnName = intoDirectory && copy.sources.count == 1 && !copy.destination.hasSuffix("/")
+        let extraction = GetExtraction(destination: destination, intoDirectory: intoDirectory, replace: copy.replace)
+        defer { extraction.cleanUp() }
+        if !mayBeOntoItsOwnName { try extraction.start(sourceName: nil) }
         let request = AgentRequest(op: "get", user: user, sources: copy.sources)
         let status: Int32
         do {
             status = try await perform(request) { kind, payload in
                 switch kind {
                 case .stderr: onOutput(.stderr, payload)
-                case .data where payload.isEmpty: try? input.close()
-                case .data: try input.write(contentsOf: payload)
+                case .data: try extraction.receive(payload)
                 default: throw AgentError.unexpectedFrame(kind)
                 }
             }
         } catch {
-            try? input.close()
-            tar.finish()
+            extraction.abandon()
             throw error
         }
-        try? input.close()
-        tar.finish()
-        if let problem = tar.problem {
+        try extraction.finish()
+        if let problem = extraction.problem {
             onOutput(.stderr, Data("tar: \(problem)\n".utf8))
             return 1
         }
-        if !intoDirectory {
-            if let entry = try FileManager.default.contentsOfDirectory(atPath: staging.path).first {
-                var destinationIsDirectory: ObjCBool = false
-                if FileManager.default.fileExists(atPath: destination.path, isDirectory: &destinationIsDirectory), !destinationIsDirectory.boolValue {
-                    try FileManager.default.removeItem(at: destination)
-                }
-                try FileManager.default.moveItem(at: staging.appending(path: entry), to: destination)
-            }
-        } else if copy.replace {
-            for entry in try FileManager.default.contentsOfDirectory(atPath: staging.path) {
-                let target = destination.appending(path: entry)
-                try? FileManager.default.removeItem(at: target)
-                try FileManager.default.moveItem(at: staging.appending(path: entry), to: target)
-            }
-        }
+        try extraction.land()
         return status
-    }
-
-    /// The name the agent's tar sends a guest path under: its last component once `.` and `..` are
-    /// resolved, which a Windows guest may write with backslashes. Nil when that name is the home
-    /// directory's or above it (`~`, `.`, `x/..`), which only the guest knows, or a root's.
-    static func baseName(ofGuestPath path: String) -> String? {
-        var components: [Substring] = []
-        for component in path.split(whereSeparator: { $0 == "/" || $0 == "\\" }) {
-            switch component {
-            case ".": continue
-            case "..": if components.popLast() == nil { return nil }
-            default: components.append(component)
-            }
-        }
-        if components == ["~"] && !path.hasPrefix("/") { return nil }
-        return components.last.map(String.init)
     }
 
     // MARK: Requests
@@ -675,6 +620,190 @@ final class HostTar: Sendable {
             done.signal()
         }
         return done
+    }
+}
+
+/// A copy out of the guest's extraction (`GuestAgent.get`): the host's `tar` extracting the stream,
+/// and what it extracted moved into place. Which directory that is can wait on the name the single
+/// source arrives under, its first entry's, so the stream is held until that entry's header is in.
+/// Used by one thread at a time: the one reading the answer, then the copy's.
+private final class GetExtraction: @unchecked Sendable {
+    /// The most of the stream held for the first entry's name; past it, the name decides nothing.
+    static let headerLimit = 1 << 20
+
+    private var destination: URL
+    private let intoDirectory: Bool
+    private let replace: Bool
+    /// What arrived before tar started, while it waits on the first entry's name.
+    private var held = Data()
+    private var staging: URL?
+    /// The directories this copy made above the destination, deepest first.
+    private var made: [URL] = []
+    private var tar: HostTar?
+    private var input: FileHandle?
+
+    init(destination: URL, intoDirectory: Bool, replace: Bool) {
+        self.destination = destination
+        self.intoDirectory = intoDirectory
+        self.replace = replace
+    }
+
+    /// Makes where tar extracts and starts it. A source named as the destination directory is
+    /// (`sourceName`, the stream's first entry's top-level name) lands on it, in its parent.
+    func start(sourceName: String?) throws {
+        if let sourceName, sourceName == destination.lastPathComponent { destination.deleteLastPathComponent() }
+        // A single source lands in a staging directory beside the destination, then takes its name.
+        // Sources that replace what's in a directory are staged inside it, then moved into place.
+        let staged = !intoDirectory || replace
+        let stagingParent = intoDirectory ? destination : destination.deletingLastPathComponent()
+        let staging = stagingParent.appending(path: ".hobo-cp-\(UUID().uuidString)")
+        var missing = stagingParent
+        while !FileManager.default.fileExists(atPath: missing.path) {
+            made.append(missing)
+            missing = missing.deletingLastPathComponent()
+        }
+        if staged {
+            try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+            self.staging = staging
+        }
+        let tar = HostTar(arguments: ["-x", "-f", "-", "-C", (staged ? staging : destination).path])
+        input = try tar.startWriting()
+        self.tar = tar
+    }
+
+    /// A data frame's payload: the stream, or its end when empty.
+    func receive(_ payload: Data) throws {
+        if tar == nil {
+            held += payload
+            let first = TarStream.firstEntryName(held)
+            if case .incomplete = first, !payload.isEmpty, held.count < Self.headerLimit { return }
+            if case .name(let name) = first {
+                try start(sourceName: name.split(separator: "/").first { $0 != "." }.map(String.init))
+            } else {
+                try start(sourceName: nil)
+            }
+            let held = self.held
+            self.held = Data()
+            if !held.isEmpty { try input?.write(contentsOf: held) }
+        } else if !payload.isEmpty {
+            try input?.write(contentsOf: payload)
+        }
+        if payload.isEmpty { try? input?.close() }
+    }
+
+    /// Ends the stream, starting tar on what was held if it hadn't started, and waits for tar.
+    func finish() throws {
+        if tar == nil { try receive(Data()) }
+        try? input?.close()
+        tar?.finish()
+    }
+
+    /// Ends tar on a copy that failed.
+    func abandon() {
+        try? input?.close()
+        tar?.finish()
+    }
+
+    /// What went wrong in tar, once it has finished.
+    var problem: String? { tar?.problem }
+
+    /// Moves what tar extracted into place.
+    func land() throws {
+        guard let staging else { return }
+        if !intoDirectory {
+            if let entry = try FileManager.default.contentsOfDirectory(atPath: staging.path).first {
+                var destinationIsDirectory: ObjCBool = false
+                if FileManager.default.fileExists(atPath: destination.path, isDirectory: &destinationIsDirectory), !destinationIsDirectory.boolValue {
+                    try FileManager.default.removeItem(at: destination)
+                }
+                try FileManager.default.moveItem(at: staging.appending(path: entry), to: destination)
+            }
+        } else {
+            for entry in try FileManager.default.contentsOfDirectory(atPath: staging.path) {
+                let target = destination.appending(path: entry)
+                try? FileManager.default.removeItem(at: target)
+                try FileManager.default.moveItem(at: staging.appending(path: entry), to: target)
+            }
+        }
+    }
+
+    func cleanUp() {
+        if let staging { try? FileManager.default.removeItem(at: staging) }
+        // rmdir leaves one that holds something, which is every one of them once the copy has landed.
+        for directory in made where rmdir(directory.path) != 0 { break }
+    }
+}
+
+/// Reading a tar stream's headers as the stream arrives.
+enum TarStream {
+    enum FirstEntry: Equatable {
+        /// More of the stream is needed to tell.
+        case incomplete
+        /// The first entry's name, as the archive gives it.
+        case name(String)
+        /// The stream holds no entry, or isn't one tar can name.
+        case none
+    }
+
+    /// The name of the first entry in `stream`'s start: a PAX `path` record or a GNU long name ahead
+    /// of its header if there is one, otherwise the header's own name, after a ustar prefix.
+    static func firstEntryName(_ stream: Data) -> FirstEntry {
+        let bytes = [UInt8](stream)
+        var offset = 0
+        var longName: String?
+        while true {
+            guard bytes.count >= offset + 512 else { return .incomplete }
+            let header = bytes[offset..<offset + 512]
+            if header.allSatisfy({ $0 == 0 }) { return .none }
+            guard let size = number(header.dropFirst(124).prefix(12)) else { return .none }
+            let typeflag = header[offset + 156]
+            let data = offset + 512
+            switch typeflag {
+            case UInt8(ascii: "x"), UInt8(ascii: "g"), UInt8(ascii: "L"), UInt8(ascii: "K"):
+                guard bytes.count >= data + size else { return .incomplete }
+                let content = bytes[data..<data + size]
+                if typeflag == UInt8(ascii: "x"), let path = paxPath(content) { longName = path }
+                if typeflag == UInt8(ascii: "L") { longName = string(content) }
+                offset = data + (size + 511) / 512 * 512
+            default:
+                if let longName { return .name(longName) }
+                let name = string(header.prefix(100))
+                let magic = Array(header.dropFirst(257).prefix(6))
+                let prefix = magic == Array("ustar\0".utf8) ? string(header.dropFirst(345).prefix(155)) : ""
+                return .name(prefix.isEmpty ? name : prefix + "/" + name)
+            }
+        }
+    }
+
+    /// A NUL-terminated field.
+    private static func string(_ field: ArraySlice<UInt8>) -> String {
+        String(decoding: field.prefix { $0 != 0 }, as: UTF8.self)
+    }
+
+    /// A numeric field: octal digits, or base-256 when its first byte's high bit is set.
+    private static func number(_ field: ArraySlice<UInt8>) -> Int? {
+        if let first = field.first, first & 0x80 != 0 {
+            return field.dropFirst().reduce(Int(first & 0x7f)) { $0 << 8 | Int($1) }
+        }
+        let digits = field.drop { $0 == 0x20 }.prefix { $0 != 0 && $0 != 0x20 }
+        return digits.isEmpty ? 0 : Int(String(decoding: digits, as: UTF8.self), radix: 8)
+    }
+
+    /// The `path` record of a PAX header's records, each `<length> <key>=<value>\n`.
+    private static func paxPath(_ records: ArraySlice<UInt8>) -> String? {
+        var rest = records
+        var path: String?
+        while let space = rest.firstIndex(of: 0x20),
+            let length = Int(String(decoding: rest[rest.startIndex..<space], as: UTF8.self)),
+            length > 0, rest.count >= length {
+            let record = rest[(space + 1)..<(rest.startIndex + length)].dropLast()  // the newline
+            if let equals = record.firstIndex(of: UInt8(ascii: "=")),
+                String(decoding: record[record.startIndex..<equals], as: UTF8.self) == "path" {
+                path = String(decoding: record[(equals + 1)...], as: UTF8.self)
+            }
+            rest = rest.dropFirst(length)
+        }
+        return path
     }
 }
 

@@ -325,16 +325,50 @@ import Testing
         #expect(try FileManager.default.contentsOfDirectory(atPath: tree.appending(path: "tree").path) == ["new.txt"])
     }
 
-    /// The host matches a guest source to a destination of its own name by the name the agent's tar
-    /// sends it under, so `.` and `..` are resolved, and a name only the guest knows matches nothing.
-    @Test func aGuestSourceIsNamedAsTheAgentSendsIt() {
-        #expect(GuestAgent.baseName(ofGuestPath: "x/tree/") == "tree")
-        #expect(GuestAgent.baseName(ofGuestPath: #"C:\x\tree\."#) == "tree")
-        #expect(GuestAgent.baseName(ofGuestPath: "x/tree/sub/..") == "tree")
-        #expect(GuestAgent.baseName(ofGuestPath: "/~") == "~")
-        for home in ["~", "~/", ".", "", "x/..", "..", "/"] {
-            #expect(GuestAgent.baseName(ofGuestPath: home) == nil, "\(home)")
+    /// The host matches a guest source to a destination of its own name by the name the source
+    /// arrives under, so a `~` or `.` source, named only in the guest, lands on a directory of its
+    /// own name too, with the stream arriving in frames that split its first header.
+    @Test func getOfAHomeOrDotSourceOntoADirectoryOfItsOwnNameIsThatDirectory() async throws {
+        let dir = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let guest = dir.appending(path: "guest")
+        try FileManager.default.createDirectory(at: guest.appending(path: "hobo"), withIntermediateDirectories: true)
+        try Data("new".utf8).write(to: guest.appending(path: "hobo/new.txt"))
+        let stream = try tar(["-c", "-f", "-", "-C", guest.path, "hobo"])
+        let home = dir.appending(path: "host/hobo")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        let agent = guestAgent { _, socket in
+            var rest = stream[...]
+            while !rest.isEmpty {
+                try socket.writeFrame(.data, Data(rest.prefix(100)))
+                rest = rest.dropFirst(100)
+            }
+            try socket.writeFrame(.data, Data())
+            try sendExit(0, on: socket)
         }
+        for source in ["~", "."] {
+            #expect(try await agent.copy(GuestCopy(direction: .fromGuest, sources: [source], destination: home.path)) { _, _ in } == 0)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: home.path) == ["new.txt"], "\(source)")
+        }
+    }
+
+    /// The first entry's name comes from its header, after a ustar prefix, or from a PAX `path`
+    /// record or GNU long name ahead of it; a stream cut short of it needs more.
+    @Test func aTarStreamsFirstEntryIsNamedFromItsHeaders() throws {
+        let dir = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let long = String(repeating: "l", count: 120)
+        let deep = (1...6).map { String(repeating: "\($0)", count: 30) }.joined(separator: "/")
+        for path in ["tree", deep, long] {
+            try FileManager.default.createDirectory(at: dir.appending(path: path), withIntermediateDirectories: true)
+            for format in ["ustar", "pax", "gnutar"] where !(format == "ustar" && path == long) {
+                let stream = try tar(["-c", "-f", "-", "--format", format, "-C", dir.path, path])
+                #expect(TarStream.firstEntryName(stream) == .name(path + "/"), "\(format) \(path)")
+                #expect(TarStream.firstEntryName(stream.prefix(511)) == .incomplete)
+            }
+        }
+        #expect(TarStream.firstEntryName(Data(count: 1024)) == .none)
+        #expect(TarStream.firstEntryName(Data()) == .incomplete)
     }
 
     /// A guest that has nothing to send (its source is missing) fails the copy, and what `--replace`
