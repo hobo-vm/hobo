@@ -318,6 +318,11 @@ import Testing
         #expect(try await agent.copy(replace) { _, _ in } == 0)
         #expect(try FileManager.default.contentsOfDirectory(atPath: tree.path) == ["new.txt"])
         #expect(try FileManager.default.contentsOfDirectory(atPath: tree.deletingLastPathComponent().path) == ["tree"])
+        // A trailing slash still copies into it.
+        let into = GuestCopy(direction: .fromGuest, sources: ["x/tree"], destination: tree.path + "/")
+        #expect(try await agent.copy(into) { _, _ in } == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: tree.path).sorted() == ["new.txt", "tree"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: tree.appending(path: "tree").path) == ["new.txt"])
     }
 
     /// The host matches a guest source to a destination of its own name by the name the agent's tar
