@@ -192,8 +192,8 @@ public struct GuestAgent: GuestShell {
     /// into a directory that exists, or a single source as the destination itself, which it also is
     /// when the destination is a directory of the source's own name. The directories above a
     /// destination that isn't there are made, as the agent's `putTar` makes them in the guest, and
-    /// removed again by a copy that brings nothing. With `replace`, what a source lands on
-    /// in that directory is removed first, once the whole copy has arrived.
+    /// removed again by a copy that brings nothing. With `replace`, what a source lands on in that
+    /// directory is removed first, once the whole copy has arrived.
     private func get(_ copy: GuestCopy, onOutput: @escaping @Sendable (GuestStream, Data) -> Void) async throws -> Int32 {
         var destination = URL(filePath: copy.destination)
         var isDirectory: ObjCBool = false

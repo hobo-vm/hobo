@@ -76,7 +76,7 @@ func putTar(input io.Reader, home, typed string, single, replace bool) error {
 		// source's name; it is matched against the destination as typed, not as resolved, so `.` or
 		// `~` naming a directory that happens to share the source's name is still copied into.
 		ontoItsOwnName := single && !endsInSeparator(typed) && top == filepath.Base(typed)
-		if intoDirectory && ontoItsOwnName {
+		if ontoItsOwnName {
 			intoDirectory = false
 		}
 		if replace && !replaced[top] {

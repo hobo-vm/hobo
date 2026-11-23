@@ -489,8 +489,8 @@ global VMs on 2026-11-01.
       (decided 2026-11-11). Opt-in, so a plain copy never deletes. Unlike scp, a single source
       onto a directory of its own name is that directory, not a new one inside it, unless the
       destination ends in `/` (decided 2026-11-22): `cp --replace X.app vm:/Applications/X.app`
-      exited 0 having made `X.app/X.app`, leaving the old bundle running. The VM process runs `scp` on the
-      client's absolute host paths (same user, same machine) and streams its messages like `exec`.
+      exited 0 having made `X.app/X.app`, leaving the old bundle running. The VM process runs
+      `scp` on the client's absolute host paths (same user, same machine) and streams its messages like `exec`.
     - `hobo rm <vm>:<path>...` removes guest paths whole (`-r` accepted, as with `cp`), as `hobo`
       through the agent's `rm` request, so an agent never sends `rm -rf` through `exec`: Claude Code
       can't tell a guest path from a host one and blocks that (decided 2026-11-15). Every operand
