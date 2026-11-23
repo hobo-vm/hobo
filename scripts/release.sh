@@ -66,7 +66,7 @@ trap 'undo_release_commit "failed"' ERR INT TERM
 make test
 make integration-test
 make release-test
-[ -f "$TARBALL" ] || { echo "release: no ${TARBALL}" >&2; false; }
+[ -f "$TARBALL" ] || undo_release_commit "no ${TARBALL}"
 
 echo
 echo "hobo ${VERSION}"
