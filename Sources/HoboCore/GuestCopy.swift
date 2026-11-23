@@ -32,8 +32,12 @@ public struct GuestCopy: Codable, Equatable, Sendable {
         let destination = GuestOperand(last)
         func absolute(_ path: String) -> String {
             let absolute = URL(filePath: path, relativeTo: currentDirectory).standardizedFileURL.path
-            // A trailing slash tells scp the destination must be a directory; keep it.
-            return path.hasSuffix("/") && !absolute.hasSuffix("/") ? absolute + "/" : absolute
+            // A trailing slash tells scp the destination must be a directory; keep it. A path that
+            // ends in `.` or `..` names a directory to copy into, so it gets one too: standardized
+            // away, `hobo cp vm:x .` in a directory named x would land on it rather than in it.
+            let last = path.split(separator: "/").last
+            let intoDirectory = path.hasSuffix("/") || last == "." || last == ".."
+            return intoDirectory && !absolute.hasSuffix("/") ? absolute + "/" : absolute
         }
 
         if case .guest(let vm, let path) = destination {

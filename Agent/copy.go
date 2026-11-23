@@ -39,7 +39,7 @@ func guestPath(home, path string) string {
 // destination itself, as `scp a b` makes b. Without replace a directory that is already there is
 // merged into, as scp does; with it, whatever a source would land on is removed first. Unlike scp,
 // a single source onto a directory of its own name (a.app onto /Applications/a.app) is that
-// directory, not a new one inside it, unless typed ends in a slash; and the directories above a
+// directory, not a new one inside it, unless typed ends in a slash or names it as `.`; and the directories above a
 // destination that isn't there are made, for a file as for a directory. The host does the same
 // for a copy out of the guest (GuestAgent.get).
 // typed is the destination as the user typed it, which guestPath resolves against home.
@@ -49,7 +49,7 @@ func putTar(input io.Reader, home, typed string, single, replace bool) error {
 	intoDirectory := err == nil && info.IsDir()
 	if !intoDirectory {
 		switch {
-		case strings.HasSuffix(typed, "/"):
+		case endsInSeparator(typed):
 			return fmt.Errorf("%s: no such directory", typed)
 		case !single:
 			return fmt.Errorf("%s: not a directory", typed)
@@ -72,8 +72,9 @@ func putTar(input io.Reader, home, typed string, single, replace bool) error {
 			return err
 		}
 		top, _, _ := strings.Cut(name, "/")
-		// The first entry is the source's top-level name.
-		if intoDirectory && single && !strings.HasSuffix(typed, "/") && top == filepath.Base(destination) {
+		// The first entry is the source's top-level name. It is matched against the name as typed,
+		// so `.` or `~` (a directory that happens to share the source's name) is still copied into.
+		if intoDirectory && single && !endsInSeparator(typed) && top == filepath.Base(typed) {
 			intoDirectory = false
 		}
 		if replace && !replaced[top] {
@@ -94,6 +95,12 @@ func putTar(input io.Reader, home, typed string, single, replace bool) error {
 			return err
 		}
 	}
+}
+
+// endsInSeparator is whether a typed path ends in a slash (or, on Windows, a backslash), which
+// says it must be a directory to copy into.
+func endsInSeparator(typed string) bool {
+	return typed != "" && os.IsPathSeparator(typed[len(typed)-1])
 }
 
 // entryName checks that a tar entry stays inside where it is extracted.

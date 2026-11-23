@@ -202,6 +202,13 @@ func TestCopyOntoADirectoryOfItsOwnName(t *testing.T) {
 	if read(t, filepath.Join(dest, "App.app/new.txt")) != "new" {
 		t.Fatal("a trailing slash should copy into the directory")
 	}
+	// Named by `.`, it is copied into too, though the directory shares the source's name.
+	if _, err := copyTreeReplacing(t, source, dest+"/.", true); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, filepath.Join(dest, "new.txt")) != "new" || read(t, filepath.Join(dest, "App.app/new.txt")) != "new" {
+		t.Fatal("a destination of . should copy into the directory")
+	}
 }
 
 // The host's tar sends an empty archive when it can't read its source: the destination stays.

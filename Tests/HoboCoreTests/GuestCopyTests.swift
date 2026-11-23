@@ -15,8 +15,8 @@ import Testing
     @Test func copiesGuestPathsToTheHost() throws {
         let (vm, copy) = try GuestCopy.parse(["dev:a", "dev:/b c", "."], currentDirectory: cwd)
         #expect(vm == "dev")
-        #expect(copy == GuestCopy(direction: .fromGuest, sources: ["a", "/b c"], destination: "/work/dir"))
-        #expect(copy.scpArguments(remote: "u@h") == ["-q", "-r", "--", "u@h:a", "u@h:/b c", "/work/dir"])
+        #expect(copy == GuestCopy(direction: .fromGuest, sources: ["a", "/b c"], destination: "/work/dir/"))
+        #expect(copy.scpArguments(remote: "u@h") == ["-q", "-r", "--", "u@h:a", "u@h:/b c", "/work/dir/"])
     }
 
     @Test func replaceIsCarriedEitherWay() throws {
@@ -28,6 +28,13 @@ import Testing
     @Test func keepsATrailingSlashOnAHostDestination() throws {
         let (_, copy) = try GuestCopy.parse(["dev:a", "out/"], currentDirectory: cwd)
         #expect(copy.destination == "/work/dir/out/")
+    }
+
+    /// `.` and `..` name directories to copy into, so `hobo cp vm:dir .` in a directory named
+    /// `dir` copies into it rather than onto it, as a directory of the source's own name.
+    @Test func aHostDestinationOfDotIsCopiedInto() throws {
+        #expect(try GuestCopy.parse(["dev:dir", "."], currentDirectory: cwd).copy.destination == "/work/dir/")
+        #expect(try GuestCopy.parse(["dev:dir", "out/.."], currentDirectory: cwd).copy.destination == "/work/dir/")
     }
 
     @Test func aColonAfterASlashIsAHostPath() throws {
