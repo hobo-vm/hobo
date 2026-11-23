@@ -51,6 +51,31 @@ make integration-test
 with `make windows-ui`. That runs the build in a Windows VM called `windows-build`;
 `scripts/windows-ui.sh` says how to make one.
 
+## Releasing
+
+A release is a `v<version>` tag, a GitHub release with a tarball of the staged tree, and the
+formula in [`hobo-vm/homebrew-tap`](https://github.com/hobo-vm/homebrew-tap), which is what
+`brew install hobo-vm/tap/hobo` installs. A maintainer cuts one on `main`:
+
+```sh
+make release                 # the next minor after the latest tag
+make release VERSION=0.1.1   # or a version you choose
+```
+
+`scripts/release.sh` sets `Hobo.version`, commits it as "Release <version>", and runs
+`make test`, `make integration-test` (so it needs the kept VMs) and `make release-test`. It then
+shows what it would publish and asks. If you say no, or anything failed, the release commit is
+undone and nothing has left your machine. If you say yes, it pushes the tag, creates the GitHub
+release, commits the formula to the tap, and pushes `main` last.
+
+`make release-test` is the part to run when you change the packaging. It writes the tarball and
+the formula to `.build/dist`, installs the formula with Homebrew from the local tarball (through
+a local tap, `hobo-vm/release-test`) and runs `brew test`. Nothing is published, and the hobo it
+installs replaces a brewed one.
+
+The formula is generated from `packaging/hobo.rb.in`: edit that, never the tap's copy, which the
+next release overwrites.
+
 ## Rules of the codebase
 
 - **All logic lives in `HoboCore` and `HoboVM`.** The CLI (`Sources/hobo`) and the MCP server

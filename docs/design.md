@@ -1002,9 +1002,24 @@ global VMs on 2026-11-01.
     entitlements. So a release needs neither a Developer ID nor notarization. Nothing on the host keys
     off hobo's signing identity (no keychain items or TCC grants of its own), so a signature that
     changes with each build costs nothing.
-    **Distribution** (issue #13): once the repo is public, GitHub Releases carry a tarball of the staged
-    tree, and a tap (`hobo-vm/homebrew-tap`, so `brew install hobo-vm/tap/hobo`) has a formula that installs it and ad-hoc signs `bin/hobo`
-    with the entitlements in `install`.
+    **Distribution** (issue #13, decided 2026-11-23): GitHub Releases carry `hobo-<version>.tar.gz`,
+    the staged tree plus `entitlements.plist` and `LICENSE`, and a tap (`hobo-vm/homebrew-tap`, so
+    `brew install hobo-vm/tap/hobo`) has a formula that installs `bin` and `share` and ad-hoc signs
+    `bin/hobo` with that plist in `install`. The plist ships in the tarball so that the repo's copy
+    stays the only one. The formula needs arm64 and macOS 27, and doesn't depend on `qemu`, which
+    only Linux guests need: `create` says to install it, and so do the formula's caveats.
+    The formula is generated from `packaging/hobo.rb.in` by `scripts/package.sh`, with the tarball's
+    URL and SHA-256, so the one that ships is the one that was tested: `make release-test` installs
+    it with Homebrew from the local tarball and runs its test (the version, and the entitlement on
+    the installed binary).
+    **Releases.** There is no CI, so a maintainer cuts a release on `main` with `make release`
+    (`scripts/release.sh`). The version is the literal `Hobo.version`, which the script sets and
+    commits as "Release <version>": `0.1.0` first, then the next minor unless `VERSION` says
+    otherwise. It runs the unit tests, the integration tests and `make release-test`, and asks before
+    publishing; a failure or a no undoes the commit. Publishing pushes the tag, creates the GitHub
+    release, commits the formula to the tap and pushes `main` last, so docs on `main` that say
+    `brew install` go live only once it works. A build between releases reports the last release's
+    version.
     **The GUI was dropped.** Hobo.app's library window (list, lifecycle, settings, New VM) duplicated
     `list` and `set` for a tool driven by people at a terminal and by agents through the CLI and MCP,
     and it was the only reason for a bundle, an Info.plist and `/Applications`. VM windows are
@@ -1070,7 +1085,7 @@ global VMs on 2026-11-01.
     hobo.gsquared.app, is Astro Starlight in `site/`, reading `docs/features` and `docs/site` (home
     and getting-started pages) directly, so the files stay plain Markdown that reads well on GitHub;
     a remark plugin turns their links to each other into site URLs. Cloudflare Workers Builds
-    deploys it from this repo (`Cloudflare.md`). Starlight over MkDocs Material, which is in
+    deploys it from this repo on each push to `main`. Starlight over MkDocs Material, which is in
     maintenance mode, and over a hand-rolled generator, which would have to rebuild search and
     navigation. Screenshots live in `docs/images/`; regenerating them with demo VMs is issue #12.
 

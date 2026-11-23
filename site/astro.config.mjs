@@ -1,5 +1,6 @@
 // The hobo.gsquared.app site: docs/site/*.{md,mdx} (the home and getting-started pages) and a page
-// per docs/features/*.md, in the features' sidebar order. See Cloudflare.md for deploying it.
+// per docs/features/*.md, in the features' sidebar order. Cloudflare Workers Builds deploys it on
+// each push to main.
 import { unified } from '@astrojs/markdown-remark';
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';

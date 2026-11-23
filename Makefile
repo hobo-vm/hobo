@@ -7,7 +7,7 @@ BIN := $(STAGE)/bin/hobo
 PREFIX ?= /usr/local
 
 .DEFAULT_GOAL := help
-.PHONY: help build sign install test integration-test test-vms readme readme-check windows-ui windows-ui-check site site-preview clean
+.PHONY: help build sign install release release-test test integration-test test-vms readme readme-check windows-ui windows-ui-check site site-preview clean
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -32,6 +32,13 @@ install: sign ## Install bin/hobo and share/hobo under PREFIX (default /usr/loca
 	  sh -c "$$copy" 2>/dev/null || sudo sh -c "$$copy"
 	rm -f $(HOME)/.local/bin/hobo
 	@if grep -qs '^hobo-version:' $(SKILL); then $(PREFIX)/bin/hobo claude install; fi
+
+# A release is cut on main by scripts/release.sh; scripts/package.sh makes what it publishes.
+release: ## Cut a release: tests, tarball, tag, GitHub release and Homebrew tap (VERSION=x.y.z, default the next minor)
+	VERSION="$(VERSION)" scripts/release.sh
+
+release-test: sign ## Package .build/dist (tarball, formula) and brew install the formula from the local tarball
+	scripts/package.sh --test
 
 test: readme-check windows-ui-check ## README and Windows backend checks, docs-script tests, then unit tests
 	node --test 'site/scripts/*.test.mjs'
