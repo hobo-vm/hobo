@@ -294,6 +294,32 @@ import Testing
         #expect(try FileManager.default.contentsOfDirectory(atPath: host.path).sorted() == ["other.txt", "tree"])
     }
 
+    /// `hobo cp --replace vm:C:\x\tree out/tree`: a source onto a directory of its own name is that
+    /// directory, not a second `tree` inside it, as `putTar` takes it in the guest.
+    @Test func getOntoADirectoryOfItsOwnNameIsThatDirectory() async throws {
+        let dir = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let guest = dir.appending(path: "guest")
+        try FileManager.default.createDirectory(at: guest.appending(path: "tree"), withIntermediateDirectories: true)
+        try Data("new".utf8).write(to: guest.appending(path: "tree/new.txt"))
+        let stream = try tar(["-c", "-f", "-", "-C", guest.path, "tree"])
+        let tree = dir.appending(path: "host/tree")
+        try FileManager.default.createDirectory(at: tree, withIntermediateDirectories: true)
+        try Data("stale".utf8).write(to: tree.appending(path: "stale.txt"))
+        let agent = guestAgent { _, socket in
+            try socket.writeFrame(.data, stream)
+            try socket.writeFrame(.data, Data())
+            try sendExit(0, on: socket)
+        }
+        let merge = GuestCopy(direction: .fromGuest, sources: [#"C:\x\tree"#], destination: tree.path)
+        #expect(try await agent.copy(merge) { _, _ in } == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: tree.path).sorted() == ["new.txt", "stale.txt"])
+        let replace = GuestCopy(direction: .fromGuest, sources: ["x/tree"], destination: tree.path, replace: true)
+        #expect(try await agent.copy(replace) { _, _ in } == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: tree.path) == ["new.txt"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: tree.deletingLastPathComponent().path) == ["tree"])
+    }
+
     /// A guest that has nothing to send (its source is missing) fails the copy, and what `--replace`
     /// would have removed is still there.
     @Test func getWithReplaceKeepsTheDestinationWhenNothingArrives() async throws {

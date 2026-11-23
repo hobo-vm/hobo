@@ -38,8 +38,10 @@ func guestPath(home, path string) string {
 // Into a directory that exists they go in under those names; otherwise a single source becomes
 // destination itself, as `scp a b` makes b. Without replace a directory that is already there is
 // merged into, as scp does; with it, whatever a source would land on is removed first. Unlike scp,
-// the directories above a destination that isn't there are made, for a file as for a directory;
-// the host does the same for a copy out of the guest (GuestAgent.get).
+// a single source onto a directory of its own name (a.app onto /Applications/a.app) is that
+// directory, not a new one inside it, unless typed ends in a slash; and the directories above a
+// destination that isn't there are made, for a file as for a directory. The host does the same
+// for a copy out of the guest (GuestAgent.get).
 // typed is the destination as the user typed it, which guestPath resolves against home.
 func putTar(input io.Reader, home, typed string, single, replace bool) error {
 	destination := guestPath(home, typed)
@@ -69,7 +71,12 @@ func putTar(input io.Reader, home, typed string, single, replace bool) error {
 		if err != nil {
 			return err
 		}
-		if top, _, _ := strings.Cut(name, "/"); replace && !replaced[top] {
+		top, _, _ := strings.Cut(name, "/")
+		// The first entry is the source's top-level name.
+		if intoDirectory && single && !strings.HasSuffix(typed, "/") && top == filepath.Base(destination) {
+			intoDirectory = false
+		}
+		if replace && !replaced[top] {
 			replaced[top] = true
 			if err := os.RemoveAll(placement(destination, top, intoDirectory)); err != nil {
 				return err

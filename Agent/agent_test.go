@@ -170,6 +170,40 @@ func TestCopyReplacesWhatASourceLandsOn(t *testing.T) {
 	}
 }
 
+// A single source onto a directory of its own name is that directory, so copying a rebuilt
+// App.app onto /Applications/App.app replaces or merges into it rather than nesting a second
+// App.app inside; a trailing slash still copies into it.
+func TestCopyOntoADirectoryOfItsOwnName(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "src/App.app/new.txt"), "new")
+	write(t, filepath.Join(dir, "dest/App.app/stale.txt"), "stale")
+	source, dest := []string{filepath.Join(dir, "src/App.app")}, filepath.Join(dir, "dest/App.app")
+	if _, err := copyTree(t, source, dest); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, filepath.Join(dest, "new.txt")) != "new" || read(t, filepath.Join(dest, "stale.txt")) != "stale" {
+		t.Fatal("a plain copy should merge into the directory itself")
+	}
+	if _, err := copyTreeReplacing(t, source, dest, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "stale.txt")); !os.IsNotExist(err) {
+		t.Fatalf("stale file survived: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "App.app")); !os.IsNotExist(err) {
+		t.Fatalf("copied inside the destination: %v", err)
+	}
+	if read(t, filepath.Join(dest, "new.txt")) != "new" {
+		t.Fatal("wrong contents")
+	}
+	if _, err := copyTree(t, source, dest+"/"); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, filepath.Join(dest, "App.app/new.txt")) != "new" {
+		t.Fatal("a trailing slash should copy into the directory")
+	}
+}
+
 // The host's tar sends an empty archive when it can't read its source: the destination stays.
 func TestCopyReplaceKeepsTheDestinationWhenNothingArrives(t *testing.T) {
 	dir := t.TempDir()

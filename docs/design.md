@@ -486,7 +486,10 @@ global VMs on 2026-11-01.
       scripted caller a failed step (decided 2026-11-11). Onto a directory that is already there
       a copy merges, as scp's does; `--replace` removes what each source would land on first, since
       installing a rebuilt `.app` over the last one otherwise needs an `rm -rf` in the guest
-      (decided 2026-11-11). Opt-in, so a plain copy never deletes. The VM process runs `scp` on the
+      (decided 2026-11-11). Opt-in, so a plain copy never deletes. Unlike scp, a single source
+      onto a directory of its own name is that directory, not a new one inside it, unless the
+      destination ends in `/` (decided 2026-11-22): `cp --replace X.app vm:/Applications/X.app`
+      exited 0 having made `X.app/X.app`, leaving the old bundle running. The VM process runs `scp` on the
       client's absolute host paths (same user, same machine) and streams its messages like `exec`.
     - `hobo rm <vm>:<path>...` removes guest paths whole (`-r` accepted, as with `cp`), as `hobo`
       through the agent's `rm` request, so an agent never sends `rm -rf` through `exec`: Claude Code

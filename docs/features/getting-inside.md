@@ -58,15 +58,18 @@ hobo cp ./build dev:/Users/hobo/       # a directory, with everything in it
 One side names the guest as `<vm>:<path>`, and a guest path that is relative, or starts `~/`, is
 from the `hobo` user's home, as it is for `hobo rm`. Paths are placed as `scp` places them: a
 source goes inside a destination directory that exists, under its own name, and otherwise becomes
-the destination itself. Unlike `scp`, the directories above a destination are made if they
-aren't there, in the guest or on the host, so `hobo cp ./x.plist dev:Library/LaunchAgents/x.plist`
-works on a fresh guest.
+the destination itself. Unlike `scp`, one source onto a directory of its own name is that
+directory, so `./MyApp.app` onto `dev:/Applications/MyApp.app` lands on the old `MyApp.app`, not
+inside it (end the destination in `/` to copy into it). And the directories above a destination
+are made if they aren't there, in the guest or on the host, so
+`hobo cp ./x.plist dev:Library/LaunchAgents/x.plist` works on a fresh guest.
 
 Copying onto a directory that is already there merges into it, so files the new copy doesn't have
 stay. `--replace` removes whatever each source would land on first:
 
 ```sh
-hobo cp --replace ./build/MyApp.app dev:/Applications/    # no leftovers from the old MyApp.app
+hobo cp --replace ./build/MyApp.app dev:/Applications/            # no leftovers from the old MyApp.app
+hobo cp --replace ./build/MyApp.app dev:/Applications/MyApp.app   # the same
 ```
 
 ## Remove files
