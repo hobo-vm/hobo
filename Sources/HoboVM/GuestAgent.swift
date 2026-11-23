@@ -755,12 +755,12 @@ enum TarStream {
             guard bytes.count >= offset + 512 else { return .incomplete }
             let header = bytes[offset..<offset + 512]
             if header.allSatisfy({ $0 == 0 }) { return .none }
-            guard let size = number(header.dropFirst(124).prefix(12)) else { return .none }
+            guard let size = number(header.dropFirst(124).prefix(12)), size >= 0 else { return .none }
             let typeflag = header[offset + 156]
             let data = offset + 512
             switch typeflag {
             case UInt8(ascii: "x"), UInt8(ascii: "g"), UInt8(ascii: "L"), UInt8(ascii: "K"):
-                guard bytes.count >= data + size else { return .incomplete }
+                guard bytes.count - data >= size else { return .incomplete }
                 let content = bytes[data..<data + size]
                 if typeflag == UInt8(ascii: "x"), let path = paxPath(content) { longName = path }
                 if typeflag == UInt8(ascii: "L") { longName = string(content) }
@@ -795,7 +795,7 @@ enum TarStream {
         var path: String?
         while let space = rest.firstIndex(of: 0x20),
             let length = Int(String(decoding: rest[rest.startIndex..<space], as: UTF8.self)),
-            length > 0, rest.count >= length {
+            length > space - rest.startIndex + 1, rest.count >= length {
             let record = rest[(space + 1)..<(rest.startIndex + length)].dropLast()  // the newline
             if let equals = record.firstIndex(of: UInt8(ascii: "=")),
                 String(decoding: record[record.startIndex..<equals], as: UTF8.self) == "path" {
