@@ -371,6 +371,29 @@ import Testing
         #expect(TarStream.firstEntryName(Data()) == .incomplete)
     }
 
+    /// The guest's tar stream is untrusted: a header whose size is negative or past what an `Int`
+    /// can add, or a PAX record shorter than its own length field, ends the scan instead of trapping.
+    @Test func aMalformedTarHeaderEndsTheFirstEntryScan() {
+        func header(_ name: String, typeflag: Character, size: [UInt8]) -> Data {
+            var bytes = [UInt8](repeating: 0, count: 512)
+            bytes.replaceSubrange(0..<name.utf8.count, with: name.utf8)
+            bytes.replaceSubrange(124..<124 + size.count, with: size)
+            bytes[156] = typeflag.asciiValue!
+            return Data(bytes)
+        }
+        // Base-256 size fields: the high bit of the first byte marks them.
+        let negative: [UInt8] = [0x80, 0, 0, 0, 0x80, 0, 0, 0, 0, 0, 0, 0]
+        let huge: [UInt8] = [0x80, 0, 0, 0, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
+        #expect(TarStream.firstEntryName(header("x", typeflag: "x", size: negative)) == .none)
+        #expect(TarStream.firstEntryName(header("x", typeflag: "x", size: huge)) == .incomplete)
+
+        let record = Data("1 path=x\n".utf8)
+        var stream = header("x", typeflag: "x", size: Array(String(record.count, radix: 8).utf8))
+        stream += record + Data(count: 512 - record.count)
+        stream += header("file", typeflag: "0", size: Array("0".utf8))
+        #expect(TarStream.firstEntryName(stream) == .name("file"))
+    }
+
     /// A guest that has nothing to send (its source is missing) fails the copy, and what `--replace`
     /// would have removed is still there.
     @Test func getWithReplaceKeepsTheDestinationWhenNothingArrives() async throws {
