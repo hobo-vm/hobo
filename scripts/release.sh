@@ -42,8 +42,12 @@ command -v gh > /dev/null || die "gh not found"
 command -v brew > /dev/null || die "brew not found"
 [ "$(gh repo view "$REPO" --json visibility --jq .visibility)" = "PUBLIC" ] \
     || die "${REPO} isn't public, so Homebrew couldn't download the release"
-[ "$(gh repo view "$TAP" --json viewerPermission --jq .viewerPermission)" != "READ" ] \
-    || die "no push access to ${TAP}"
+# The permissions that can push are named, so that a gh that fails (no tap, not signed in) and
+# prints nothing doesn't pass.
+case "$(gh repo view "$TAP" --json viewerPermission --jq .viewerPermission)" in
+    ADMIN | MAINTAIN | WRITE) ;;
+    *) die "no push access to ${TAP}" ;;
+esac
 git fetch -q origin main
 [ -z "$(git rev-list HEAD..origin/main)" ] || die "origin/main has commits this checkout doesn't: pull first"
 
