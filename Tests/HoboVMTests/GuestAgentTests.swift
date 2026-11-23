@@ -327,7 +327,7 @@ import Testing
 
     /// The host matches a guest source to a destination of its own name by the name the source
     /// arrives under, so a `~` or `.` source, named only in the guest, lands on a directory of its
-    /// own name too, with the stream arriving in frames that split its first header.
+    /// own name too, with the stream arriving in small frames.
     @Test func getOfAHomeOrDotSourceOntoADirectoryOfItsOwnNameIsThatDirectory() async throws {
         let dir = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -352,46 +352,60 @@ import Testing
         }
     }
 
-    /// The first entry's name comes from its header, after a ustar prefix, or from a PAX `path`
-    /// record or GNU long name ahead of it; a stream cut short of it needs more.
-    @Test func aTarStreamsFirstEntryIsNamedFromItsHeaders() throws {
+    /// A source never lands on something of the other kind, with or without `--replace`: the copy
+    /// fails, nothing moves, and what was there stays, as the agent's putTar refuses it.
+    @Test func getRefusesToSwapAFileAndADirectory() async throws {
         let dir = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
-        let long = String(repeating: "l", count: 120)
-        let deep = (1...6).map { String(repeating: "\($0)", count: 30) }.joined(separator: "/")
-        for path in ["tree", deep, long] {
-            try FileManager.default.createDirectory(at: dir.appending(path: path), withIntermediateDirectories: true)
-            for format in ["ustar", "pax", "gnutar"] where !(format == "ustar" && path == long) {
-                let stream = try tar(["-c", "-f", "-", "--format", format, "-C", dir.path, path])
-                #expect(TarStream.firstEntryName(stream) == .name(path + "/"), "\(format) \(path)")
-                #expect(TarStream.firstEntryName(stream.prefix(511)) == .incomplete)
+        let guest = dir.appending(path: "guest")
+        try FileManager.default.createDirectory(at: guest.appending(path: "tree"), withIntermediateDirectories: true)
+        try Data("new".utf8).write(to: guest.appending(path: "tree/new.txt"))
+        try Data("new".utf8).write(to: guest.appending(path: "notes"))
+        let host = dir.appending(path: "host")
+        try FileManager.default.createDirectory(at: host.appending(path: "notes"), withIntermediateDirectories: true)
+        try Data("kept".utf8).write(to: host.appending(path: "notes/kept.txt"))
+        try Data("plain".utf8).write(to: host.appending(path: "plain"))
+        try Data("tree".utf8).write(to: host.appending(path: "tree"))
+        let before = try FileManager.default.subpathsOfDirectory(atPath: host.path).sorted()
+        for replace in [false, true] {
+            for (source, destination) in [("tree", "plain"), ("tree", ""), ("notes", "")] {
+                let stream = try tar(["-c", "-f", "-", "-C", guest.path, source])
+                let agent = guestAgent { _, socket in
+                    try socket.writeFrame(.data, stream)
+                    try socket.writeFrame(.data, Data())
+                    try sendExit(0, on: socket)
+                }
+                let output = Output()
+                let copy = GuestCopy(direction: .fromGuest, sources: [source], destination: host.appending(path: destination).path, replace: replace)
+                #expect(try await agent.copy(copy, onOutput: output.append) == 1, "\(source) onto \(destination)")
+                #expect(output.text(.stderr).contains("directory"), "\(output.text(.stderr))")
+                #expect(try FileManager.default.subpathsOfDirectory(atPath: host.path).sorted() == before)
             }
         }
-        #expect(TarStream.firstEntryName(Data(count: 1024)) == .none)
-        #expect(TarStream.firstEntryName(Data()) == .incomplete)
     }
 
-    /// The guest's tar stream is untrusted: a header whose size is negative or past what an `Int`
-    /// can add, or a PAX record shorter than its own length field, ends the scan instead of trapping.
-    @Test func aMalformedTarHeaderEndsTheFirstEntryScan() {
-        func header(_ name: String, typeflag: Character, size: [UInt8]) -> Data {
-            var bytes = [UInt8](repeating: 0, count: 512)
-            bytes.replaceSubrange(0..<name.utf8.count, with: name.utf8)
-            bytes.replaceSubrange(124..<124 + size.count, with: size)
-            bytes[156] = typeflag.asciiValue!
-            return Data(bytes)
+    /// A file onto a directory of its own name goes inside it, as scp puts it: only a directory is
+    /// that directory.
+    @Test func getOfAFileOntoADirectoryOfItsOwnNameGoesInside() async throws {
+        let dir = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let guest = dir.appending(path: "guest")
+        try FileManager.default.createDirectory(at: guest, withIntermediateDirectories: true)
+        try Data("new".utf8).write(to: guest.appending(path: "notes"))
+        let stream = try tar(["-c", "-f", "-", "-C", guest.path, "notes"])
+        let notes = dir.appending(path: "host/notes")
+        try FileManager.default.createDirectory(at: notes, withIntermediateDirectories: true)
+        try Data("kept".utf8).write(to: notes.appending(path: "kept.txt"))
+        let agent = guestAgent { _, socket in
+            try socket.writeFrame(.data, stream)
+            try socket.writeFrame(.data, Data())
+            try sendExit(0, on: socket)
         }
-        // Base-256 size fields: the high bit of the first byte marks them.
-        let negative: [UInt8] = [0x80, 0, 0, 0, 0x80, 0, 0, 0, 0, 0, 0, 0]
-        let huge: [UInt8] = [0x80, 0, 0, 0, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
-        #expect(TarStream.firstEntryName(header("x", typeflag: "x", size: negative)) == .none)
-        #expect(TarStream.firstEntryName(header("x", typeflag: "x", size: huge)) == .incomplete)
-
-        let record = Data("1 path=x\n".utf8)
-        var stream = header("x", typeflag: "x", size: Array(String(record.count, radix: 8).utf8))
-        stream += record + Data(count: 512 - record.count)
-        stream += header("file", typeflag: "0", size: Array("0".utf8))
-        #expect(TarStream.firstEntryName(stream) == .name("file"))
+        for replace in [false, true] {
+            let copy = GuestCopy(direction: .fromGuest, sources: ["notes"], destination: notes.path, replace: replace)
+            #expect(try await agent.copy(copy) { _, _ in } == 0)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: notes.path).sorted() == ["kept.txt", "notes"])
+        }
     }
 
     /// A guest that has nothing to send (its source is missing) fails the copy, and what `--replace`

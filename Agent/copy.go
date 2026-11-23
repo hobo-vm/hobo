@@ -36,12 +36,13 @@ func guestPath(home, path string) string {
 
 // putTar extracts a tar stream from stdin. Its top-level entries are the sources' base names.
 // Into a directory that exists they go in under those names; otherwise a single source becomes
-// destination itself, as `scp a b` makes b. Without replace a directory that is already there is
-// merged into, as scp does; with it, whatever a source would land on is removed first. Unlike scp,
-// a single source onto a directory of its own name (a.app onto /Applications/a.app) is that
-// directory, not a new one inside it, unless typed ends in a slash or names it as `.` or `~`; and
-// the directories above a destination that isn't there are made, for a file as for a directory.
-// The host does the same for a copy out of the guest (GuestAgent.get).
+// destination itself, as `scp a b` makes b. A source never lands on something of the other kind
+// (a file on a directory or a directory on a file): that fails. Without replace a directory that
+// is already there is merged into, as scp does; with it, what a source lands on is removed first.
+// Unlike scp, a single directory onto a directory of its own name (a.app onto
+// /Applications/a.app) is that directory, not a new one inside it, unless typed ends in a slash or
+// names it as `.` or `~`; and the directories above a destination that isn't there are made, for
+// a file as for a directory. The host does the same for a copy out of the guest (GuestAgent.get).
 // typed is the destination as the user typed it, which guestPath resolves against home.
 func putTar(input io.Reader, home, typed string, single, replace bool) error {
 	destination := guestPath(home, typed)
@@ -55,8 +56,9 @@ func putTar(input io.Reader, home, typed string, single, replace bool) error {
 			return fmt.Errorf("%s: not a directory", typed)
 		}
 	}
-	// Removed as each source's first entry arrives, so a copy that brings nothing removes nothing.
-	replaced := map[string]bool{}
+	// What a source lands on is checked, and with replace removed, as its first entry arrives, so
+	// a copy that brings nothing removes nothing.
+	seen := map[string]bool{}
 	madeParent := false
 	reader := tar.NewReader(input)
 	for {
@@ -72,17 +74,28 @@ func putTar(input io.Reader, home, typed string, single, replace bool) error {
 			return err
 		}
 		top, _, _ := strings.Cut(name, "/")
-		// A single source onto a directory of its own name becomes that directory. top is the
-		// source's name; it is matched against the destination as typed, not as resolved, so `.` or
-		// `~` naming a directory that happens to share the source's name is still copied into.
-		ontoItsOwnName := single && !endsInSeparator(typed) && top == filepath.Base(typed)
-		if ontoItsOwnName {
-			intoDirectory = false
-		}
-		if replace && !replaced[top] {
-			replaced[top] = true
-			if err := os.RemoveAll(placement(destination, top, intoDirectory)); err != nil {
-				return err
+		// A source's first entry is the source itself.
+		if !seen[top] {
+			seen[top] = true
+			isDirectory := header.Typeflag == tar.TypeDir
+			// A single directory onto a directory of its own name becomes that directory. It is
+			// matched against the destination as typed, not as resolved, so `.` or `~` naming a
+			// directory that happens to share the source's name is still copied into.
+			if single && isDirectory && !endsInSeparator(typed) && top == filepath.Base(typed) {
+				intoDirectory = false
+			}
+			target := placement(destination, top, intoDirectory)
+			if _, err := os.Lstat(target); err == nil {
+				// A link counts as what it points at, so a copy merges through a link to a directory.
+				info, err := os.Stat(target)
+				if err := sameKind(target, err == nil && info.IsDir(), top, isDirectory); err != nil {
+					return err
+				}
+				if replace {
+					if err := os.RemoveAll(target); err != nil {
+						return err
+					}
+				}
 			}
 		}
 		// Made as the first entry arrives, so a copy that brings nothing makes nothing. A directory
@@ -97,6 +110,18 @@ func putTar(input io.Reader, home, typed string, single, replace bool) error {
 			return err
 		}
 	}
+}
+
+// sameKind refuses a source landing on something of the other kind: a directory is never
+// replaced by a file, or a file by a directory, with or without replace.
+func sameKind(target string, targetIsDirectory bool, source string, sourceIsDirectory bool) error {
+	switch {
+	case targetIsDirectory && !sourceIsDirectory:
+		return fmt.Errorf("%s: is a directory, and %s is not", target, source)
+	case !targetIsDirectory && sourceIsDirectory:
+		return fmt.Errorf("%s: is not a directory, and %s is", target, source)
+	}
+	return nil
 }
 
 // endsInSeparator is whether a typed path ends in a slash (or, on Windows, a backslash), which

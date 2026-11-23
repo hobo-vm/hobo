@@ -160,13 +160,48 @@ func TestCopyReplacesWhatASourceLandsOn(t *testing.T) {
 	if read(t, filepath.Join(dest, "App/new.txt")) != "new" || read(t, filepath.Join(dest, "other.txt")) != "other" {
 		t.Fatal("wrong contents")
 	}
-	// A single directory onto a file takes the file's place.
-	write(t, filepath.Join(dir, "plain"), "f")
-	if _, err := copyTreeReplacing(t, source, filepath.Join(dir, "plain"), true); err != nil {
-		t.Fatal(err)
+}
+
+// A source never lands on something of the other kind, with or without replace: the copy fails
+// and what was there stays.
+func TestCopyRefusesToSwapAFileAndADirectory(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		dir := t.TempDir()
+		write(t, filepath.Join(dir, "src/tree/a.txt"), "a")
+		write(t, filepath.Join(dir, "src/notes"), "file")
+		write(t, filepath.Join(dir, "plain"), "plain")
+		write(t, filepath.Join(dir, "dest/notes/kept.txt"), "kept")
+		write(t, filepath.Join(dir, "dest/tree"), "tree file")
+		cases := []struct{ source, destination, kept string }{
+			{"src/tree", "plain", "plain"},               // a directory onto a file
+			{"src/tree", "dest", "dest/tree"},            // a directory onto a file inside it
+			{"src/notes", "dest", "dest/notes/kept.txt"}, // a file onto a directory inside it
+		}
+		for _, c := range cases {
+			_, err := copyTreeReplacing(t, []string{filepath.Join(dir, c.source)}, filepath.Join(dir, c.destination), replace)
+			if err == nil || !strings.Contains(err.Error(), "directory") {
+				t.Fatalf("replace %v, %s onto %s: %v", replace, c.source, c.destination, err)
+			}
+			if _, err := os.Stat(filepath.Join(dir, c.kept)); err != nil {
+				t.Fatalf("replace %v, %s onto %s: %s went: %v", replace, c.source, c.destination, c.kept, err)
+			}
+		}
 	}
-	if read(t, filepath.Join(dir, "plain/new.txt")) != "new" {
-		t.Fatal("the file was not replaced")
+}
+
+// A file onto a directory of its own name goes inside it, as scp puts it: only a directory is
+// that directory.
+func TestCopyAFileOntoADirectoryOfItsOwnNameGoesInside(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		dir := t.TempDir()
+		write(t, filepath.Join(dir, "src/notes"), "new")
+		write(t, filepath.Join(dir, "dest/notes/kept.txt"), "kept")
+		if _, err := copyTreeReplacing(t, []string{filepath.Join(dir, "src/notes")}, filepath.Join(dir, "dest/notes"), replace); err != nil {
+			t.Fatal(err)
+		}
+		if read(t, filepath.Join(dir, "dest/notes/notes")) != "new" || read(t, filepath.Join(dir, "dest/notes/kept.txt")) != "kept" {
+			t.Fatalf("replace %v: wrong contents", replace)
+		}
 	}
 }
 

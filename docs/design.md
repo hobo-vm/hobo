@@ -486,11 +486,17 @@ global VMs on 2026-11-01.
       scripted caller a failed step (decided 2026-11-11). Onto a directory that is already there
       a copy merges, as scp's does; `--replace` removes what each source would land on first, since
       installing a rebuilt `.app` over the last one otherwise needs an `rm -rf` in the guest
-      (decided 2026-11-11). Opt-in, so a plain copy never deletes. Unlike scp, a single source
+      (decided 2026-11-11). Opt-in, so a plain copy never deletes. Unlike scp, a single directory
       onto a directory of its own name is that directory, not a new one inside it, unless the
       destination ends in `/` (decided 2026-11-22): `cp --replace X.app vm:/Applications/X.app`
-      exited 0 having made `X.app/X.app`, leaving the old bundle running. The VM process runs
-      `scp` on the client's absolute host paths (same user, same machine) and streams its messages like `exec`.
+      exited 0 having made `X.app/X.app`, leaving the old bundle running. A file onto a directory
+      of its own name still goes inside it. A source never lands on something of the other kind,
+      a file on a directory or a directory on a file, with or without `--replace`: the copy fails
+      (decided 2026-11-22), since `--replace` quietly doing something else is how the
+      `X.app/X.app` bug went unseen, and the host's tar would otherwise swap them silently. Both
+      ways go through the agent as a tar stream; a copy out of the guest is extracted into a
+      staging directory and moved into place once it has all arrived, so the host decides where
+      it lands from the names and kinds that arrived.
     - `hobo rm <vm>:<path>...` removes guest paths whole (`-r` accepted, as with `cp`), as `hobo`
       through the agent's `rm` request, so an agent never sends `rm -rf` through `exec`: Claude Code
       can't tell a guest path from a host one and blocks that (decided 2026-11-15). Every operand
