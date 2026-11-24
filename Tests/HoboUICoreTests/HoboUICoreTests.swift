@@ -806,6 +806,47 @@ final class TreeGuest: UITransport {
         #expect(guest.ops.filter { $0 == "tree" }.count > 1)
     }
 
+    /// A dialog that shows a moment after `choose` first looks is the one it chooses in.
+    @Test func chooseChoosesInAFileDialogThatShowsWhileItWaits() throws {
+        final class LateDialog: UITransport {
+            var treesBeforeTheDialog = 3
+            var typed = ""
+            var closed = false
+            var keys: [String] = []
+            var entry: [String: Any] { ["id": 4, "role": "text", "focused": true, "value": typed, "frame": [10, 10, 200, 30], "children": []] }
+            func send(_ line: Data) throws -> Data {
+                let request = try JSONSerialization.jsonObject(with: line) as! [String: Any]
+                let ok: Any = switch request["op"] as! String {
+                case "hello": ["platform": "linux", "scale": 1.0, "screen": [0, 0, 800, 600]]
+                case "apps": ["apps": [["name": "Text Editor", "id": "org.gnome.TextEditor", "pid": 42]], "focused": 42]
+                case "tree":
+                    {
+                        treesBeforeTheDialog -= 1
+                        let dialog: [String: Any] = ["id": 3, "role": "file chooser", "title": "Open", "frame": [0, 0, 400, 300], "children": [entry]]
+                        let showing = treesBeforeTheDialog < 0 && !closed
+                        return ["id": 1, "role": "application", "title": "Text Editor", "children": showing ? [dialog] : []] as [String: Any]
+                    }()
+                case "node": entry
+                case "type": { typed += request["text"] as! String; return NSNull() }()
+                case "key":
+                    {
+                        keys.append(request["key"] as! String)
+                        if request["key"] as? String == "return" { closed = true }
+                        return NSNull()
+                    }()
+                default: NSNull()
+                }
+                return try JSONSerialization.data(withJSONObject: ["ok": ok])
+            }
+        }
+        let guest = LateDialog()
+        let outcome = try driver(guest).run(try HoboUI.parseAsRoot(["choose", "~/Documents/a.txt"]))
+        #expect(outcome.text == "chose ~/Documents/a.txt in the file dialog")
+        #expect(guest.treesBeforeTheDialog < 0)
+        #expect(guest.typed == "~/Documents/a.txt")
+        #expect(guest.keys.last == "return")
+    }
+
     /// The wait is for a dialog, not for an app: one that isn't running fails as itself, at once.
     @Test func chooseDoesntWaitForAFileDialogOfAnAppThatIsntRunning() throws {
         let guest = FakeGuest()
