@@ -229,9 +229,9 @@ public enum ScreenshotSubject: Equatable, Sendable, CustomStringConvertible {
     public func crop(fromUIOutput output: Data, errors: Data = Data()) throws -> ScreenshotCrop {
         guard let answer = try? JSONDecoder().decode(Answer.self, from: output) else {
             func text(_ data: Data) -> String { String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) }
-            let said = text(output.prefix(200))
-            if said.isEmpty, !text(errors).isEmpty { throw ScreenshotCropError.noFrame(self, text(errors)) }
-            throw ScreenshotCropError.noFrame(self, "hobo ui answered \(said.isEmpty ? "nothing" : said)")
+            let said = text(output.prefix(200)), complaint = text(errors)
+            let reason = if !said.isEmpty { "hobo ui answered \(said)" } else if !complaint.isEmpty { complaint } else { "hobo ui answered nothing" }
+            throw ScreenshotCropError.noFrame(self, reason)
         }
         guard let elements = answer.snapshot?.elements else {
             throw ScreenshotCropError.noFrame(self, answer.error ?? "hobo ui gave no snapshot")
