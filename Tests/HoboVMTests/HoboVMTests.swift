@@ -572,7 +572,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try run(hobo, ["exec", vm, "--", "kill", holder], in: work, environment: env) == 0)
 
         // rm removes a directory whole, fails for a missing path unless -f, and refuses the home.
-        #expect(try run(hobo, ["rm", "\(vm):tree", "\(vm):tree-r"], in: work, environment: env) == 0)
+        #expect(try output(hobo, ["rm", "\(vm):tree", "\(vm):tree-r"], environment: env) == "Removed 2 paths\n")
         #expect(try run(hobo, ["exec", vm, "--", "test", "-e", "tree"], in: work, environment: env) != 0)
         #expect(try run(hobo, ["rm", "\(vm):tree"], in: work, environment: env) != 0)
         #expect(try run(hobo, ["rm", "-f", "\(vm):tree"], in: work, environment: env) == 0)

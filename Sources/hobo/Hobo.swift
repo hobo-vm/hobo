@@ -760,7 +760,15 @@ struct Remove: OutputCommand {
     func execute(_ output: Output) async throws -> Reply {
         let (vm, remove) = try GuestRemove.parse(paths, force: force)
         let status = try GuestChannel().remove(vm, remove, onOutput: writeOutput)
-        return Reply(GuestCommandResult(exitStatus: status), text: nil, exitStatus: status)
+        return Reply(GuestCommandResult(exitStatus: status), text: status == 0 ? Self.text(paths: paths, force: force) : nil, exitStatus: status)
+    }
+
+    /// What a removal that worked prints, with the paths as they were given, as `hobo cp` does.
+    /// With `--force` a path may never have been there, which the host isn't told.
+    static func text(paths: [String], force: Bool) -> String {
+        let what = paths.count == 1 ? paths[0] : "\(paths.count) paths"
+        let missing = paths.count == 1 ? "it wasn't" : "they weren't"
+        return "Removed \(what)\(force ? " (or \(missing) there)" : "")"
     }
 }
 

@@ -87,7 +87,8 @@ hobo rm -f dev:/tmp/maybe-there                    # no failure if it's already 
 
 `hobo rm` removes files and directories inside a VM, never the VM itself: that is `hobo delete`.
 Every path names the guest as `<vm>:<path>`, and a relative one, or one starting `~/`, is from the `hobo` user's home.
-It won't remove `/`, the home directory or what holds it.
+It won't remove `/`, the home directory or what holds it. A removal that worked prints one line,
+`Removed dev:/tmp/app.zip`.
 
 ## Share folders
 
