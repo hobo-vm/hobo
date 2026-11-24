@@ -586,10 +586,11 @@ public struct UIDriver<Backend: UIBackend> {
     /// (GTK's location entry, which Ctrl-L opens; Windows' File name box) and go with Return.
     func chooseInDialog(_ c: HoboUI.Choose) throws -> Outcome {
         let linux = backend.platform == .linux
-        guard let found = poll(panelWait, { fileDialog(c.target.app) }) else {
-            throw UIError.failed("\((try? app(c.target.app))?.identity.name ?? "the app") has no file dialog showing, and none came in \(panelWait.formatted()) seconds")
-        }
+        // Before the wait, so an app that isn't there fails at once, and as itself.
         let app = try app(c.target.app)
+        guard let found = poll(panelWait, { fileDialog(c.target.app) }) else {
+            throw UIError.failed("\(app.identity.name) has no file dialog showing, and none came in \(panelWait.formatted()) seconds")
+        }
         backend.bringForward(found, of: app.running)
         let field: Element
         var typed = c.path

@@ -806,6 +806,17 @@ final class TreeGuest: UITransport {
         #expect(guest.ops.filter { $0 == "tree" }.count > 1)
     }
 
+    /// The wait is for a dialog, not for an app: one that isn't running fails as itself, at once.
+    @Test func chooseDoesntWaitForAFileDialogOfAnAppThatIsntRunning() throws {
+        let guest = FakeGuest()
+        #expect {
+            try driver(guest).run(try HoboUI.parseAsRoot(["choose", "~/Documents/a.txt", "--app", "Gone"]))
+        } throws: { error in
+            String(describing: error).contains("no running app matches Gone")
+        }
+        #expect(!guest.ops.contains("tree"))
+    }
+
     @Test func aGoneWaitThatTimesOutNamesWhatIsStillThere() throws {
         #expect {
             try driver(FakeGuest()).run(try HoboUI.parseAsRoot(["wait", "--text", "Save", "--gone", "--timeout", "0.1"]))
