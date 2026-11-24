@@ -1013,13 +1013,15 @@ global VMs on 2026-11-01.
     it with Homebrew from the local tarball and runs its test (the version, and the entitlement on
     the installed binary).
     **Releases.** There is no CI, so a maintainer cuts a release on `main` with `make release`
-    (`scripts/release.sh`). The version is the literal `Hobo.version`, which the script sets and
-    commits as "Release <version>": `0.1.0` first, then the next minor unless `VERSION` says
-    otherwise. It runs the unit tests, the integration tests and `make release-test`, and asks before
-    publishing; a failure or a no undoes the commit. Publishing pushes the tag, creates the GitHub
+    (`scripts/release.sh`). No source file states the version: a build tool plugin
+    (`HoboVersionPlugin`, `scripts/version.sh`) generates `Hobo.version` from `git describe` against
+    the `v<version>` tags before every build, so a release is a tag and no commit. A build at the tag
+    reports `0.2.0`, one three commits later `0.2.0-3-g1a2b3c4`, and one with no tags to read (a
+    source archive) `0.0.0-dev`. The script tags `HEAD` locally, the next minor unless `VERSION` says
+    otherwise, runs the unit tests, the integration tests and `make release-test`, and asks before
+    publishing; a failure or a no deletes the tag. Publishing pushes the tag, creates the GitHub
     release, commits the formula to the tap and pushes `main` last, so docs on `main` that say
-    `brew install` go live only once it works. A build between releases reports the last release's
-    version.
+    `brew install` go live only once it works.
     **The GUI was dropped.** Hobo.app's library window (list, lifecycle, settings, New VM) duplicated
     `list` and `set` for a tool driven by people at a terminal and by agents through the CLI and MCP,
     and it was the only reason for a bundle, an Info.plist and `/Applications`. VM windows are

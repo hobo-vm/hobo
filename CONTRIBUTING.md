@@ -62,11 +62,15 @@ make release                 # the next minor after the latest tag
 make release VERSION=0.1.1   # or a version you choose
 ```
 
-`scripts/release.sh` sets `Hobo.version`, commits it as "Release <version>", and runs
-`make test`, `make integration-test` (so it needs the kept VMs) and `make release-test`. It then
-shows what it would publish and asks. If you say no, or anything failed, the release commit is
-undone and nothing has left your machine. If you say yes, it pushes the tag, creates the GitHub
-release, commits the formula to the tap, and pushes `main` last.
+No file states the version: a build takes it from the checkout's tags (`git describe`, in
+`scripts/version.sh`), so `hobo --version` prints `0.2.0` when built at `v0.2.0` and
+`0.2.0-3-g1a2b3c4` three commits later.
+
+`scripts/release.sh` tags `HEAD` locally and runs `make test`, `make integration-test` (so it
+needs the kept VMs) and `make release-test`. It then shows what it would publish and asks. If you
+say no, or anything failed, the tag is deleted and nothing has left your machine. If you say yes,
+it pushes the tag, creates the GitHub release, commits the formula to the tap, and pushes `main`
+last.
 
 `make release-test` is the part to run when you change the packaging. It writes the tarball and
 the formula to `.build/dist`, installs the formula with Homebrew from the local tarball (through

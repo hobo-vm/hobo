@@ -15,7 +15,8 @@ let package = Package(
     targets: [
         .target(
             name: "HoboCore",
-            dependencies: [.product(name: "TOMLKit", package: "TOMLKit")]
+            dependencies: [.product(name: "TOMLKit", package: "TOMLKit")],
+            plugins: ["HoboVersionPlugin"]
         ),
         .target(name: "HoboControl", dependencies: ["HoboCore"]),
         .target(
@@ -28,6 +29,8 @@ let package = Package(
             linkerSettings: [.linkedLibrary("icucore")],
             plugins: ["WindowsBootPlugin", "HoboAgentPlugin", "HoboUIPlugin"]
         ),
+        // `Hobo.version`, from the checkout's release tags.
+        .plugin(name: "HoboVersionPlugin", capability: .buildTool()),
         .plugin(name: "WindowsBootPlugin", capability: .buildTool()),
         .plugin(name: "HoboAgentPlugin", capability: .buildTool()),
         // hobo-ui, the macOS guests' accessibility driver (`hobo ui`), a resource of HoboVM.

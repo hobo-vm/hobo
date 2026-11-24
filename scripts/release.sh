@@ -2,10 +2,10 @@
 # Cut a release. Run via `make release [VERSION=x.y.z]`; VERSION defaults to the next minor after
 # the latest v* tag, or 0.1.0 when there is none.
 #
-# Sets Hobo.version and commits it as "Release <version>", then runs the unit tests, the
-# integration tests, and a Homebrew install of the formula from the local tarball
-# (`make release-test`). If any of that fails, or you answer no at the prompt, the release commit
-# is undone and nothing has left this machine.
+# Tags HEAD v<version>, which is what gives the build its version (scripts/version.sh), then runs
+# the unit tests, the integration tests, and a Homebrew install of the formula from the local
+# tarball (`make release-test`). If any of that fails, or you answer no at the prompt, the tag is
+# deleted and nothing has left this machine.
 #
 # After you confirm, it publishes, in this order: the v<version> tag, a GitHub release with the
 # tarball, the formula in the tap, and last `main`, so that docs on main that tell people to
@@ -14,7 +14,6 @@ set -euo pipefail
 
 REPO="hobo-vm/hobo"
 TAP="hobo-vm/homebrew-tap"
-VERSION_FILE="Sources/HoboCore/Hobo.swift"
 DIST=".build/dist"
 
 die() { echo "release: $*" >&2; exit 1; }
@@ -53,28 +52,28 @@ git fetch -q origin main
 
 echo "Releasing ${VERSION}${PREV_TAG:+ (previous: ${PREV_TAG#v})}…"
 
-sed -i '' -E "s/(static let version = \")[^\"]*(\")/\1${VERSION}\2/" "$VERSION_FILE"
-[ -n "$(git status --porcelain "$VERSION_FILE")" ] || die "Hobo.version is already ${VERSION}"
-
-undo_release_commit() {
+undo_tag() {
     trap - ERR INT TERM
-    git reset -q --soft HEAD~1 && git restore -q --staged --worktree "$VERSION_FILE"
-    echo "release: $1; the release commit is undone and nothing was published" >&2
+    git tag -d "$TAG" > /dev/null
+    echo "release: $1; ${TAG} is deleted and nothing was published" >&2
     exit 1
 }
 
-git commit -q -m "Release ${VERSION}" "$VERSION_FILE"
-# Ctrl-C too, so an interrupted run doesn't leave the release commit behind.
-trap 'undo_release_commit "failed"' ERR INT TERM
+# Local until the push below. The builds that follow take their version from it.
+git tag -a "$TAG" -m "hobo ${VERSION}"
+# Ctrl-C too, so an interrupted run doesn't leave the tag behind.
+trap 'undo_tag "failed"' ERR INT TERM
 
 make test
 make integration-test
 make release-test
-[ -f "$TARBALL" ] || undo_release_commit "no ${TARBALL}"
+# package.sh names the tarball after the version the binary reports, so this is also the check
+# that the build took its version from the tag.
+[ -f "$TARBALL" ] || undo_tag "no ${TARBALL}"
 # Checked again: the tests run long enough for someone to push, and the push of main comes last,
 # after the tag and the release are public.
 git fetch -q origin main
-[ -z "$(git rev-list HEAD..origin/main)" ] || undo_release_commit "origin/main got new commits during the tests"
+[ -z "$(git rev-list HEAD..origin/main)" ] || undo_tag "origin/main got new commits during the tests"
 
 echo
 echo "hobo ${VERSION}"
@@ -84,7 +83,7 @@ echo "  commits that go to origin/main:"
 git log --format='    %h %s' origin/main..HEAD
 read -r -p "Publish ${VERSION}? [y/N] " answer
 if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
-    undo_release_commit "cancelled"
+    undo_tag "cancelled"
 fi
 
 # From here each step is public and isn't undone: a failure says what is left to do by hand.
@@ -92,7 +91,6 @@ trap - ERR INT TERM
 left="git push origin ${TAG}; gh release create; ${TAP}'s Formula/hobo.rb; git push origin main"
 trap 'echo "release: failed while publishing. Still to do: ${left}" >&2' ERR
 
-git tag -a "$TAG" -m "hobo ${VERSION}"
 git push -q origin "$TAG"
 left="gh release create; ${TAP}'s Formula/hobo.rb; git push origin main"
 

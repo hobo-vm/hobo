@@ -4,7 +4,8 @@
 #   hobo-<version>.tar.gz   bin/hobo, share/hobo, entitlements.plist and LICENSE in hobo-<version>/
 #   hobo.rb                 the Homebrew formula (packaging/hobo.rb.in) for that tarball as a
 #                           GitHub release asset
-# The version is the one the staged binary reports.
+# The version is the one the staged binary reports: x.y.z built at a release tag, and
+# x.y.z-<commits>-g<hash> past one, which is good only for --test.
 #
 # With --test, also installs the formula with Homebrew from the local tarball (a file:// URL, in
 # a local tap, hobo-vm/release-test) and runs its test: the path a user's `brew install` takes,
@@ -22,7 +23,8 @@ die() { echo "package: $*" >&2; exit 1; }
 
 [ -x "$STAGE/bin/hobo" ] || die "no $STAGE/bin/hobo: run make sign"
 version=$("$STAGE/bin/hobo" --version)
-[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "hobo --version printed '$version', not x.y.z"
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+-g[0-9a-f]+)?$ ]] \
+    || die "hobo --version printed '$version', not x.y.z or x.y.z-<commits>-g<hash>"
 
 name="hobo-$version"
 tarball="$DIST/$name.tar.gz"
@@ -55,6 +57,12 @@ command -v brew > /dev/null || die "brew not found"
 brew tap | grep -x "$TEST_TAP" > /dev/null || brew tap-new --no-git "$TEST_TAP" > /dev/null
 tap_formula="$(brew --repository "$TEST_TAP")/Formula/hobo.rb"
 formula "file://$PWD/$tarball" "$tap_formula"
+# Homebrew reads the version from the url, and of a build past a release tag reads it wrong (the
+# hash's digits), so that formula states it. A release's is tested as it ships.
+if [[ "$version" == *-* ]]; then
+    sed -i '' -e "s|^  sha256 .*|&\\
+  version \"$version\"|" "$tap_formula"
+fi
 had_hobo=0
 if brew list --formula hobo > /dev/null 2>&1; then
     had_hobo=1
