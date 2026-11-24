@@ -148,6 +148,12 @@ import Testing
         #expect(String(describing: ScreenshotCropError.noFrame(element, stale)) == "can't crop the screenshot to e9: \(stale)")
         #expect(throws: ScreenshotCropError.noFrame(element, "hobo ui answered nothing")) { try element.crop(fromUIOutput: Data()) }
         #expect(throws: ScreenshotCropError.noFrame(element, "hobo ui answered oops")) { try element.crop(fromUIOutput: Data("oops\n".utf8)) }
+        // A hobo ui that couldn't run prints only to stderr; one that failed says the same in both.
+        let missing = "hobo ui: this hobo was built without hobo ui's Windows backend"
+        #expect(throws: ScreenshotCropError.noFrame(element, missing)) { try element.crop(fromUIOutput: Data(), errors: Data("\(missing)\n".utf8)) }
+        #expect(throws: ScreenshotCropError.noFrame(element, stale)) {
+            try element.crop(fromUIOutput: Data(#"{"error":"\#(stale)"}"#.utf8), errors: Data("Error: \(stale)\n".utf8))
+        }
     }
 
     @Test(arguments: ["840,412,80,28", "840,412 80×28", "(840,412 80×28)", "840,412 80x28"])

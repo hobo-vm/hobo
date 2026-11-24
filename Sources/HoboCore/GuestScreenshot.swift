@@ -224,9 +224,13 @@ public enum ScreenshotSubject: Equatable, Sendable, CustomStringConvertible {
     /// The rectangle around everything `output`, the JSON that `uiArguments` printed, lists at its
     /// top level: an app with two windows gives the one that holds both. Throws what `hobo ui`
     /// said went wrong (no such app, a stale ref), and for a subject that isn't on the screen.
-    public func crop(fromUIOutput output: Data) throws -> ScreenshotCrop {
+    /// `errors` is its stderr, which is all it prints when it couldn't run at all: a guest
+    /// without it, or a hobo built without that guest's backend.
+    public func crop(fromUIOutput output: Data, errors: Data = Data()) throws -> ScreenshotCrop {
         guard let answer = try? JSONDecoder().decode(Answer.self, from: output) else {
-            let said = String(decoding: output.prefix(200), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            func text(_ data: Data) -> String { String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) }
+            let said = text(output.prefix(200))
+            if said.isEmpty, !text(errors).isEmpty { throw ScreenshotCropError.noFrame(self, text(errors)) }
             throw ScreenshotCropError.noFrame(self, "hobo ui answered \(said.isEmpty ? "nothing" : said)")
         }
         guard let elements = answer.snapshot?.elements else {
