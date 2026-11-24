@@ -57,6 +57,7 @@ func (r *outputRelay) add(read *os.File, output io.Writer) {
 // finish is for once the command has exited: it returns when all its output has been passed on,
 // or none has come for outputGrace.
 func (r *outputRelay) finish() {
+	exited := time.Now().UnixNano()
 	ended := make(chan struct{})
 	go func() {
 		r.copies.Wait()
@@ -69,7 +70,7 @@ func (r *outputRelay) finish() {
 		case <-ended:
 			quiet = true
 		case <-tick.C:
-			quiet = r.quiet()
+			quiet = r.quiet(exited)
 		}
 	}
 	for _, stream := range r.streams {
@@ -77,14 +78,16 @@ func (r *outputRelay) finish() {
 	}
 }
 
-// quiet is whether every stream still open has waited outputGrace for more.
-func (r *outputRelay) quiet() bool {
+// quiet is whether every stream still open has waited outputGrace for more. The wait counts from
+// when the command exited, at the earliest: a read that began long before may not have woken yet
+// for what the command wrote last.
+func (r *outputRelay) quiet(exited int64) bool {
 	now := time.Now().UnixNano()
 	for _, stream := range r.streams {
 		if stream.ended.Load() {
 			continue
 		}
-		if since := stream.waitingSince.Load(); since == 0 || now-since < int64(outputGrace) {
+		if since := stream.waitingSince.Load(); since == 0 || now-max(since, exited) < int64(outputGrace) {
 			return false
 		}
 	}
