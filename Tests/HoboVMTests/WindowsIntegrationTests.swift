@@ -216,17 +216,25 @@ struct WindowsGuestTests {
             #expect(try powerShell(left).text.trimmingCharacters(in: .whitespacesAndNewlines) == "0", "gui \(gui)")
         }
 
-        // Suspend and resume: the guest's watchdog gets the network back.
+        // Suspend and resume: the guest's watchdog gets the network back. It restarts the adapter
+        // once the gateway has missed two pings, a few seconds after `start` returns, so this waits.
+        func networkReturns() throws -> Bool {
+            for _ in 0..<15 {
+                if try powerShell("(Test-NetConnection 8.8.8.8 -Port 53).TcpTestSucceeded").text.contains("True") { return true }
+                Thread.sleep(forTimeInterval: 2)
+            }
+            return false
+        }
         #expect(try session.run(["suspend", "vm"]).status == 0)
         #expect(try session.run(["start", "vm"]).status == 0)
-        #expect(try powerShell("(Test-NetConnection 8.8.8.8 -Port 53).TcpTestSucceeded").text.contains("True"))
+        #expect(try networkReturns(), "after a resume")
 
         // A live snapshot brings back the disk as it was, with a network.
         #expect(try session.run(["snapshot", "save", "vm", "live"]).status == 0)
         #expect(try powerShell(#"'later' | Set-Content C:\later.txt"#).status == 0)
         #expect(try session.run(["snapshot", "restore", "--force", "vm", "live"]).status == 0)
         #expect(try powerShell(#"Test-Path C:\later.txt"#).text.contains("False"))
-        #expect(try powerShell("(Test-NetConnection 8.8.8.8 -Port 53).TcpTestSucceeded").text.contains("True"))
+        #expect(try networkReturns(), "after a snapshot restore")
         #expect(try session.run(["snapshot", "delete", "vm", "live"]).status == 0)
         #expect(try session.run(["stop", "vm"]).status == 0)
 
