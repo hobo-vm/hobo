@@ -1,6 +1,6 @@
 # Hobo
 
-First-class CLI for named VMs (macOS, Linux, Windows) on Apple Silicon hosts, built on Apple's
+First-class CLI for ephemeral VMs (macOS, Linux, Windows) on Apple Silicon hosts, built on Apple's
 Virtualization framework: a command-line replacement for VirtualBuddy/Parallels/Fusion. VMs are built from `Hobo.toml` recipes, and there are no boxes. The design record is
 `docs/design.md`; read it before architectural changes, and update it when a decision changes.
 

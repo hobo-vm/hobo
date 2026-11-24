@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-A command-line tool for named macOS, Linux and Windows VMs on Apple Silicon Macs,
+A command-line tool for ephemeral macOS, Linux and Windows VMs on Apple Silicon Macs,
 built on Apple's Virtualization framework.
 The full guide is at [hobo.gsquared.app](https://hobo.gsquared.app/).
 

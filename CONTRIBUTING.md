@@ -1,6 +1,6 @@
 # Contributing to hobo
 
-hobo is a CLI for named macOS, Linux and Windows VMs on Apple Silicon Macs, built on Apple's
+hobo is a CLI for ephemeral macOS, Linux and Windows VMs on Apple Silicon Macs, built on Apple's
 Virtualization framework. This file covers building it, testing it, and getting a change merged.
 The design record is [`docs/design.md`](docs/design.md): read it before an architectural change,
 and update it when a decision changes.

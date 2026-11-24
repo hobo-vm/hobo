@@ -31,7 +31,7 @@ enum Entry {
 struct HoboCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "hobo",
-        abstract: "Named VMs on Apple's Virtualization framework.",
+        abstract: "Ephemeral VMs on Apple's Virtualization framework.",
         version: Hobo.version,
         subcommands: [
             Init.self, Validate.self, Images.self, Create.self, List.self, Start.self, Stop.self, Suspend.self, Discard.self, View.self,
