@@ -25,8 +25,8 @@ import Testing
     @Test func iconIsARoundedTile() throws {
         let raster = try Raster(VMIcon.image(for: "ubuntu2604"))
         #expect(raster.pixel(x: 0, y: 0)[3] == 0)
-        #expect(raster.pixel(x: 70, y: 70)[3] == 0)
-        #expect(raster.pixel(x: 70, y: 512)[3] == 255)
+        #expect(raster.pixel(x: 106, y: 106)[3] == 0)
+        #expect(raster.pixel(x: 106, y: 512)[3] == 255)
     }
 
     /// A VM's icon never changes, which rules out unseeded chalk grain.
@@ -41,7 +41,7 @@ import Testing
         for color in 0..<VMIcon.colorCount {
             let name = try #require((0..<500).lazy.map { "vm-\($0)" }.first { VMIcon.assignment(for: $0).color == color })
             let raster = try Raster(VMIcon.image(for: name))
-            tiles.insert(raster.pixel(x: 70, y: 512))
+            tiles.insert(raster.pixel(x: 106, y: 512))
         }
         #expect(tiles.count == VMIcon.colorCount)
     }
@@ -60,8 +60,8 @@ import Testing
         let (firstName, secondName) = try #require(pair)
         let first = try Raster(VMIcon.image(for: firstName))
         let second = try Raster(VMIcon.image(for: secondName))
-        #expect(first.rows(fromBottom: 64..<220) != second.rows(fromBottom: 64..<220))
-        #expect(first.rows(fromBottom: 230..<1024) == second.rows(fromBottom: 230..<1024))
+        #expect(first.rows(fromBottom: 100..<244) != second.rows(fromBottom: 100..<244))
+        #expect(first.rows(fromBottom: 253..<1024) == second.rows(fromBottom: 253..<1024))
     }
 
     /// A sign can decode and still draw nothing, so look for its chalk.
@@ -90,19 +90,19 @@ import Testing
     @Test func shortNameIsKeptWhole() {
         let fitted = VMIcon.fittedName("nsa")
         #expect(fitted.text == "nsa")
-        #expect(fitted.pointSize == 112)
+        #expect(fitted.pointSize == 103)
     }
 
     @Test func mediumNameShrinksBeforeLosingAnything() {
         let fitted = VMIcon.fittedName("ubuntu2604-a3f1")
         #expect(fitted.text == "ubuntu2604-a3f1")
-        #expect(fitted.pointSize < 112)
+        #expect(fitted.pointSize < 103)
     }
 
     /// Clones of one source differ only in their last characters, which must survive.
     @Test func longNameKeepsItsCloneSuffix() {
         let fitted = VMIcon.fittedName("hobo-code-review-with-a-long-name-a3f1")
-        #expect(fitted.pointSize == 86)
+        #expect(fitted.pointSize == 79)
         #expect(fitted.text.hasPrefix("hobo"))
         #expect(fitted.text.contains("…"))
         #expect(fitted.text.hasSuffix("-a3f1"))

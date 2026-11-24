@@ -20,15 +20,16 @@ public enum VMIcon {
     static var signCount: Int { signs.count }
     static var colorCount: Int { tileColors.count }
 
-    // The icon's layout, in pixels of its 1024 px canvas, matching the logo's tile.
+    // The icon's layout, in pixels of its 1024 px canvas. The tile is the size of a macOS app icon's
+    // (824 px, with a 100 px margin), so it sits level with the icons beside it in the Dock and ⌘Tab.
     private static let canvas = 1024
-    private static let tile = NSRect(x: 64, y: 64, width: 896, height: 896)
-    private static let tileCornerRadius: CGFloat = 200
-    private static let signFrame = NSRect(x: 172, y: 220, width: 680, height: 680)
-    private static let nameCenterY: CGFloat = 154
+    private static let tile = NSRect(x: 100, y: 100, width: 824, height: 824)
+    private static let tileCornerRadius: CGFloat = 184
+    private static let signFrame = NSRect(x: 199, y: 244, width: 626, height: 626)
+    private static let nameCenterY: CGFloat = 183
     /// The width that clears the tile's rounded corners at the name's height.
-    private static let nameMaxWidth: CGFloat = 720
-    private static let namePointSizes: ClosedRange<CGFloat> = 86...112
+    private static let nameMaxWidth: CGFloat = 662
+    private static let namePointSizes: ClosedRange<CGFloat> = 79...103
     /// The characters a shortened name always keeps, so clones of one source stay distinct.
     private static let keptSuffixLength = VMStore.ephemeralSuffixLength
     private static let chalkFleckCount = 14000
