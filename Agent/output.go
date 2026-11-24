@@ -25,10 +25,16 @@ type outputRelay struct {
 type outputStream struct {
 	gate
 	ended atomic.Bool
-	// When the read it is waiting in began, in Unix nanoseconds; 0 while it passes output on. A
+	// When the read it is waiting in began, as relayClock gives it; 0 while it passes output on. A
 	// slow host holds it at 0, so the grace never cuts off output that has already been written.
 	waitingSince atomic.Int64
 }
+
+var relayClockStart = time.Now()
+
+// relayClock is nanoseconds on the monotonic clock, and never 0. Not the time of day, which a
+// guest's clock sync steps: back would hold a request open, and forward would cut the grace short.
+func relayClock() int64 { return int64(time.Since(relayClockStart)) + 1 }
 
 // add passes on what read gives to output, and closes read at its end.
 func (r *outputRelay) add(read *os.File, output io.Writer) {
@@ -41,7 +47,7 @@ func (r *outputRelay) add(read *os.File, output io.Writer) {
 		defer stream.ended.Store(true)
 		buffer := make([]byte, 32*1024)
 		for {
-			stream.waitingSince.Store(time.Now().UnixNano())
+			stream.waitingSince.Store(relayClock())
 			n, err := read.Read(buffer)
 			stream.waitingSince.Store(0)
 			if n > 0 {
@@ -57,7 +63,7 @@ func (r *outputRelay) add(read *os.File, output io.Writer) {
 // finish is for once the command has exited: it returns when all its output has been passed on,
 // or none has come for outputGrace.
 func (r *outputRelay) finish() {
-	exited := time.Now().UnixNano()
+	exited := relayClock()
 	ended := make(chan struct{})
 	go func() {
 		r.copies.Wait()
@@ -82,7 +88,7 @@ func (r *outputRelay) finish() {
 // when the command exited, at the earliest: a read that began long before may not have woken yet
 // for what the command wrote last.
 func (r *outputRelay) quiet(exited int64) bool {
-	now := time.Now().UnixNano()
+	now := relayClock()
 	for _, stream := range r.streams {
 		if stream.ended.Load() {
 			continue
