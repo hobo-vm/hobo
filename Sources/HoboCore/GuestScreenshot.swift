@@ -187,17 +187,77 @@ public struct ScreenshotCrop: Equatable, Sendable, CustomStringConvertible {
     public var description: String { "\(x),\(y),\(width),\(height)" }
 }
 
+/// What `hobo screenshot --app` or `--ref` keeps of the screen: an app's windows, or one element.
+/// `hobo ui` in the guest says where it is, so the caller needn't turn a snapshot's frame into a
+/// `--crop` itself.
+public enum ScreenshotSubject: Equatable, Sendable, CustomStringConvertible {
+    /// The app's windows, and whatever else of its a snapshot lists beside them.
+    case app(String)
+    /// The element a snapshot of `app` (the frontmost, if nil) gave this ref.
+    case element(ref: String, app: String?)
+
+    /// The `hobo ui` command whose JSON has the subject's frame: a snapshot one level deep, of the
+    /// app or of the element.
+    public var uiArguments: [String] {
+        switch self {
+        case .app(let app): ["snapshot", "--json", "--depth", "1", "--app", app]
+        case .element(let ref, let app): ["snapshot", "--json", "--depth", "1", "--root", ref] + (app.map { ["--app", $0] } ?? [])
+        }
+    }
+
+    public var description: String {
+        switch self {
+        case .app(let app): app
+        case .element(let ref, _): ref
+        }
+    }
+
+    /// `hobo ui snapshot --json`, as far as a crop needs it; a failure has only `error`.
+    private struct Answer: Decodable {
+        struct Snapshot: Decodable { var elements: [Element] }
+        struct Element: Decodable { var frame: Frame? }
+        struct Frame: Decodable { var x, y, width, height: Int }
+        var snapshot: Snapshot?
+        var error: String?
+    }
+
+    /// The rectangle around everything `output`, the JSON that `uiArguments` printed, lists at its
+    /// top level: an app with two windows gives the one that holds both. Throws what `hobo ui`
+    /// said went wrong (no such app, a stale ref), and for a subject that isn't on the screen.
+    public func crop(fromUIOutput output: Data) throws -> ScreenshotCrop {
+        guard let answer = try? JSONDecoder().decode(Answer.self, from: output) else {
+            let said = String(decoding: output.prefix(200), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            throw ScreenshotCropError.noFrame(self, "hobo ui answered \(said.isEmpty ? "nothing" : said)")
+        }
+        guard let elements = answer.snapshot?.elements else {
+            throw ScreenshotCropError.noFrame(self, answer.error ?? "hobo ui gave no snapshot")
+        }
+        let frames = elements.compactMap(\.frame).map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }
+        let around = frames.dropFirst().reduce(frames.first ?? .zero) { $0.union($1) }
+        guard around.width >= 1, around.height >= 1 else {
+            switch self {
+            case .app: throw ScreenshotCropError.noFrame(self, "it has no windows")
+            case .element: throw ScreenshotCropError.noFrame(self, "it has no frame")
+            }
+        }
+        return ScreenshotCrop(x: Int(around.minX), y: Int(around.minY), width: Int(around.width), height: Int(around.height))
+    }
+}
+
 public enum ScreenshotCropError: Error, Equatable, CustomStringConvertible {
     case unreadable
     case unwritable
     case offScreen(ScreenshotCrop, width: Int, height: Int)
+    /// Why `hobo ui` couldn't say where an app or element is.
+    case noFrame(ScreenshotSubject, String)
 
     public var description: String {
         switch self {
         case .unreadable: "can't crop the screenshot: the guest's PNG can't be read"
         case .unwritable: "can't crop the screenshot: the cropped PNG couldn't be written"
         case .offScreen(let crop, let width, let height):
-            "--crop \(crop) is off the screen, which is \(width)×\(height) pixels"
+            "the crop \(crop) is off the screen, which is \(width)×\(height) pixels"
+        case .noFrame(let subject, let reason): "can't crop the screenshot to \(subject): \(reason)"
         }
     }
 }

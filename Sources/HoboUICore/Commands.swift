@@ -239,7 +239,11 @@ public struct HoboUI: ParsableCommand {
     public struct Key: ParsableCommand {
         public static let configuration = CommandConfiguration(
             abstract: "Press a key, with modifiers.",
-            discussion: "e.g. cmd+k, cmd+shift+z, return, escape, tab, up, f5. The key goes to whatever has focus."
+            discussion: """
+                e.g. cmd+k, cmd+shift+z, return, escape, tab, up, f5. The key goes to whatever has focus, whichever app --app names: \
+                it prints the frontmost app's focused element, as it was before the key, so an Escape that went to a text view \
+                rather than the popover over it shows.
+                """
         )
         @OptionGroup public var target: AppOption
         @Argument(help: ArgumentHelp("The key.", valueName: "cmd+k")) public var key: String

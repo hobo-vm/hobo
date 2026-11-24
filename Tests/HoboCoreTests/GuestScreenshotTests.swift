@@ -115,6 +115,41 @@ import Testing
         #expect(throws: ScreenshotCropError.unreadable) { try screenshot.cropped(to: ScreenshotCrop(x: 0, y: 0, width: 1, height: 1)) }
     }
 
+    /// `--app` and `--ref` ask hobo ui for a snapshot one level deep, and crop to what it lists.
+    @Test func aSubjectAsksHoboUIForASnapshotOfIt() {
+        #expect(ScreenshotSubject.app("TextEdit").uiArguments == ["snapshot", "--json", "--depth", "1", "--app", "TextEdit"])
+        #expect(ScreenshotSubject.element(ref: "e12", app: nil).uiArguments == ["snapshot", "--json", "--depth", "1", "--root", "e12"])
+        #expect(ScreenshotSubject.element(ref: "e12", app: "pid:42").uiArguments.suffix(2) == ["--app", "pid:42"])
+    }
+
+    @Test func aSubjectsCropIsAroundEverythingItsSnapshotLists() throws {
+        func snapshot(_ frames: [String]) -> Data {
+            let elements = frames.map { #"{"ref":"e1","role":"window","nativeRole":"AXWindow","children":[]\#($0)}"# }
+            return Data(#"{"message":"app","snapshot":{"app":{"name":"TextEdit","pid":5},"scale":2,"elements":[\#(elements.joined(separator: ","))]}}"#.utf8)
+        }
+        let window = #","frame":{"x":100,"y":50,"width":800,"height":600}"#
+        let app = ScreenshotSubject.app("TextEdit")
+        #expect(try app.crop(fromUIOutput: snapshot([window])) == ScreenshotCrop(x: 100, y: 50, width: 800, height: 600))
+        // Two windows, and one partly off the screen's left: the rectangle that holds both.
+        let second = #","frame":{"x":-40,"y":500,"width":300,"height":400}"#
+        #expect(try app.crop(fromUIOutput: snapshot([window, second])) == ScreenshotCrop(x: -40, y: 50, width: 940, height: 850))
+        // One with no frame is left out rather than counted as a point at the origin.
+        #expect(try app.crop(fromUIOutput: snapshot(["", window])) == ScreenshotCrop(x: 100, y: 50, width: 800, height: 600))
+        #expect(throws: ScreenshotCropError.noFrame(app, "it has no windows")) { try app.crop(fromUIOutput: snapshot([])) }
+        let element = ScreenshotSubject.element(ref: "e9", app: nil)
+        #expect(throws: ScreenshotCropError.noFrame(element, "it has no frame")) { try element.crop(fromUIOutput: snapshot([""])) }
+    }
+
+    /// hobo ui's own failure is the reason, as it printed it.
+    @Test func aSubjectHoboUICantFindFailsWithWhatHoboUISaid() {
+        let element = ScreenshotSubject.element(ref: "e9", app: nil)
+        let stale = "stale ref e9: it isn't where it was; take a new snapshot"
+        #expect(throws: ScreenshotCropError.noFrame(element, stale)) { try element.crop(fromUIOutput: Data(#"{"error":"\#(stale)"}"#.utf8)) }
+        #expect(String(describing: ScreenshotCropError.noFrame(element, stale)) == "can't crop the screenshot to e9: \(stale)")
+        #expect(throws: ScreenshotCropError.noFrame(element, "hobo ui answered nothing")) { try element.crop(fromUIOutput: Data()) }
+        #expect(throws: ScreenshotCropError.noFrame(element, "hobo ui answered oops")) { try element.crop(fromUIOutput: Data("oops\n".utf8)) }
+    }
+
     @Test(arguments: ["840,412,80,28", "840,412 80×28", "(840,412 80×28)", "840,412 80x28"])
     func aCropParsesFromFourNumbersOrASnapshotFrame(text: String) {
         #expect(ScreenshotCrop(text) == ScreenshotCrop(x: 840, y: 412, width: 80, height: 28))

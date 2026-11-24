@@ -65,6 +65,16 @@ public struct GuestChannel: Sendable {
         return GuestScreenshot(name: vm.name, png: png)
     }
 
+    /// Where `subject` is on the guest's screen, asked of `hobo ui` there, for `cropped(to:)`.
+    public func screenshotCrop(_ name: String, around subject: ScreenshotSubject) throws -> ScreenshotCrop {
+        var answer = Data()
+        // hobo ui prints a failure as JSON too, so its exit status says nothing more.
+        _ = try ui(name, arguments: subject.uiArguments) { stream, data in
+            if stream == .stdout { answer += data }
+        }
+        return try subject.crop(fromUIOutput: answer)
+    }
+
     /// Copies and returns its exit status; the copy's messages arrive as output.
     public func copy(_ name: String, _ copy: GuestCopy, onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
         try stream(.copy(copy), name: name, onOutput: onOutput)

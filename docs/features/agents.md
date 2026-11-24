@@ -60,10 +60,12 @@ $ hobo exec dev --json -- true
 
 ```sh
 hobo usage
+hobo usage start exec ui    # only these commands' help, and the conventions
 ```
 
 prints every command's help followed by the conventions they share, generated from the same
-definitions as `--help`, so it can't fall behind.
+definitions as `--help`, so it can't fall behind. All of it is longer than an agent's tool result
+holds, so the skill has an agent name the commands it will use.
 
 ## Leaving no trace
 

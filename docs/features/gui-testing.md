@@ -24,8 +24,15 @@ $ hobo screenshot ubuntu
 hobo screenshot dev                 # a new dev-<timestamp>.png here
 hobo screenshot dev shot.png        # that file, replacing it (or -o shot.png)
 hobo screenshot dev - | open -f -a Preview
+hobo screenshot dev --app TextEdit   # only that app's windows
+hobo screenshot dev --ref e12        # only that element, by its ref from hobo ui snapshot
 hobo screenshot dev --crop 840,412,400,300    # only that rectangle: x,y,width,height
 ```
+
+`--app` keeps an app's windows: the rectangle around all of them, when it has several. `--ref`
+keeps one element, a window or anything in one, by the ref [`hobo ui snapshot`](#drive-an-app-with-hobo-ui)
+gave it; the ref is the frontmost app's unless `--app` names another. Both ask `hobo ui` where it
+is, so they work where `hobo ui` does.
 
 `--crop` keeps one rectangle of the screen, in screenshot pixels from the top left. It also takes a
 frame the way [`hobo ui snapshot`](#drive-an-app-with-hobo-ui) prints one, so an element's or a window's frame
@@ -106,7 +113,7 @@ $ hobo ui win choose 'C:\Users\hobo\Documents\hello.txt' --app notepad
 | `drag <from> <to>` | A real drag, pausing over the target before it drops |
 | `scroll <ref\|x,y> <direction> [lines]` | Scroll wheel events; `scroll --to e40` brings an element into view |
 | `type <text> [--into ref]` | Types text where the cursor is, whatever the keyboard layout. `--replace` selects all first, so the text replaces what the field had |
-| `key <cmd+k>` | Presses a key with modifiers. Keys are named as typed or by name: `cmd+-` or `cmd+minus`, `cmd++` or `cmd+plus`, `return`, `escape`, `left`, `f5` |
+| `key <cmd+k>` | Presses a key with modifiers. Keys are named as typed or by name: `cmd+-` or `cmd+minus`, `cmd++` or `cmd+plus`, `return`, `escape`, `left`, `f5`. It prints what had the focus, which is what the key went to: `pressed escape with the focus on textbox "Search" [e7] …` |
 | `menu "File > Save"` | Chooses a menu item, failing if it's disabled; `menu File` lists the items with their shortcuts. Titles are as the open menu shows them, such as `Undo Typing`. A macOS app's menu bar is `menu`'s alone: `snapshot` and `click --text` leave it out |
 | `choose <path>` | Chooses a file or folder in the open or save panel an app is showing: waits up to 5 seconds for the panel, so it can follow the click that opens it, goes to the path, then clicks Open or Save. On Linux it uses the file chooser's location bar, including GNOME's save dialog, which runs in Files' process; on Windows the dialog's File name box |
 | `wait` | Waits for `--ref`, `--text` (which matches part of an element's text, as `click --text --contains` does, and `--role button` narrows) or `--app`, or with `--gone` for it to go. On a timeout it prints the snapshot, and a `--gone` wait names the element still there: a hidden view can still be an accessibility element |

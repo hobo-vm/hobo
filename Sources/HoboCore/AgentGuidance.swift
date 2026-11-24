@@ -20,8 +20,9 @@ public enum AgentGuidance {
         # Hobo
 
         Hobo runs named macOS, Linux and Windows VMs on this Mac. The commands below are `hobo` subcommands. \
-        This skill covers how to work with them; for every command's flags, `--json` output and \
-        errors, run `hobo usage` once and read it.
+        This skill covers how to work with them; for a command's flags, `--json` output and \
+        errors, run `hobo usage` with the commands you will use, once, and read it: `hobo usage start exec cp ui screenshot`. \
+        (Without them it prints every command's, more than one tool result holds.)
 
         \(rules)
         """
@@ -81,9 +82,10 @@ public enum AgentGuidance {
         open or save panel or dialog showing, `choose <path>` picks the file or folder in it (it waits for the panel, \
         so it can follow the click that opens one); don't type a \
         path into a panel, which loses a character. Refs keep their numbers across snapshots; a stale \
-        one fails rather than hit something else. Coordinates are screenshot pixels, and \
-        `screenshot --crop` takes a frame as a snapshot prints it (`--crop "840,412 400×300"`) to save just \
-        that window or element. Check results \
+        one fails rather than hit something else. `key` presses a key and says what had the focus, which is \
+        what took it. Coordinates are screenshot pixels. `screenshot --app <name>` saves just that app's windows and \
+        `screenshot --ref e12` just that window or element; `--crop` takes any rectangle, also as a snapshot prints \
+        a frame (`--crop "840,412 400×300"`). Check results \
         in the app's own state where you can (its files or database through `exec`), not only in \
         screenshots.
         - On a macOS guest, plain `exec` runs in a background session, though `open`, System Events \

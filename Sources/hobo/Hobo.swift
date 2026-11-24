@@ -4,6 +4,7 @@ import CLIOutput
 import Foundation
 import HoboControl
 import HoboCore
+import HoboUICore
 import HoboVM
 
 /// A synchronous entry point, because `_vm-run` must run AppKit's event loop from the top of the
@@ -796,7 +797,8 @@ struct Screenshot: OutputCommand {
             Captures from inside the guest's desktop session, which on macOS needs a VM built from a recipe with [gui_testing], \
             and on Linux a desktop (left out by init --os linux --server). \
             Prints the file's path; by default it is a new <vm>-<timestamp>.png in the current directory. \
-            --crop keeps one rectangle of the screen, such as an element's frame from hobo ui snapshot.
+            --crop keeps one rectangle of the screen; --app keeps an app's windows and --ref one element, \
+            as hobo ui finds them (on macOS that needs a guest hobo ui runs on).
             """
     )
 
@@ -816,6 +818,21 @@ struct Screenshot: OutputCommand {
     ))
     var crop: ScreenshotCrop?
 
+    @Option(help: ArgumentHelp(
+        "Keep only this app's windows, or with --ref say whose ref it is. An app as hobo ui --app takes it: an ID, a name or pid:<n>.",
+        valueName: "app"
+    ))
+    var app: String?
+
+    @Option(help: ArgumentHelp("Keep only this element, by its ref from hobo ui snapshot: a window, or anything in one. Of the frontmost app unless --app says.", valueName: "ref"))
+    var ref: String?
+
+    /// The app or element to keep, when one was named.
+    var subject: ScreenshotSubject? {
+        if let ref { return .element(ref: ref, app: app) }
+        return app.map { .app($0) }
+    }
+
     /// Where the PNG goes: the positional path or `--output`, whichever was given.
     private var output: String? { path ?? outputOption }
 
@@ -827,10 +844,15 @@ struct Screenshot: OutputCommand {
     func validate() throws {
         if path != nil && outputOption != nil { throw ValidationError("give the path once: as <path> or with --output") }
         if json && output == Self.standardOutput { throw ValidationError("--json can't go with a path of -: stdout has the PNG") }
+        if crop != nil && subject != nil { throw ValidationError("give --crop, or --app or --ref, which find the rectangle themselves") }
+        if let ref, RefMap.parse(ref) == nil { throw ValidationError("--ref takes a ref such as e12, from hobo ui snapshot") }
     }
 
     func execute(_: Output) async throws -> Reply {
-        var screenshot = try GuestChannel().screenshot(name)
+        let channel = GuestChannel()
+        // Asked where it is just before the capture, so the two agree.
+        let crop = try subject.map { try channel.screenshotCrop(name, around: $0) } ?? crop
+        var screenshot = try channel.screenshot(name)
         if let crop { screenshot = try screenshot.cropped(to: crop) }
         if output == Self.standardOutput {
             try FileHandle.standardOutput.write(contentsOf: screenshot.png)

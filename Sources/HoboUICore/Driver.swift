@@ -457,8 +457,23 @@ public struct UIDriver<Backend: UIBackend> {
     }
 
     func key(_ c: HoboUI.Key) throws -> Outcome {
-        backend.key(try KeySpec.parse(c.key))
-        return Outcome(text: "pressed \(c.key)")
+        let spec = try KeySpec.parse(c.key)
+        // Read before the key, which may move the focus or close what had it.
+        let focused = focusedElement()
+        backend.key(spec)
+        return Outcome(text: "pressed \(c.key)" + (focused.map { " with the focus on " + AppSnapshot.line($0) } ?? ""), element: focused)
+    }
+
+    /// What has the keyboard focus in the frontmost app, so `key` can say where its key went: the
+    /// popover that looks as if it would take an Escape may not be what has the focus. The
+    /// deepest element that says it is focused, since on macOS its window says so too; nil when
+    /// nothing does.
+    func focusedElement() -> SnapshotNode? {
+        guard let app = try? app(nil) else { return nil }
+        guard let (_, attributes, locator) = searchableElements(under: app.root).last(where: { $0.1.focused }) else { return nil }
+        return try? store.update(app.identity.storeKey) { refs in
+            SnapshotNode(ref: refs.ref(for: locator), attributes: attributes, scale: scale)
+        }
     }
 
     // MARK: menu

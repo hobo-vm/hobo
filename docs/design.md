@@ -682,8 +682,13 @@ global VMs on 2026-11-01.
       the same for every guest OS. It is in screenshot pixels, as `hobo ui`'s frames are, and also
       parses a frame as `ui snapshot` prints it (`x,y w×h`), so cropping to a window or an element
       is a snapshot and a paste; a rectangle reaching past the screen keeps what is on it. An
-      agent had been cropping with `sips` afterwards. `--app <name>`, cropping to an app's windows
-      by asking `hobo-ui` for their frames, is issue #30. Decided 2026-11-16.
+      agent had been cropping with `sips` afterwards. Decided 2026-11-16.
+    - `screenshot --app <app>` keeps an app's windows and `screenshot --ref e12 [--app <app>]` one
+      element, so that isn't a snapshot, `jq` and a `--crop` string (issue #30). `GuestChannel`
+      runs `hobo ui snapshot --json --depth 1` of the app, or with `--root <ref>`, and crops to the
+      rectangle around every top-level element it lists: for an app that is all its windows, and
+      whatever else of its a snapshot puts beside them, such as an open menu. One window of
+      several is `--ref` with the window's ref. Decided 2026-11-24.
     - Linux guests have their own `exec --gui` and `screenshot` (decision 21), and Windows guests
       theirs (decision 20).
     - A host-side framebuffer screenshot for wedged guests is deferred.
@@ -749,6 +754,11 @@ global VMs on 2026-11-01.
       - `type --replace` (2026-11-11) presses Cmd-A before typing, so the text replaces a
         field's contents (and `""` empties it): `type` alone adds at the cursor, and every edit of
         a filled field had been click, `key cmd+a`, `type`.
+      - `key` (2026-11-24) prints what had the focus in the frontmost app before the key, with its
+        ref: `pressed escape with the focus on textbox …`. An agent's Escape for a popover went
+        to the terminal view behind it, which had the focus, and "pressed escape" took a snapshot
+        to explain. It is the deepest element that says it is focused (a macOS window says so
+        too), found by walking the app's tree as `click --text` does, so no backend needed a new call.
       - `choose <path>` (2026-11-11) picks a file or folder in the open or save panel an app is
         showing, found by AppKit's identifiers (`open-panel`, `save-panel`, `GoToWindow`,
         `PathTextField`, `OKButton`): Cmd-Shift-G, the path typed once the sheet's field has focus,
@@ -806,7 +816,9 @@ global VMs on 2026-11-01.
     - A Claude Code skill teaches the CLI path. Its description triggers on testing or UI-testing in
       a clean VM; its body is workflow and rules only (the ephemeral session pattern, test inside
       the guest through `hobo exec` and never drive the host UI, `exec --gui` for Aqua, the 2-macOS-guest
-      limit) and says "run `hobo usage`" for flags. MCP clients get the same guidance from the
+      limit) and says "run `hobo usage`" for flags, with the commands it will use
+      (`hobo usage start exec ui`): the whole reference is 45 KB, more than one tool result holds,
+      and an agent had to page through a saved copy (2026-11-24). MCP clients get the same guidance from the
       server's `instructions` field, built from the same text in `HoboCore` (`AgentGuidance`), so
       there is no MCP skill.
     - `hobo claude install [--project]` and `hobo claude uninstall [--project]` write or remove

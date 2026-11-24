@@ -6,21 +6,46 @@ import HoboUICore
 /// `hobo usage`: the whole reference in one read, for an agent (or a person) learning hobo. It is
 /// every visible command's `--help`, generated from the same configurations so it can't drift,
 /// followed by the conventions that cut across commands and would otherwise repeat in each one.
+/// All of it is longer than an agent's tool result holds, so `hobo usage ui screenshot` prints
+/// only those commands' part of it.
 struct Usage: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Print the full reference: every command's help, then the conventions they share.",
-        discussion: "Read this once instead of running --help on each command."
+        discussion: """
+            Read this once instead of running --help on each command. \
+            Naming commands prints only theirs, with their subcommands' and the conventions: hobo usage start exec ui.
+            """
     )
 
-    func run() {
-        print(Self.text())
+    @Argument(help: ArgumentHelp("Print only these commands' help: the commands hobo --help lists.", valueName: "command"))
+    var commands: [String] = []
+
+    func validate() throws {
+        let known = Self.topLevelCommands
+        let unknown = commands.filter { !known.contains($0) }
+        if !unknown.isEmpty {
+            throw ValidationError("hobo has no command \(unknown.joined(separator: " or ")): its commands are \(known.joined(separator: ", "))")
+        }
     }
 
-    static func text(columns: Int? = nil) -> String {
-        let commands = CommandTree.visibleCommandPaths(of: HoboCommand.self).map(\.command)
+    func run() {
+        print(Self.text(of: commands))
+    }
+
+    /// The commands `hobo --help` lists, which `hobo usage <command>` takes.
+    static var topLevelCommands: [String] {
+        CommandTree.visibleCommandPaths(of: HoboCommand.self).map(\.path).filter { !$0.contains(" ") }
+    }
+
+    /// The reference for the top-level commands named, each with its subcommands, in `hobo --help`'s
+    /// order; for all of them, under hobo's own help, when none is named.
+    static func text(of named: [String] = [], columns: Int? = nil) -> String {
+        let commands = CommandTree.visibleCommandPaths(of: HoboCommand.self)
+            .filter { path, _ in named.isEmpty || named.contains { path == $0 || path.hasPrefix($0 + " ") } }
+            .map(\.command)
         // `hobo ui`'s own commands are parsed by hobo-ui's definitions, not as subcommands.
         let uiCommands = HoboUI.configuration.subcommands.map { HoboUI.helpMessage(for: $0, columns: columns) }
-        let sections = [HoboCommand.helpMessage(columns: columns)]
+        let sections = (named.isEmpty ? [HoboCommand.helpMessage(columns: columns)] : [])
             + commands.flatMap { command in
                 [HoboCommand.helpMessage(for: command, columns: columns)] + (command == UICommand.self ? uiCommands : [])
             }
@@ -53,8 +78,9 @@ struct Usage: ParsableCommand {
               exec, cp,   hobo exits with the guest command's (or scp's) status. With --json their output
               rm          goes to stderr and stdout gets {"exitStatus":…}. `rm` removes files in a VM,
                           never the VM: that is `delete`.
-              screenshot  Prints where the PNG went; --json gives {"name":…,"path":…}. --crop x,y,width,height
-                          keeps one rectangle, e.g. a frame from `ui snapshot`. It and exec --gui
+              screenshot  Prints where the PNG went; --json gives {"name":…,"path":…}. --app keeps an
+                          app's windows, --ref an element by its `ui snapshot` ref, and --crop
+                          x,y,width,height any rectangle. screenshot and exec --gui
                           need a desktop: on macOS a screenshot needs [gui_testing], and a Linux guest
                           built with `init --os linux --server` has none.
               Ephemeral   `start <vm> --ephemeral` boots a new clone of a stopped VM, named <vm>-<4 hex>

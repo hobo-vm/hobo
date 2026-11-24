@@ -1006,6 +1006,34 @@ final class TreeGuest: UITransport {
         }
     }
 
+    /// A key goes to what has the focus, which isn't always what looks as if it would take it.
+    @Test func keySaysWhatHadTheFocus() throws {
+        let guest = TreeGuest([
+            "id": 1, "role": "application", "title": "Photos", "children": [
+                // A macOS window says it is focused too: the key's target is the element inside it.
+                ["id": 2, "role": "frame", "title": "Library", "focused": true, "frame": [0, 0, 400, 300], "children": [
+                    ["id": 3, "role": "text", "title": "Search", "focused": true, "frame": [10, 10, 200, 30], "children": []],
+                    ["id": 4, "role": "push button", "title": "Close", "frame": [10, 50, 80, 30], "children": []],
+                ]],
+            ],
+        ])
+        let driver = try driver(guest)
+        let outcome = try driver.run(try HoboUI.parseAsRoot(["key", "escape"]))
+        #expect(outcome.text == #"pressed escape with the focus on textbox "Search" [e1] (10,10 200×30) focused"#)
+        #expect(outcome.element?.ref == "e1")
+        // The focus was read before the key was sent, which may have moved it.
+        let ops = guest.calls.map { $0["op"] as! String }
+        #expect(ops.firstIndex(of: "tree")! < ops.firstIndex(of: "key")!)
+        // The ref is one the other commands take.
+        #expect(try driver.run(try HoboUI.parseAsRoot(["snapshot"])).text.contains(#"textbox "Search" [e1]"#))
+    }
+
+    @Test func keySaysOnlyWhatItPressedWhenNothingHasTheFocus() throws {
+        let guest = FakeGuest()
+        #expect(try driver(guest).run(try HoboUI.parseAsRoot(["key", "ctrl+s"])).text == "pressed ctrl+s")
+        #expect(guest.ops.contains("key"))
+    }
+
     @Test func aGuestErrorBecomesTheCommandsFailure() throws {
         final class Refusing: UITransport {
             func send(_ line: Data) throws -> Data {

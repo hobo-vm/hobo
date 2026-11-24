@@ -40,6 +40,30 @@ struct UsageTests {
         }
     }
 
+    /// All of it is too long for one tool result, so an agent asks for the commands it will use.
+    @Test func namingCommandsPrintsOnlyTheirsAndTheConventions() throws {
+        let text = Usage.text(of: ["snapshot", "ui"], columns: 100)
+        let usageLines = text.split(separator: "\n").filter { $0.hasPrefix("USAGE: hobo ") }
+        let expected = ["ui <name> ", "ui <vm> snapshot ", "ui <vm> key ", "snapshot <subcommand>", "snapshot save ", "snapshot restore "]
+        for prefix in expected {
+            #expect(usageLines.filter { $0.hasPrefix("USAGE: hobo " + prefix) }.count == 1, "\(prefix)")
+        }
+        #expect(usageLines.allSatisfy { $0.hasPrefix("USAGE: hobo ui ") || $0.hasPrefix("USAGE: hobo snapshot ") })
+        #expect(text.hasSuffix(Usage.conventions.trimmingCharacters(in: .whitespacesAndNewlines)))
+        // What the skill's example asks for fits in one tool result.
+        #expect(Usage.text(of: ["start", "exec", "cp", "ui", "screenshot"], columns: 80).utf8.count < 25_000)
+        #expect(Usage.text(columns: 100).contains(text.components(separatedBy: "\n\n").first!))
+    }
+
+    @Test func namingACommandHoboHasntGotIsAUsageError() throws {
+        #expect(try Usage.parse([]).commands.isEmpty)
+        #expect(try Usage.parse(["ui", "claude"]).commands == ["ui", "claude"])
+        #expect(throws: (any Error).self) { try Usage.parse(["uii"]) }
+        // A subcommand comes with its command.
+        #expect(throws: (any Error).self) { try Usage.parse(["save"]) }
+        #expect(Usage.topLevelCommands.contains("usage") && !Usage.topLevelCommands.contains { $0.hasPrefix("_") })
+    }
+
     @Test func endsWithTheConventions() {
         #expect(Usage.text(columns: 100).hasSuffix(Usage.conventions.trimmingCharacters(in: .whitespacesAndNewlines)))
     }
@@ -117,6 +141,16 @@ struct ScreenshotOptionTests {
         #expect(try Screenshot.parse(["dev", "--crop", "-40,-8,200,100"]).crop == crop)
         #expect(try Screenshot.parse(["dev", "--crop", "-40,-8 200×100", "shot.png"]).crop == crop)
         #expect(throws: (any Error).self) { try Screenshot.parse(["dev", "--crop", "1,2,3"]) }
+    }
+
+    @Test func anAppOrARefFindsTheRectangleInsteadOfCrop() throws {
+        #expect(try Screenshot.parse(["dev"]).subject == nil)
+        #expect(try Screenshot.parse(["dev", "--app", "TextEdit"]).subject == .app("TextEdit"))
+        #expect(try Screenshot.parse(["dev", "--ref", "e12"]).subject == .element(ref: "e12", app: nil))
+        #expect(try Screenshot.parse(["dev", "--ref", "e12", "--app", "TextEdit", "shot.png"]).subject == .element(ref: "e12", app: "TextEdit"))
+        #expect(throws: (any Error).self) { try Screenshot.parse(["dev", "--ref", "12"]) }
+        #expect(throws: (any Error).self) { try Screenshot.parse(["dev", "--app", "TextEdit", "--crop", "1,2,3,4"]) }
+        #expect(throws: (any Error).self) { try Screenshot.parse(["dev", "--ref", "e12", "--crop", "1,2,3,4"]) }
     }
 
     /// The JSON would land in the middle of the PNG's stdout.
