@@ -30,7 +30,8 @@ make install      # builds and signs hobo, installs /usr/local/bin/hobo and /usr
 ```
 
 `make install` may ask for your password if `/usr/local` needs it. `PREFIX=<dir> make install`
-installs under another directory instead.
+installs under another directory instead. If Homebrew had installed a hobo, `make install`
+uninstalls it, since it would come first on your `PATH`.
 
 ## Your first VM
 

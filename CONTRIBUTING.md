@@ -18,7 +18,7 @@ and update it when a decision changes.
 | `swift build` | Debug build |
 | `make test` | README and Windows backend checks, the docs-script tests, `swift test`, and `go test` in `Agent/` |
 | `make sign` | Release build staged in `.build/hobo` (`bin/hobo`, `share/hobo`), signed with the virtualization entitlement |
-| `make install` | `make sign`, then copies it under `/usr/local` (`PREFIX`) |
+| `make install` | `make sign`, then copies it under `/usr/local` (`PREFIX`), uninstalling a hobo Homebrew installed |
 | `make help` | Every target |
 
 `make test` is what a change has to pass. It needs no VMs.

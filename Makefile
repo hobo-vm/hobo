@@ -23,11 +23,14 @@ sign: build ## Stage .build/hobo (bin/hobo, share/hobo) and sign the CLI with th
 	cp -R $(RELEASE)/hobo_HoboVM.bundle/Contents/Resources/ $(STAGE)/share/hobo/
 	codesign --force --sign "$(HOBO_SIGN_IDENTITY)" --entitlements entitlements.plist --options runtime $(BIN)
 
-# Copies the staged tree into PREFIX (with sudo if it needs it), removes the binary older builds
-# installed in ~/.local/bin, which would shadow it, and refreshes hobo's global Claude skill if one
-# is installed, so it matches the new binary.
+# Copies the staged tree into PREFIX (with sudo if it needs it), removes the hobos that would shadow
+# it (Homebrew's, and the binary older builds installed in ~/.local/bin), and refreshes hobo's global
+# Claude skill if one is installed, so it matches the new binary.
 SKILL := $(HOME)/.claude/skills/hobo/SKILL.md
 install: sign ## Install bin/hobo and share/hobo under PREFIX (default /usr/local)
+	@if command -v brew > /dev/null && brew list --formula hobo > /dev/null 2>&1; then \
+	  echo "install: uninstalling the hobo Homebrew installed, which would shadow this build"; \
+	  brew uninstall --formula hobo; fi
 	@copy='rm -f $(PREFIX)/bin/hobo && rm -rf $(PREFIX)/share/hobo && install -d $(PREFIX)/bin $(PREFIX)/share/hobo && install -m 755 $(BIN) $(PREFIX)/bin/hobo && ditto $(STAGE)/share/hobo $(PREFIX)/share/hobo'; \
 	  sh -c "$$copy" 2>/dev/null || sudo sh -c "$$copy"
 	rm -f $(HOME)/.local/bin/hobo
