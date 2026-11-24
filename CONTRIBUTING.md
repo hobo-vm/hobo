@@ -70,7 +70,8 @@ No file states the version: a build takes it from the checkout's tags (`git desc
 needs the kept VMs) and `make release-test`. It then shows what it would publish and asks. If you
 say no, or anything failed, the tag is deleted and nothing has left your machine. If you say yes,
 it pushes the tag, creates the GitHub release, commits the formula to the tap, and pushes `main`
-last.
+last. It then installs the release as a user would, with `brew install hobo-vm/tap/hobo` in place
+of any hobo Homebrew had, and checks that its `hobo --version` prints the new version.
 
 `make release-test` is the part to run when you change the packaging. It writes the tarball and
 the formula to `.build/dist`, installs the formula with Homebrew from the local tarball (through

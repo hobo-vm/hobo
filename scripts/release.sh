@@ -9,11 +9,15 @@
 #
 # After you confirm, it publishes, in this order: the v<version> tag, a GitHub release with the
 # tarball, the formula in the tap, and last `main`, so that docs on main that tell people to
-# `brew install` go live only once that works.
+# `brew install` go live only once that works. It then installs the release as a user would
+# (`brew install hobo-vm/tap/hobo`, replacing any hobo Homebrew had) and checks that its
+# `hobo --version` prints the version.
 set -euo pipefail
 
 REPO="hobo-vm/hobo"
 TAP="hobo-vm/homebrew-tap"
+# The tap as brew names it.
+TAP_NAME="hobo-vm/tap"
 DIST=".build/dist"
 
 die() { echo "release: $*" >&2; exit 1; }
@@ -109,12 +113,24 @@ git -C "$DIST/tap" -c credential.helper= -c credential.helper='!gh auth git-cred
 left="git push origin main"
 
 git push -q origin main
+left="brew uninstall hobo; brew install ${TAP_NAME}/hobo; check that hobo --version prints ${VERSION}"
+
+# The install a user gets, from the published tap and the release's tarball. Uninstalled first:
+# `make release-test` may have left its build installed from its local tap, and Homebrew won't
+# install the same name from a second tap over it.
+trap 'echo "release: ${VERSION} is published, but checking its install failed. Still to do: ${left}" >&2' ERR
+if brew list --formula hobo > /dev/null 2>&1; then
+    brew uninstall --formula --force hobo > /dev/null
+fi
+# So that the tap's checkout has the formula just pushed.
+brew update --quiet
+HOMEBREW_NO_AUTO_UPDATE=1 brew install --formula "${TAP_NAME}/hobo"
+# Homebrew's hobo by path: a `make install` build may come first on PATH.
+installed=$("$(brew --prefix)/bin/hobo" --version)
+if [ "$installed" != "$VERSION" ]; then
+    trap - ERR
+    die "${VERSION} is published, but the hobo that brew install ${TAP_NAME}/hobo installed reports '${installed}'"
+fi
 
 echo "Released ${VERSION}: https://github.com/${REPO}/releases/tag/${TAG}"
-# A hobo Homebrew has installed now is the one `make release-test` left, from its local tap, and
-# Homebrew won't install the same name from a second tap over it.
-if brew list --formula hobo > /dev/null 2>&1; then
-    echo "Check it as a user: brew uninstall hobo && brew install hobo-vm/tap/hobo"
-else
-    echo "Check it as a user: brew install hobo-vm/tap/hobo"
-fi
+echo "brew install ${TAP_NAME}/hobo installs it: hobo --version prints ${installed}"

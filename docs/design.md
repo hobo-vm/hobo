@@ -1031,7 +1031,10 @@ global VMs on 2026-11-01.
     otherwise, runs the unit tests, the integration tests and `make release-test`, and asks before
     publishing; a failure or a no deletes the tag. Publishing pushes the tag, creates the GitHub
     release, commits the formula to the tap and pushes `main` last, so docs on `main` that say
-    `brew install` go live only once it works.
+    `brew install` go live only once it works. Last, the script installs the release from the tap
+    with Homebrew, in place of any hobo Homebrew had (the one `make release-test` leaves is from its
+    local tap, and Homebrew refuses the same name from a second tap), and fails unless that
+    `hobo --version` prints the version released.
     **The GUI was dropped.** Hobo.app's library window (list, lifecycle, settings, New VM) duplicated
     `list` and `set` for a tool driven by people at a terminal and by agents through the CLI and MCP,
     and it was the only reason for a bundle, an Info.plist and `/Applications`. VM windows are
