@@ -6,11 +6,22 @@ description: Install hobo, build a VM from a recipe, and log in.
 ## Requirements
 
 - An Apple Silicon Mac running macOS 27 or later.
-- To build from source: Xcode 27 (Swift 6.4 or later) and `brew install lld go`.
+- For Linux guests, `brew install qemu`: its `qemu-img` converts Ubuntu's cloud images.
 - For Windows guests, a Windows on Arm ISO from
   [Microsoft](https://www.microsoft.com/en-us/software-download/windows11arm64).
 
 ## Install
+
+```sh
+brew install hobo-vm/tap/hobo
+```
+
+Homebrew installs the [latest release](https://github.com/hobo-vm/hobo/releases/latest) and signs
+it on your Mac. `brew upgrade hobo` moves to a newer one.
+
+### From source
+
+Building needs Xcode 27 (Swift 6.4 or later) and `brew install lld go`.
 
 ```sh
 git clone https://github.com/hobo-vm/hobo.git

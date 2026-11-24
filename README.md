@@ -22,15 +22,17 @@ hobo stop dev                      # clean shutdown; --force powers off
 ## Requirements
 
 - Apple Silicon Mac, macOS 27+
-- Xcode 27 (Swift 6.4+)
-- `brew install lld go`, to build: the Windows boot driver and the guest agent are compiled from source during the build
+- For Linux guests, `brew install qemu`: its `qemu-img` converts Ubuntu's cloud images
 - To run Windows guests, a Windows on Arm ISO from [Microsoft](https://www.microsoft.com/en-us/software-download/windows11arm64). Read the caveats in [Guest operating systems](https://hobo.gsquared.app/guests/#windows) first
 
 ## Install
 
 ```sh
-make install                 # release build, ad-hoc signed: /usr/local/bin/hobo and /usr/local/share/hobo
+brew install hobo-vm/tap/hobo
 ```
+
+Homebrew installs the [latest release](https://github.com/hobo-vm/hobo/releases/latest) and signs
+it on your Mac. To build it yourself, see [Build from source](#build-from-source).
 
 ## Features
 
@@ -229,6 +231,9 @@ Full guide → [hobo.gsquared.app/agents](https://hobo.gsquared.app/agents/)
 <!-- features:end -->
 
 ## Build from source
+
+Building needs Xcode 27 (Swift 6.4+) and `brew install lld go`: the Windows boot driver and the
+guest agent are compiled from source during the build.
 
 ```sh
 make install                 # release build, ad-hoc signed: /usr/local/bin/hobo and /usr/local/share/hobo
