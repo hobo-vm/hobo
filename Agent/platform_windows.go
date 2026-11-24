@@ -152,7 +152,7 @@ func start(spec commandSpec) (process, error) {
 		}
 		syscall.SetHandleInformation(read, handleFlagInherit, 0)
 		childEnds = append(childEnds, writeEnds[i])
-		proc.output = append(proc.output, &gate{w: output})
+		proc.outputs = append(proc.outputs, output)
 		proc.reads = append(proc.reads, os.NewFile(uintptr(read), "output"))
 	}
 
@@ -214,13 +214,8 @@ func start(spec commandSpec) (process, error) {
 		return nil, fmt.Errorf("putting the command in its job: %w", err)
 	}
 	procResumeThread.Call(uintptr(pi.Thread))
-	for i := range proc.reads {
-		proc.copies.Add(1)
-		go func(read *os.File, output io.Writer) {
-			defer proc.copies.Done()
-			_, _ = io.Copy(output, read)
-			read.Close()
-		}(proc.reads[i], proc.output[i])
+	for i, read := range proc.reads {
+		proc.output.add(read, proc.outputs[i])
 	}
 	return proc, nil
 }
@@ -315,34 +310,23 @@ type windowsProcess struct {
 	job     syscall.Handle
 	stdin   *os.File
 	reads   []*os.File
-	output  []*gate
-	copies  sync.WaitGroup
+	outputs []io.Writer
+	output  outputRelay
 	mutex   sync.Mutex
 	done    bool
 }
 
 func (p *windowsProcess) Stdin() io.WriteCloser { return p.stdin }
 
-// Wait waits for the command, then briefly for the end of its output: an app it left running
-// can hold the pipes open forever, and what that writes later is dropped.
+// Wait waits for the command, then for its output as outputRelay's finish does: an app it left
+// running doesn't hold the request open.
 func (p *windowsProcess) Wait() (int32, error) {
 	if _, err := syscall.WaitForSingleObject(p.process, syscall.INFINITE); err != nil {
 		return 0, err
 	}
 	var code uint32
 	err := syscall.GetExitCodeProcess(p.process, &code)
-	copied := make(chan struct{})
-	go func() {
-		p.copies.Wait()
-		close(copied)
-	}()
-	select {
-	case <-copied:
-	case <-time.After(2 * time.Second):
-	}
-	for _, output := range p.output {
-		output.close()
-	}
+	p.output.finish()
 	p.mutex.Lock()
 	p.done = true
 	syscall.CloseHandle(p.process)
@@ -374,26 +358,4 @@ func (p *windowsProcess) closeAll() {
 	for _, read := range p.reads {
 		read.Close()
 	}
-}
-
-// gate passes writes on until it is closed, and then drops them.
-type gate struct {
-	mutex  sync.Mutex
-	w      io.Writer
-	closed bool
-}
-
-func (g *gate) Write(b []byte) (int, error) {
-	g.mutex.Lock()
-	defer g.mutex.Unlock()
-	if g.closed {
-		return len(b), nil
-	}
-	return g.w.Write(b)
-}
-
-func (g *gate) close() {
-	g.mutex.Lock()
-	g.closed = true
-	g.mutex.Unlock()
 }

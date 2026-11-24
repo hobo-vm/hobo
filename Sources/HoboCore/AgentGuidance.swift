@@ -62,7 +62,9 @@ public enum AgentGuidance {
         `exec` runs a command, `cp` copies files in and out, and `rm <vm>:<path>` removes them. To \
         put a rebuilt app or directory in place of an earlier copy, `cp --replace` removes what's \
         there first (plain `cp` merges into it). Remove guest files with `rm`, never `rm -rf` \
-        through `exec`.
+        through `exec`. `exec` returns when its command exits, so `sh -c 'server >server.log 2>&1 &'` \
+        leaves a server running; send its output to a file, since what it writes to the command's \
+        own output afterwards is dropped.
         - Never drive the VM's window from the host: don't click, type or take host screenshots of \
         it, or script it with AppleScript or computer use. `view` and `start --gui` are for a person \
         to watch. To drive the guest's UI, run the automation inside the guest (`hobo ui`) and look with `screenshot`, \
@@ -76,7 +78,8 @@ public enum AgentGuidance {
         narrow it) clicks an element by what it shows, without a snapshot to find its ref; `at x,y` \
         shows what's at a point off a screenshot, with its ref. `type` adds \
         to a field's text unless given `--replace`. With an \
-        open or save panel or dialog showing, `choose <path>` picks the file or folder in it; don't type a \
+        open or save panel or dialog showing, `choose <path>` picks the file or folder in it (it waits for the panel, \
+        so it can follow the click that opens one); don't type a \
         path into a panel, which loses a character. Refs keep their numbers across snapshots; a stale \
         one fails rather than hit something else. Coordinates are screenshot pixels, and \
         `screenshot --crop` takes a frame as a snapshot prints it (`--crop "840,412 400×300"`) to save just \

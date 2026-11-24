@@ -556,7 +556,7 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         try "deep\n".write(to: tree.appending(path: "sub/deep.txt"), atomically: true, encoding: .utf8)
         try FileManager.default.createSymbolicLink(atPath: tree.appending(path: "link").path, withDestinationPath: "sub/deep.txt")
         // A directory is copied whole without -r (e38fdf4), and -r, habit from cp and scp, still works.
-        #expect(try run(hobo, ["cp", tree.path, "\(vm):tree"], in: work, environment: env) == 0)
+        #expect(try output(hobo, ["cp", tree.path, "\(vm):tree"], environment: env) == "Copied \(tree.path) to \(vm):tree\n")
         #expect(try run(hobo, ["cp", "-r", tree.path, "\(vm):tree-r"], in: work, environment: env) == 0)
         #expect(try output(hobo, ["exec", vm, "--", "cat", "tree-r/sub/deep.txt"], environment: env) == "deep\n")
         #expect(try output(hobo, ["exec", vm, "--", "cat", "tree/link"], environment: env) == "deep\n")
@@ -564,6 +564,12 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try String(contentsOf: work.appending(path: "tree-back/sub/deep.txt"), encoding: .utf8) == "deep\n")
         #expect(try FileManager.default.destinationOfSymbolicLink(atPath: work.appending(path: "tree-back/link").path) == "sub/deep.txt")
         #expect(try run(hobo, ["cp", "\(vm):/nonexistent", "\(vm):tree/sub/deep.txt", "missing-dir/"], in: work, environment: env) != 0)
+
+        // exec returns when its command exits, though a process it left running still holds its
+        // output: the subshell here, since only what follows the && is redirected.
+        let holder = try output(hobo, ["exec", vm, "--", "sh", "-c", "true && sleep 300 >/dev/null 2>&1 & echo $!"], environment: env)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(try run(hobo, ["exec", vm, "--", "kill", holder], in: work, environment: env) == 0)
 
         // rm removes a directory whole, fails for a missing path unless -f, and refuses the home.
         #expect(try run(hobo, ["rm", "\(vm):tree", "\(vm):tree-r"], in: work, environment: env) == 0)

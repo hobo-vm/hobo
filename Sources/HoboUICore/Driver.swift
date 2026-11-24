@@ -8,6 +8,9 @@ public struct UIDriver<Backend: UIBackend> {
 
     public var backend: Backend
     public var store: RefStore
+    /// How many seconds `choose` waits for the panel or dialog to show: the click or menu item
+    /// that opens it returns before it is there.
+    var panelWait: Double = 5
 
     public init(backend: Backend, store: RefStore) {
         self.backend = backend
@@ -541,8 +544,8 @@ public struct UIDriver<Backend: UIBackend> {
     func chooseInPanel(_ c: HoboUI.Choose) throws -> Outcome {
         let app = try app(c.target.app)
         let panels: Set<String> = ["open-panel", "save-panel"]
-        guard let panel = descendant(of: app.root, identifiedBy: panels) else {
-            throw UIError.failed("\(app.identity.name) has no open or save panel showing")
+        guard let panel = poll(panelWait, { descendant(of: app.root, identifiedBy: panels) }) else {
+            throw UIError.failed("\(app.identity.name) has no open or save panel showing, and none came in \(panelWait.formatted()) seconds")
         }
         backend.bringForward(panel, of: app.running)
         func goTo() -> Element? { descendant(of: panel, identifiedBy: ["GoToWindow"]) }
@@ -583,8 +586,8 @@ public struct UIDriver<Backend: UIBackend> {
     /// (GTK's location entry, which Ctrl-L opens; Windows' File name box) and go with Return.
     func chooseInDialog(_ c: HoboUI.Choose) throws -> Outcome {
         let linux = backend.platform == .linux
-        guard let found = fileDialog(c.target.app) else {
-            throw UIError.failed("\((try? app(c.target.app))?.identity.name ?? "the app") has no file dialog showing")
+        guard let found = poll(panelWait, { fileDialog(c.target.app) }) else {
+            throw UIError.failed("\((try? app(c.target.app))?.identity.name ?? "the app") has no file dialog showing, and none came in \(panelWait.formatted()) seconds")
         }
         let app = try app(c.target.app)
         backend.bringForward(found, of: app.running)

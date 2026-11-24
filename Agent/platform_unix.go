@@ -103,31 +103,63 @@ func start(spec commandSpec) (process, error) {
 		cmd = exec.Command(selfPath(), spec.self...)
 		who.configure(cmd)
 	}
-	cmd.Stdout = spec.stdout
-	cmd.Stderr = spec.stderr
+	return launch(cmd, spec)
+}
+
+// launch starts cmd with spec's output and, if asked for, an input. The output goes through pipes
+// of the agent's own (outputRelay), not os/exec's, whose Wait is for their end.
+func launch(cmd *exec.Cmd, spec commandSpec) (process, error) {
 	proc := &unixProcess{cmd: cmd, exited: make(chan struct{})}
+	var ends []*os.File
+	closeEnds := func() {
+		for _, end := range ends {
+			end.Close()
+		}
+	}
+	for range 2 {
+		read, write, err := os.Pipe()
+		if err != nil {
+			closeEnds()
+			return nil, err
+		}
+		ends = append(ends, read, write)
+	}
+	outRead, outWrite, errRead, errWrite := ends[0], ends[1], ends[2], ends[3]
+	cmd.Stdout, cmd.Stderr = outWrite, errWrite
+	var err error
 	if spec.stdin {
 		if proc.stdin, err = cmd.StdinPipe(); err != nil {
+			closeEnds()
 			return nil, err
 		}
 	}
 	if err := cmd.Start(); err != nil {
+		closeEnds()
 		return nil, err
 	}
+	// The command has its own copies of the write ends; the agent's would keep the output from ending.
+	outWrite.Close()
+	errWrite.Close()
+	proc.output.add(outRead, spec.stdout)
+	proc.output.add(errRead, spec.stderr)
 	return proc, nil
 }
 
 type unixProcess struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
+	output outputRelay
 	exited chan struct{}
 }
 
 func (p *unixProcess) Stdin() io.WriteCloser { return p.stdin }
 
+// Wait waits for the command, then for its output as outputRelay's finish does: a process it left
+// running doesn't hold the request open.
 func (p *unixProcess) Wait() (int32, error) {
 	err := p.cmd.Wait()
 	close(p.exited)
+	p.output.finish()
 	status, ok := exitStatus(err)
 	if !ok {
 		return 0, err

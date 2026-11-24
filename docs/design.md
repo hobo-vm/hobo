@@ -427,6 +427,14 @@ global VMs on 2026-11-01.
       the control socket's JSON lines, so output and copies go unencoded. Closing the connection
       cancels a request, and the agent kills the command's process group (`SIGTERM`, then
       `SIGKILL` after 5 s).
+    - A request is answered when its command exits, not when its output ends (2026-11-24): a
+      process the command left running can hold the output's pipes open for good, as the subshell
+      of `sh -c 'cd x && nohup server >log 2>&1 &'` does, and `exec` then never returned. The
+      agent reads the pipes itself (`outputRelay`), and once the command has exited waits only
+      until no output has come for 1 s; a read that is waiting on a slow host doesn't count, so
+      output already written is never cut off. What comes later is read and dropped, so the
+      process that writes it neither blocks nor dies of a closed pipe. ssh waits for the pipes
+      instead, which is the hang this avoids.
     - A macOS guest's agent sends at most 4 KB a frame (2026-11-17): a macOS 15 guest's vsock
       loses data sent in io.Copy's 32 KB writes, and the host then reads a frame header out of the
       middle of a command's output, 1 to 2 MB in. macOS 27 guests take either.

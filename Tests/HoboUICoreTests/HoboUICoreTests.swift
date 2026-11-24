@@ -793,6 +793,19 @@ final class TreeGuest: UITransport {
         #expect(guest.ops.contains("raise"))
     }
 
+    /// The click that opens a file dialog returns before it shows, so `choose` looks more than once.
+    @Test func chooseWaitsForTheFileDialogBeforeSayingThereIsNone() throws {
+        let guest = FakeGuest()
+        var driver = try driver(guest)
+        driver.panelWait = 0.2
+        #expect {
+            try driver.run(try HoboUI.parseAsRoot(["choose", "~/Documents/a.txt"]))
+        } throws: { error in
+            String(describing: error).contains("Text Editor has no file dialog showing, and none came in 0.2 seconds")
+        }
+        #expect(guest.ops.filter { $0 == "tree" }.count > 1)
+    }
+
     @Test func aGoneWaitThatTimesOutNamesWhatIsStillThere() throws {
         #expect {
             try driver(FakeGuest()).run(try HoboUI.parseAsRoot(["wait", "--text", "Save", "--gone", "--timeout", "0.1"]))

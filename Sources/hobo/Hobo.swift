@@ -658,6 +658,8 @@ struct Exec: OutputCommand {
         abstract: "Run a command in a running VM.",
         discussion: """
             The command runs as the hobo user, without stdin or a TTY, and hobo exits with its status. \
+            It returns when the command exits: a process the command left running in the background \
+            (sh -c 'server >server.log 2>&1 &') keeps running, and what that writes to the command's output from then on is dropped. \
             Its arguments are quoted for the guest's shell, so use sh -c '<script>' (on Windows, powershell.exe -Command '<script>') \
             for pipes and the like. \
             With --gui it waits up to a minute for the desktop session, and exits 125 if it never comes up \
@@ -716,7 +718,15 @@ struct Copy: OutputCommand {
     func execute(_ output: Output) async throws -> Reply {
         let (vm, copy) = try GuestCopy.parse(paths, replace: replace, currentDirectory: .currentDirectory())
         let status = try GuestChannel().copy(vm, copy, onOutput: writeOutput)
-        return Reply(GuestCommandResult(exitStatus: status), text: nil, exitStatus: status)
+        return Reply(GuestCommandResult(exitStatus: status), text: status == 0 ? Self.text(paths: paths, replace: replace) : nil, exitStatus: status)
+    }
+
+    /// What a copy that worked prints, with the paths as they were given, so a script or an agent
+    /// needn't look in the guest to know it did.
+    static func text(paths: [String], replace: Bool) -> String {
+        let sources = paths.dropLast()
+        let what = sources.count == 1 ? sources[0] : "\(sources.count) items"
+        return "Copied \(what) to \(paths.last ?? "")\(replace ? ", replacing what was there" : "")"
     }
 }
 

@@ -43,6 +43,10 @@ hobo exec win -- powershell.exe -Command 'Get-Process | Select-Object -First 5'
   status, so it fits in scripts and CI.
 - Its arguments are quoted for the guest's shell. For pipes and redirection, run a shell
   yourself: `sh -c '…'`, or `powershell.exe -Command '…'` on Windows.
+- It returns when the command exits. A process the command left running in the background
+  keeps running, so `hobo exec dev -- sh -c 'server >server.log 2>&1 &'` starts a server and
+  comes straight back. What such a process writes to the command's own output after that is
+  dropped, so send its output to a file.
 - `--gui` runs the command in the desktop session instead. See
   [Screenshots and GUI testing](./gui-testing.md).
 - `--json` prints `{"exitStatus": …}` and sends the command's output to stderr.
@@ -66,7 +70,8 @@ are made if they aren't there, in the guest or on the host, so
 
 Copying onto a directory that is already there merges into it, so files the new copy doesn't have
 stay. `--replace` removes whatever each source would land on first. Neither ever puts a file where
-a directory is, or a directory where a file is: that copy fails and changes nothing.
+a directory is, or a directory where a file is: that copy fails and changes nothing. A copy that
+worked prints one line, `Copied ./build/MyApp.app to dev:/Applications/`.
 
 ```sh
 hobo cp --replace ./build/MyApp.app dev:/Applications/            # no leftovers from the old MyApp.app

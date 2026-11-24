@@ -273,7 +273,8 @@ public struct HoboUI: ParsableCommand {
         public static let configuration = CommandConfiguration(
             abstract: "Choose a file or folder in an app's open or save panel.",
             discussion: """
-                With the panel showing, goes to the path through its Go to Folder sheet, then clicks its Open or Save \
+                Waits up to 5 seconds for the panel to show, so it can follow the click that opens it, \
+                then goes to the path through its Go to Folder sheet and clicks its Open or Save \
                 button, failing if the panel is still there afterwards. In a save panel the path is the file to save. \
                 (A path typed into a panel loses the character after its first /, while that sheet opens.) \
                 On Linux it goes through the file chooser's location bar (Ctrl-L), and in GNOME's save dialog \
