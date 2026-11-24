@@ -1,3 +1,4 @@
+import CLIOutput
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -128,7 +129,7 @@ import Testing
     }
 
     @Test func resultShape() throws {
-        let json = String(decoding: try HoboJSON.line(ScreenshotResult(name: "dev", path: "/tmp/a.png")), as: UTF8.self)
+        let json = String(decoding: try CLIJSON.line(ScreenshotResult(name: "dev", path: "/tmp/a.png")), as: UTF8.self)
         #expect(json == #"{"name":"dev","path":"/tmp/a.png"}"#)
     }
 

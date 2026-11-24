@@ -1,3 +1,4 @@
+import CLIOutput
 import Foundation
 import HoboControl
 import HoboCore
@@ -493,7 +494,7 @@ import Testing
         defer { cleanUp() }
         let record = SnapshotRecord(config: config, createdAt: Date(timeIntervalSince1970: 1_800_000_000))
         let encoded = { (snapshot: Snapshot) throws -> String in
-            String(decoding: try HoboJSON.line(snapshot), as: UTF8.self)
+            String(decoding: try CLIJSON.line(snapshot), as: UTF8.self)
         }
         let disk = try encoded(Snapshot(tag: "a", record: record, savedStateBytes: nil))
         #expect(disk.contains(#""kind":"disk""#) && !disk.contains("savedStateBytes"))
@@ -518,9 +519,9 @@ import Testing
 
     @Test func restoreResultsEncodeTheirOutcome() throws {
         defer { cleanUp() }
-        #expect(String(decoding: try HoboJSON.line(VMLifecycle.RestoreResult.stopped), as: UTF8.self).contains(#""outcome":"stopped""#))
+        #expect(String(decoding: try CLIJSON.line(VMLifecycle.RestoreResult.stopped), as: UTF8.self).contains(#""outcome":"stopped""#))
         let status = VMRunStatus(state: .running, pid: 1)
-        let resumed = String(decoding: try HoboJSON.line(VMLifecycle.RestoreResult.started(.resumed(status))), as: UTF8.self)
+        let resumed = String(decoding: try CLIJSON.line(VMLifecycle.RestoreResult.started(.resumed(status))), as: UTF8.self)
         #expect(resumed.contains(#""outcome":"resumed""#) && resumed.contains(#""status""#))
     }
 }

@@ -59,12 +59,14 @@ global VMs on 2026-11-01.
    with exit status 1, and also `Error: …` on stderr so a pipe into jq doesn't swallow it; usage errors stay text on stderr. Sizes are bytes, dates ISO 8601, and the
    shapes (`VMSummary`, `RecipeSummary`, the lifecycle results) live in the core so `hobo mcp` returns
    the same ones. A CLI command gets all of this by conforming to `OutputCommand`, returning its
-   result rather than printing it. `delete --json` needs `--yes` or `--force`, since it can't prompt. `ip --json`
+   result rather than printing it. `OutputCommand` and the encoder (`CLIJSON`) come from the
+   [swift-cli-output](https://github.com/hobo-vm/swift-cli-output) package, extracted from hobo
+   so that wisp and candela print `--json` the same way; hobo keeps no copy of either. `delete --json` needs `--yes` or `--force`, since it can't prompt. `ip --json`
    gives the name and IP; `exec --json` and `cp --json` send the guest's output (or scp's) to stderr
    and print `{"exitStatus":…}`, still exiting with that status. `ssh` has no `--json`: it hands the
    terminal to ssh, and `exec` is the scriptable way to run a command. `usage` has no `--json`
    either: its output is reference text (decision 19).
-5. **Language.** Swift: swift-argument-parser, TOMLKit, modelcontextprotocol/swift-sdk.
+5. **Language.** Swift: swift-argument-parser, swift-cli-output, TOMLKit, modelcontextprotocol/swift-sdk.
 6. **Platform.** Apple Silicon only, macOS 27+, for `VZMacGuestProvisioningOptions` (unattended macOS
    setup with SSH) and ASIF disks. macOS guests go back to 15 (`IPSWCatalog.minimumGuestMajor`,
    2026-11-17); `images` and `init` leave older builds out and `create` refuses their IPSW before

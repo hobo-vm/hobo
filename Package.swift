@@ -1,6 +1,9 @@
 // swift-tools-version: 6.4
 import PackageDescription
 
+/// `--json` output and its encoder (`CLIJSON`), shared with the other tools that follow the convention.
+let cliOutput = Target.Dependency.product(name: "CLIOutput", package: "swift-cli-output")
+
 let package = Package(
     name: "hobo",
     // macOS 27 for DiskImageKit and guest provisioning.
@@ -11,6 +14,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.8.0"),
         .package(url: "https://github.com/LebJe/TOMLKit", from: "0.6.0"),
+        .package(url: "https://github.com/hobo-vm/swift-cli-output", from: "0.1.0"),
     ],
     targets: [
         .target(
@@ -43,12 +47,13 @@ let package = Package(
             dependencies: [
                 "HoboCore", "HoboControl", "HoboVM", "HoboMCP", "HoboUICore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                cliOutput,
             ]
         ),
-        .testTarget(name: "HoboCoreTests", dependencies: ["HoboCore"]),
-        .testTarget(name: "HoboControlTests", dependencies: ["HoboControl", "HoboCore"]),
-        .testTarget(name: "hoboTests", dependencies: ["hobo"]),
+        .testTarget(name: "HoboCoreTests", dependencies: ["HoboCore", cliOutput]),
+        .testTarget(name: "HoboControlTests", dependencies: ["HoboControl", "HoboCore", cliOutput]),
+        .testTarget(name: "hoboTests", dependencies: ["hobo", cliOutput]),
         .testTarget(name: "HoboUICoreTests", dependencies: ["HoboUICore"]),
-        .testTarget(name: "HoboVMTests", dependencies: ["HoboCore", "HoboControl", "HoboVM", "HoboUICore"], exclude: ["recipes"]),
+        .testTarget(name: "HoboVMTests", dependencies: ["HoboCore", "HoboControl", "HoboVM", "HoboUICore", cliOutput], exclude: ["recipes"]),
     ]
 )

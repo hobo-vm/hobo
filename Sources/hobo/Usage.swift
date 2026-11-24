@@ -1,4 +1,5 @@
 import ArgumentParser
+import CLIOutput
 import HoboCore
 import HoboUICore
 
@@ -16,7 +17,7 @@ struct Usage: ParsableCommand {
     }
 
     static func text(columns: Int? = nil) -> String {
-        let commands = visibleCommandPaths(of: HoboCommand.self).map(\.command)
+        let commands = CommandTree.visibleCommandPaths(of: HoboCommand.self).map(\.command)
         // `hobo ui`'s own commands are parsed by hobo-ui's definitions, not as subcommands.
         let uiCommands = HoboUI.configuration.subcommands.map { HoboUI.helpMessage(for: $0, columns: columns) }
         let sections = [HoboCommand.helpMessage(columns: columns)]
@@ -29,36 +30,8 @@ struct Usage: ParsableCommand {
             .joined(separator: "\n\n" + String(repeating: "─", count: 40) + "\n\n")
     }
 
-    /// Each visible command with its name as typed after the root (`claude install`). Depth-first,
-    /// in declaration order, so nested commands follow their parent.
-    static func visibleCommandPaths(of command: ParsableCommand.Type, prefix: String = "")
-        -> [(path: String, command: ParsableCommand.Type)] {
-        command.configuration.subcommands
-            .filter { $0.configuration.shouldDisplay }
-            .flatMap { sub in
-                let path = prefix + sub._commandName
-                return [(path, sub)] + visibleCommandPaths(of: sub, prefix: path + " ")
-            }
-    }
-
-    /// Which visible commands lack `--json` and which stream JSON Lines, read from each command's
-    /// `OutputCommand` conformance and `jsonStyle` rather than listed by hand. A group (`claude`)
-    /// only holds subcommands, so it's in neither list.
-    static func jsonSupport(of root: ParsableCommand.Type) -> (withoutJSON: [String], events: [String]) {
-        var withoutJSON: [String] = []
-        var events: [String] = []
-        for (path, command) in visibleCommandPaths(of: root) {
-            guard let outputCommand = command as? any OutputCommand.Type else {
-                if command.configuration.subcommands.isEmpty && !(command is any JSONPassthrough.Type) { withoutJSON.append(path) }
-                continue
-            }
-            if outputCommand.jsonStyle == .events { events.append(path) }
-        }
-        return (withoutJSON, events)
-    }
-
     static var conventions: String {
-        let json = jsonSupport(of: HoboCommand.self)
+        let json = CommandTree.jsonSupport(of: HoboCommand.self)
         return """
             CONVENTIONS:
               VMs         Each VM is a bundle, ~/Hobo/<name>.hobovm (HOBO_VMS overrides the directory).

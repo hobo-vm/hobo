@@ -1,5 +1,6 @@
 import AppKit
 import ArgumentParser
+import CLIOutput
 import Foundation
 import HoboControl
 import HoboCore
@@ -217,14 +218,14 @@ struct Images: OutputCommand {
         let rows = [["NAME", "VERSION", "BUILD", "RELEASED", "SIZE"]] + images.map { image in
             [image.name, image.version, image.build, image.releasedDay, formattedSize(image.size)]
         }
-        return formatTable(rows)
+        return Table.format(rows)
     }
 
     private func table(_ images: [UbuntuCatalog.Image]) -> String {
         let rows = [["NAME", "VERSION", "CODENAME", "RELEASE", "SUPPORT ENDS", "SIZE"]] + images.map { image in
             [image.name, image.version, image.codename, image.serial, image.supportEnds.map(day) ?? "—", formattedSize(image.size)]
         }
-        return formatTable(rows)
+        return Table.format(rows)
     }
 
     private func details(_ image: IPSWCatalog.Image) -> String {
@@ -367,18 +368,18 @@ struct List: OutputCommand {
         }
         let total = ["TOTAL", "", "", "", "", "", fileSize(listing.totalBytes), Self.snapshotsCell(count: listing.snapshotCount, bytes: listing.totalSnapshotBytes)]
         let rows = [["NAME", "STATE", "ADDRESS", "OS", "CPUS", "MEMORY", "DISK (USED/SIZE)", "SNAPSHOTS"]] + vmRows + [total]
-        return verbose ? Self.tableWithSnapshots(rows, snapshots: listing.vms.map { $0.snapshots ?? [] }) : formatTable(rows)
+        return verbose ? Self.tableWithSnapshots(rows, snapshots: listing.vms.map { $0.snapshots ?? [] }) : Table.format(rows)
     }
 
     /// The table of `rows` (a header, a row per VM, the total), with each VM's snapshots after its
     /// line, lined up under the STATE column.
     static func tableWithSnapshots(_ rows: [[String]], snapshots: [[Snapshot]]) -> String {
         let indent = String(repeating: " ", count: (rows.map { $0[0].count }.max() ?? 0) + 2)
-        let lines = formatTable(rows).components(separatedBy: "\n")
+        let lines = Table.format(rows).components(separatedBy: "\n")
         let snapshotsUnderLines = [[]] + snapshots + [[]] // Neither the header nor the total has any.
         return zip(lines, snapshotsUnderLines).flatMap { line, snapshots -> [String] in
             guard !snapshots.isEmpty else { return [line] }
-            let details = formatTable(snapshots.map { [$0.tag, $0.isLive ? "live" : "disk", createdText($0), fileSize($0.uniqueBytes ?? 0)] })
+            let details = Table.format(snapshots.map { [$0.tag, $0.isLive ? "live" : "disk", createdText($0), fileSize($0.uniqueBytes ?? 0)] })
             return [line] + details.components(separatedBy: "\n").map { indent + $0 }
         }.joined(separator: "\n")
     }
@@ -1142,7 +1143,7 @@ struct SnapshotList: OutputCommand {
                 snapshot.savedStateBytes.map(fileSize) ?? "—", fileSize(snapshot.uniqueBytes ?? 0),
             ]
         }
-        return Reply(snapshots, text: snapshots.isEmpty ? "\(vm.name) has no snapshots." : formatTable(rows))
+        return Reply(snapshots, text: snapshots.isEmpty ? "\(vm.name) has no snapshots." : Table.format(rows))
     }
 }
 
@@ -1298,15 +1299,6 @@ struct ClaudeUninstall: OutputCommand {
 /// A `--share` argument, resolved against the current directory.
 private func parseShare(_ argument: String) throws -> VMShare {
     try VMShare.parse(argument, currentDirectory: .currentDirectory())
-}
-
-/// Left-aligned columns two spaces apart, the first row a header.
-private func formatTable(_ rows: [[String]]) -> String {
-    let widths = rows[0].indices.map { column in rows.map { $0[column].count }.max() ?? 0 }
-    return rows.map { row in
-        zip(row, widths).map { $0.padding(toLength: $1, withPad: " ", startingAt: 0) }.joined(separator: "  ")
-            .trimmingCharacters(in: .whitespaces)
-    }.joined(separator: "\n")
 }
 
 private func createdText(_ snapshot: Snapshot) -> String {

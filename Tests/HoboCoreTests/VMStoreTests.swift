@@ -1,3 +1,4 @@
+import CLIOutput
 import Foundation
 import Synchronization
 import Testing
@@ -379,7 +380,7 @@ import Testing
     @Test func summaryJSONUsesBytesAndISO8601() throws {
         defer { try? FileManager.default.removeItem(at: store.directory) }
         try made("dev")
-        let line = String(decoding: try HoboJSON.line(store.list().map(VMSummary.init)), as: UTF8.self)
+        let line = String(decoding: try CLIJSON.line(store.list().map(VMSummary.init)), as: UTF8.self)
         #expect(!line.contains("\n"))
         #expect(line.contains(#""state":"stopped""#))
         #expect(line.contains(#""memory":8589934592"#))

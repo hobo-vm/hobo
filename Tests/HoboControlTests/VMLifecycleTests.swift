@@ -1,3 +1,4 @@
+import CLIOutput
 import Foundation
 import HoboCore
 import Synchronization
@@ -118,7 +119,7 @@ import Testing
     @Test func aStoppedVMsSummaryHasNoIdleTimeoutFields() throws {
         defer { cleanUp() }
         let summary = VMSummary(try store.find("dev"))
-        #expect(!String(decoding: try HoboJSON.line(summary), as: UTF8.self).contains("idle"))
+        #expect(!String(decoding: try CLIJSON.line(summary), as: UTF8.self).contains("idle"))
     }
 
     /// Marks `dev` ephemeral, as `clone --ephemeral` leaves it.
@@ -576,7 +577,7 @@ import Testing
 }
 
 @Suite struct LifecycleResultJSONTests {
-    private func json(_ value: some Encodable) throws -> String { String(decoding: try HoboJSON.line(value), as: UTF8.self) }
+    private func json(_ value: some Encodable) throws -> String { String(decoding: try CLIJSON.line(value), as: UTF8.self) }
 
     @Test func startResults() throws {
         let status = VMRunStatus(state: .running, pid: 42, ipAddress: "192.168.64.5")

@@ -1,27 +1,5 @@
 import Foundation
 
-/// The JSON that `--json` prints (and that `hobo mcp` will return): ISO 8601 dates, sizes in bytes,
-/// sorted keys so the output diffs cleanly.
-public enum HoboJSON {
-    /// A whole document, pretty-printed, for a command that prints one result.
-    public static func document(_ value: some Encodable) throws -> Data {
-        try encoder(pretty: true).encode(value)
-    }
-
-    /// One line, no newline, for a command that streams events (JSON Lines).
-    public static func line(_ value: some Encodable) throws -> Data {
-        try encoder(pretty: false).encode(value)
-    }
-
-    private static func encoder(pretty: Bool) -> JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        if pretty { encoder.outputFormatting.insert(.prettyPrinted) }
-        encoder.dateEncodingStrategy = .iso8601
-        return encoder
-    }
-}
-
 /// A VM as `--json` reports it: by `list`, and as the result of `create` and `rename`.
 public struct VMSummary: Encodable, Equatable, Sendable {
     public enum State: String, Codable, Sendable { case stopped, running, suspended, crashed, building, failed, broken }

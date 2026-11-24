@@ -1,3 +1,4 @@
+import CLIOutput
 import Foundation
 import Testing
 @testable import HoboCore
@@ -303,7 +304,7 @@ import Testing
         let bundle = try made("dev", in: store, megabytes: 1)
         try snapshot("clean", of: bundle)
         let vms = store.list()
-        let text = String(decoding: try HoboJSON.line(VMListing(vms, usage: store.diskUsage(of: vms))), as: UTF8.self)
+        let text = String(decoding: try CLIJSON.line(VMListing(vms, usage: store.diskUsage(of: vms))), as: UTF8.self)
         for key in [#""vms":["#, #""totalBytes":"#, #""snapshotCount":1"#, #""totalSnapshotBytes":"#, #""snapshotBytes":"#, #""tag":"clean""#, #""uniqueBytes":"#] {
             #expect(text.contains(key), "\(key) in \(text)")
         }

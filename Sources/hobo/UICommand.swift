@@ -1,4 +1,5 @@
 import ArgumentParser
+import CLIOutput
 import Foundation
 import HoboControl
 import HoboCore
@@ -65,7 +66,7 @@ struct UICommand: AsyncParsableCommand, JSONPassthrough {
         } catch let error where json && !(error is ExitCode) {
             // hobo-ui prints its own failures as JSON; this is for the host's (a VM not running).
             let message = String(describing: error)
-            let data = (try? HoboJSON.document(["error": message])) ?? Data()
+            let data = (try? CLIJSON.document(["error": message])) ?? Data()
             FileHandle.standardOutput.write(data + Data("\n".utf8))
             FileHandle.standardError.write(Data("Error: \(message)\n".utf8))
             throw ExitCode.failure

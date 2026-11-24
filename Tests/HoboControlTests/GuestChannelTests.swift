@@ -1,3 +1,4 @@
+import CLIOutput
 import Foundation
 import HoboCore
 import Synchronization
@@ -279,7 +280,7 @@ import Testing
 
 /// The shapes `hobo ip --json`, `exec --json` and `cp --json` print, which scripts depend on.
 @Suite struct GuestResultJSONTests {
-    private func json(_ value: some Encodable) throws -> String { String(decoding: try HoboJSON.line(value), as: UTF8.self) }
+    private func json(_ value: some Encodable) throws -> String { String(decoding: try CLIJSON.line(value), as: UTF8.self) }
 
     @Test func shapes() throws {
         #expect(try json(GuestAddress(name: "dev", ipAddress: "192.168.64.5")) == #"{"ipAddress":"192.168.64.5","name":"dev"}"#)

@@ -1,3 +1,4 @@
+import CLIOutput
 import Foundation
 import Testing
 @testable import HoboCore
@@ -47,12 +48,12 @@ import Testing
 
     @Test func jsonRoundTripsWithISO8601Dates() throws {
         let image = try images[1]
-        let data = try HoboJSON.document(image)
+        let data = try CLIJSON.document(image)
         #expect(String(decoding: data, as: UTF8.self).contains(#""released" : "2026-10-26T18:14:17Z""#))
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         #expect(try decoder.decode(IPSWCatalog.Image.self, from: data) == image)
-        #expect(try decoder.decode([IPSWCatalog.Image].self, from: HoboJSON.document(images)) == images)
+        #expect(try decoder.decode([IPSWCatalog.Image].self, from: CLIJSON.document(images)) == images)
     }
 
     @Test func hidesGuestsNewerThanTheHostOrOlderThanHoboBuilds() throws {

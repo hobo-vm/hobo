@@ -1,5 +1,5 @@
 {
-  "originHash" : "a655e8c0b448863e570cdb6b9f372c601dd09ee6c69de9943e73c0aa999de0dd",
+  "originHash" : "50b7f92e7be8df6ad63cfba4e77e91f079fe9c67aa33b4cdbb777fd102064859",
   "pins" : [
     {
       "identity" : "swift-argument-parser",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "6a52f3251125d74daf04fcbd5e6f08a75d074382",
         "version" : "1.8.2"
+      }
+    },
+    {
+      "identity" : "swift-cli-output",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hobo-vm/swift-cli-output",
+      "state" : {
+        "revision" : "e2a2f94bf015ba8caa01073086b7d642400ba7a7",
+        "version" : "0.1.0"
       }
     },
     {
