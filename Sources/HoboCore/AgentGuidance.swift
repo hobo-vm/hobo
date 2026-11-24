@@ -82,7 +82,8 @@ public enum AgentGuidance {
         open or save panel or dialog showing, `choose <path>` picks the file or folder in it (it waits for the panel, \
         so it can follow the click that opens one); don't type a \
         path into a panel, which loses a character. Refs keep their numbers across snapshots; a stale \
-        one fails rather than hit something else. `key` presses a key and says what had the focus, which is \
+        one fails rather than hit something else. A `hobo ui` command that fails is also recorded, with what it printed \
+        (a timed-out `wait`'s snapshot), in `~/.hobo/ui-failures.log`: read it when a script's check discarded the output. `key` presses a key and says what had the focus, which is \
         what took it. Coordinates are screenshot pixels. `screenshot --app <name>` saves just that app's windows and \
         `screenshot --ref e12` just that window or element; `--crop` takes any rectangle, also as a snapshot prints \
         a frame (`--crop "840,412 400×300"`). Check results \

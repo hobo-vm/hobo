@@ -133,6 +133,10 @@ $ hobo ui win choose 'C:\Users\hobo\Documents\hello.txt' --app notepad
   platform's own role (`AXTextArea`). A text field is a `textbox` and a pop-up button a `combobox`;
   a `--role` nothing has fails listing the roles that are there.
 - **Coordinates** are screenshot pixels, the same as in a `hobo screenshot` PNG.
+- **Failures** are also recorded on the host, in `~/.hobo/ui-failures.log`: each `hobo ui` command
+  that failed, with its exit status and what it printed, the newest last. A script's check that
+  throws a command's output away (`hobo ui dev wait … >/dev/null 2>&1`) can still be explained
+  afterwards, even once an ephemeral VM is gone. The file keeps about the last megabyte.
 - `--app` takes an app ID (a bundle ID such as `com.apple.TextEdit`, a desktop app ID such as
   `org.gnome.TextEditor`, a Windows AUMID or exe name such as `notepad`), a name or `pid:<n>`;
   without it, the frontmost app. File Explorer's folder windows and its shell are both `explorer`,

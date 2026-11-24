@@ -269,6 +269,34 @@ import Testing
         #expect(requests.withLock { $0 } == [.ui(arguments: ["snapshot"]), .ui(arguments: ["snapshot"])])
     }
 
+    /// A script's `hobo ui … >/dev/null 2>&1` leaves no other trace of why it failed.
+    @Test func aUICommandThatFailsIsRecordedWithWhatItPrinted() async throws {
+        defer { cleanUp() }
+        let channel = channel
+        let status = Mutex<Int32>(1)
+        let server = try serve { _, reply in
+            try? reply.send(.output(.stdout, Data("- window \"Main\" [e1]\n".utf8)))
+            try? reply.send(.output(.stderr, Data("hobo-ui: timed out after 30s waiting for app Wisp\n".utf8)))
+            return .exited(status.withLock { $0 })
+        }
+        defer { server.close() }
+        let failures = store.home.uiFailures
+        #expect(try await offPool { try channel.ui("dev", arguments: ["wait", "--app", "Wisp"]) { _, _ in } } == 1)
+        let recorded = try String(contentsOf: failures, encoding: .utf8)
+        #expect(recorded.hasPrefix("=== "))
+        #expect(recorded.hasSuffix(" hobo ui dev wait --app Wisp: exit 1\n- window \"Main\" [e1]\nhobo-ui: timed out after 30s waiting for app Wisp\n\n"))
+        // One that works leaves the record as it was.
+        status.withLock { $0 = 0 }
+        #expect(try await offPool { try channel.ui("dev", arguments: ["wait", "--app", "Wisp"]) { _, _ in } } == 0)
+        #expect(try String(contentsOf: failures, encoding: .utf8) == recorded)
+    }
+
+    @Test func aUICommandThatCouldntRunIsRecordedWithWhy() throws {
+        defer { cleanUp() }
+        #expect(throws: GuestChannelError.notRunning("dev")) { try channel.ui("dev", arguments: ["snapshot"]) { _, _ in } }
+        #expect(try String(contentsOf: store.home.uiFailures, encoding: .utf8).hasSuffix(" hobo ui dev snapshot: dev is not running (hobo start dev)\n\n"))
+    }
+
     @Test func aRefusalIsAnError() throws {
         defer { cleanUp() }
         let server = try serve { _, _ in .error("dev is stopping") }

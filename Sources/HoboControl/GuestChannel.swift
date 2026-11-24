@@ -30,8 +30,27 @@ public struct GuestChannel: Sendable {
         try stream(.exec(command: command, gui: gui), name: name, onOutput: onOutput)
     }
 
-    /// `hobo ui`: runs hobo-ui in a macOS guest with `arguments` and returns its exit status.
+    /// `hobo ui`: runs hobo-ui in a macOS guest with `arguments`, or the driver in the VM process for
+    /// another guest, and returns its exit status. A command that fails, or can't run, goes in the
+    /// home's `UIFailureLog` with what it printed.
     public func ui(_ name: String, arguments: [String], onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
+        let failures = UIFailureLog(file: store.home.uiFailures)
+        var printed = Data()
+        do {
+            let status = try uiUnrecorded(name, arguments: arguments) { stream, data in
+                // Both streams, in the order they came.
+                printed += data
+                try onOutput(stream, data)
+            }
+            if status != 0 { try? failures.record(vm: name, arguments: arguments, result: "exit \(status)", output: printed) }
+            return status
+        } catch {
+            try? failures.record(vm: name, arguments: arguments, result: "\(error)", output: printed)
+            throw error
+        }
+    }
+
+    private func uiUnrecorded(_ name: String, arguments: [String], onOutput: (GuestStream, Data) throws -> Void) throws -> Int32 {
         let (vm, _) = try runningJob(name)
         let config = try VMConfig.load(from: vm.bundle.appending(path: VMStore.configFile))
         if let major = config.macOSMajor, major < Conventions.uiToolMinimumMajor {

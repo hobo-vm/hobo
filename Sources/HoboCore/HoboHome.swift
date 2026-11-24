@@ -17,6 +17,8 @@ public struct HoboHome: Sendable {
     public var images: URL { root.appending(path: "images.json") }
     /// Hobo's insecure private key, written out for `ssh -i`.
     public var insecurePrivateKey: URL { root.appending(path: "insecure_private_key") }
+    /// The `hobo ui` commands that failed, and what they printed (see `UIFailureLog`).
+    public var uiFailures: URL { root.appending(path: "ui-failures.log") }
 
     /// Writes the insecure private key (mode 0600) unless the file already holds it, and returns its
     /// path. A file holding anything else, such as a key from an older build, is replaced.
