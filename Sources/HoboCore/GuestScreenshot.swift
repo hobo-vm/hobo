@@ -233,7 +233,8 @@ public enum ScreenshotSubject: Equatable, Sendable, CustomStringConvertible {
             throw ScreenshotCropError.noFrame(self, answer.error ?? "hobo ui gave no snapshot")
         }
         let frames = elements.compactMap(\.frame).map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }
-        let around = frames.dropFirst().reduce(frames.first ?? .zero) { $0.union($1) }
+        // The null rectangle adds nothing to a union, and is as wide as no frames at all: 0.
+        let around = frames.reduce(CGRect.null) { $0.union($1) }
         guard around.width >= 1, around.height >= 1 else {
             switch self {
             case .app: throw ScreenshotCropError.noFrame(self, "it has no windows")

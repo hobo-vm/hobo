@@ -461,7 +461,8 @@ public struct UIDriver<Backend: UIBackend> {
         // Read before the key, which may move the focus or close what had it.
         let focused = focusedElement()
         backend.key(spec)
-        return Outcome(text: "pressed \(c.key)" + (focused.map { " with the focus on " + AppSnapshot.line($0) } ?? ""), element: focused)
+        let focusNote = focused.map { " with the focus on " + AppSnapshot.line($0) } ?? ""
+        return Outcome(text: "pressed \(c.key)" + focusNote, element: focused)
     }
 
     /// What has the keyboard focus in the frontmost app, so `key` can say where its key went: the
@@ -470,7 +471,9 @@ public struct UIDriver<Backend: UIBackend> {
     /// nothing does.
     func focusedElement() -> SnapshotNode? {
         guard let app = try? app(nil) else { return nil }
-        guard let (_, attributes, locator) = searchableElements(under: app.root).last(where: { $0.1.focused }) else { return nil }
+        // The walk lists a window before what is in it, so the last focused element is the deepest.
+        let focused = searchableElements(under: app.root).last { _, attributes, _ in attributes.focused }
+        guard let (_, attributes, locator) = focused else { return nil }
         return try? store.update(app.identity.storeKey) { refs in
             SnapshotNode(ref: refs.ref(for: locator), attributes: attributes, scale: scale)
         }
