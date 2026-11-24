@@ -18,6 +18,20 @@ struct UsageTests {
         #expect(UICommand.helpSubject(of: ["type", "--help", "--", "x"]) == HoboUI.TypeText.self)
     }
 
+    /// `hobo ui wait --help` printed `hobo ui`'s help: ArgumentParser took `wait` for the VM.
+    @Test func uiHelpForACommandNeedsNoVM() {
+        #expect(UICommand.helpSubjectWithoutVM(of: ["wait", "--help"]) == HoboUI.Wait.self)
+        #expect(UICommand.helpSubjectWithoutVM(of: ["click", "-h"]) == HoboUI.Click.self)
+        #expect(UICommand.helpSubjectWithoutVM(of: ["help", "wait"]) == HoboUI.Wait.self)
+        // The rest is `UICommand`'s, as before: its own help, a VM's command, and a VM called key.
+        #expect(UICommand.helpSubjectWithoutVM(of: ["--help"]) == nil)
+        #expect(UICommand.helpSubjectWithoutVM(of: ["help"]) == nil)
+        #expect(UICommand.helpSubjectWithoutVM(of: ["dev", "wait", "--help"]) == nil)
+        #expect(UICommand.helpSubjectWithoutVM(of: ["dev", "wait", "--app", "TextEdit"]) == nil)
+        #expect(UICommand.helpSubjectWithoutVM(of: ["key", "click", "--help"]) == nil)
+        #expect(UICommand.helpSubjectWithoutVM(of: ["wait", "--app", "TextEdit"]) == nil)
+    }
+
     @Test func listsEveryVisibleCommandOnce() {
         let allLines = Usage.text(columns: 100).split(separator: "\n").filter { $0.hasPrefix("USAGE: hobo ") }
         // `hobo ui`'s own commands, parsed by hobo-ui's definitions, follow its help.

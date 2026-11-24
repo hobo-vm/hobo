@@ -38,6 +38,17 @@ struct UICommand: AsyncParsableCommand, JSONPassthrough {
         return HoboUI.configuration.subcommands.first { $0._commandName == named } ?? HoboUI.self
     }
 
+    /// The command that `hobo ui <command> --help` or `hobo ui help <command>` asks about, with
+    /// no VM named: ArgumentParser takes the command for the VM and prints `hobo ui`'s own help,
+    /// so `Entry` asks this first. Nil for anything else, `hobo ui key click --help` included:
+    /// that is about `click`, in a VM called key.
+    static func helpSubjectWithoutVM(of arguments: [String]) -> (any ParsableCommand.Type)? {
+        guard let subject = helpSubject(of: arguments), subject != HoboUI.self else { return nil }
+        let commands = HoboUI.configuration.subcommands.map { $0._commandName }
+        if arguments.first != "help", let second = arguments.dropFirst().first, commands.contains(second) { return nil }
+        return subject
+    }
+
     func validate() throws {
         guard !arguments.isEmpty else { throw ValidationError("give a command: \(Self.commandList)") }
         // Help is the host's to print: hobo-ui would print the same.

@@ -16,6 +16,11 @@ enum Entry {
         if arguments.first == VMRun.configuration.commandName {
             VMRun.main(Array(arguments.dropFirst()))
         }
+        // `hobo ui wait --help`: the command's help, where ArgumentParser would take `wait` for the VM.
+        if arguments.first == UICommand._commandName, let subject = UICommand.helpSubjectWithoutVM(of: Array(arguments.dropFirst())) {
+            print(HoboUI.helpMessage(for: subject))
+            exit(0)
+        }
         // `create` may need a window (a recipe's recoveryOS step), so in a GUI session it runs under
         // AppKit's loop; `.accessory` keeps it out of the Dock until a window shows. Elsewhere (SSH,
         // no window server) it runs like any other command, and such recipes fail before installing.
