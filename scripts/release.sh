@@ -105,7 +105,9 @@ mkdir -p "$DIST/tap/Formula"
 cp "$DIST/hobo.rb" "$DIST/tap/Formula/hobo.rb"
 git -C "$DIST/tap" add Formula/hobo.rb
 git -C "$DIST/tap" commit -q -m "hobo ${VERSION}"
-git -C "$DIST/tap" push -q origin HEAD
+# gh cloned it over HTTPS, so the push uses gh's credentials: git has none of its own for
+# github.com when the checkout it runs from pushes over SSH, and would stop to ask for a username.
+git -C "$DIST/tap" -c credential.helper= -c credential.helper='!gh auth git-credential' push -q origin HEAD
 left="git push origin main"
 
 git push -q origin main
