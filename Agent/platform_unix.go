@@ -107,7 +107,7 @@ func start(spec commandSpec) (process, error) {
 }
 
 // launch starts cmd with spec's output and, if asked for, an input. The output goes through pipes
-// of the agent's own (outputRelay), not os/exec's, whose Wait is for their end.
+// of the agent's own (outputRelay), not os/exec's, whose Wait doesn't return until they end.
 func launch(cmd *exec.Cmd, spec commandSpec) (process, error) {
 	proc := &unixProcess{cmd: cmd, exited: make(chan struct{})}
 	var ends []*os.File

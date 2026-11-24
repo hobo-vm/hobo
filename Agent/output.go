@@ -26,7 +26,7 @@ type outputStream struct {
 	gate
 	ended atomic.Bool
 	// When the read it is waiting in began, in Unix nanoseconds; 0 while it passes output on. A
-	// slow host holds it there, so the grace never cuts off output that has already been written.
+	// slow host holds it at 0, so the grace never cuts off output that has already been written.
 	waitingSince atomic.Int64
 }
 
@@ -65,12 +65,12 @@ func (r *outputRelay) finish() {
 	}()
 	tick := time.NewTicker(20 * time.Millisecond)
 	defer tick.Stop()
-	for quiet := false; !quiet; {
+	for done := false; !done; {
 		select {
 		case <-ended:
-			quiet = true
+			done = true
 		case <-tick.C:
-			quiet = r.quiet(exited)
+			done = r.quiet(exited)
 		}
 	}
 	for _, stream := range r.streams {
@@ -87,7 +87,9 @@ func (r *outputRelay) quiet(exited int64) bool {
 		if stream.ended.Load() {
 			continue
 		}
-		if since := stream.waitingSince.Load(); since == 0 || now-max(since, exited) < int64(outputGrace) {
+		since := stream.waitingSince.Load()
+		passingOutputOn := since == 0
+		if passingOutputOn || now-max(since, exited) < int64(outputGrace) {
 			return false
 		}
 	}

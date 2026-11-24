@@ -144,7 +144,7 @@ func start(spec commandSpec) (process, error) {
 	childEnds = append(childEnds, stdin)
 	outputs := []io.Writer{spec.stdout, spec.stderr}
 	var writeEnds [2]syscall.Handle
-	for i, output := range outputs {
+	for i := range outputs {
 		var read syscall.Handle
 		if err := syscall.CreatePipe(&read, &writeEnds[i], inheritable, 0); err != nil {
 			proc.closeStdin()
@@ -152,7 +152,6 @@ func start(spec commandSpec) (process, error) {
 		}
 		syscall.SetHandleInformation(read, handleFlagInherit, 0)
 		childEnds = append(childEnds, writeEnds[i])
-		proc.outputs = append(proc.outputs, output)
 		proc.reads = append(proc.reads, os.NewFile(uintptr(read), "output"))
 	}
 
@@ -215,7 +214,7 @@ func start(spec commandSpec) (process, error) {
 	}
 	procResumeThread.Call(uintptr(pi.Thread))
 	for i, read := range proc.reads {
-		proc.output.add(read, proc.outputs[i])
+		proc.output.add(read, outputs[i])
 	}
 	return proc, nil
 }
@@ -310,7 +309,6 @@ type windowsProcess struct {
 	job     syscall.Handle
 	stdin   *os.File
 	reads   []*os.File
-	outputs []io.Writer
 	output  outputRelay
 	mutex   sync.Mutex
 	done    bool
