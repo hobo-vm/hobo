@@ -111,4 +111,10 @@ left="git push origin main"
 git push -q origin main
 
 echo "Released ${VERSION}: https://github.com/${REPO}/releases/tag/${TAG}"
-echo "Check it as a user: brew install hobo-vm/tap/hobo"
+# A hobo Homebrew has installed now is the one `make release-test` left, from its local tap, and
+# Homebrew won't install the same name from a second tap over it.
+if brew list --formula hobo > /dev/null 2>&1; then
+    echo "Check it as a user: brew uninstall hobo && brew install hobo-vm/tap/hobo"
+else
+    echo "Check it as a user: brew install hobo-vm/tap/hobo"
+fi
