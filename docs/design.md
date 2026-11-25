@@ -760,9 +760,10 @@ global VMs on 2026-11-01.
         to explain. It is the deepest element that says it is focused (a macOS window says so
         too), found by walking the app's tree as `click --text` does, so no backend needed a new call.
       - A command that fails is recorded on the host (2026-11-24), in `~/.hobo/ui-failures.log`
-        (`UIFailureLog`, written by `GuestChannel.ui`): its command line, its exit status or the
-        error that kept it from running, and what it printed, the newest last, the oldest dropped
-        past 1 MB. A test script ran `hobo ui … wait` under `>/dev/null 2>&1` in an ephemeral
+        (`UIFailureLog`, written by `GuestChannel.ui`, and by `UICommand` for a usage error,
+        which fails on the host as `exit 64` before a VM is asked): its command line, its exit
+        status or the error that kept it from running, and what it printed, the newest last, the
+        oldest dropped past 1 MB. A test script ran `hobo ui … wait` under `>/dev/null 2>&1` in an ephemeral
         clone; the wait failed once in two runs and nothing was left to say why. The record is
         the host's, not the VM's (`<key>.log` goes with the VM), so it outlives an ephemeral
         clone. There is no command to read it: it is a text file. `hobo ui <command> --help`

@@ -7,6 +7,27 @@ import Testing
 @testable import hobo
 
 struct UsageTests {
+    /// `hobo ui dev wait --bogus >/dev/null 2>&1` fails on the host, before `GuestChannel.ui` could record it.
+    @Test func aUIUsageErrorIsRecordedAsAFailure() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "hobo-ui-usage-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let failures = UIFailureLog(file: directory.appending(path: "ui-failures.log"))
+
+        #expect(throws: ExitCode.validationFailure) { try UICommand.validate(vm: "dev", arguments: ["wait", "--bogus"], failures: failures) }
+        let usageError = try #require(UICommand.usageError(of: ["wait", "--bogus"]))
+        #expect(usageError.message.hasPrefix("Error: ") && usageError.message.contains("Usage: hobo ui <vm> wait"))
+        var recorded = try String(contentsOf: failures.file, encoding: .utf8)
+        #expect(recorded.hasSuffix(" hobo ui dev wait --bogus: exit 64\n\(usageError.message)\n\n"))
+
+        #expect(throws: ValidationError.self) { try UICommand.validate(vm: "dev", arguments: [], failures: failures) }
+        recorded = try String(contentsOf: failures.file, encoding: .utf8)
+        #expect(recorded.hasSuffix(" hobo ui dev: exit 64\nError: give a command: \(UICommand.commandList)\n\n"))
+
+        // A command hobo-ui would take is the VM's to run, and `GuestChannel.ui`'s to record.
+        try UICommand.validate(vm: "dev", arguments: ["wait", "--app", "TextEdit"], failures: failures)
+        #expect(try String(contentsOf: failures.file, encoding: .utf8) == recorded)
+    }
+
     @Test func uiHelpIsAboutTheCommandNamed() {
         #expect(UICommand.helpSubject(of: ["key", "--help"]) == HoboUI.Key.self)
         #expect(UICommand.helpSubject(of: ["help", "key"]) == HoboUI.Key.self)

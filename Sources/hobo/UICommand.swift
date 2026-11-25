@@ -51,22 +51,41 @@ struct UICommand: AsyncParsableCommand, JSONPassthrough {
     }
 
     func validate() throws {
-        guard !arguments.isEmpty else { throw ValidationError("give a command: \(Self.commandList)") }
         // Help is the host's to print: hobo-ui would print the same.
         if let subject = Self.helpSubject(of: arguments) {
             print(HoboUI.helpMessage(for: subject))
             throw ExitCode.success
         }
+        try Self.validate(vm: name, arguments: arguments, failures: UIFailureLog(file: HoboHome.standard().uiFailures))
+    }
+
+    /// Throws for arguments hobo-ui wouldn't take, having recorded the usage error in `failures`
+    /// as `GuestChannel.ui` records a command that reached the VM and failed there: this one
+    /// fails before any VM is asked, and is as lost to a script that discards its output.
+    static func validate(vm: String, arguments: [String], failures: UIFailureLog) throws {
+        guard let usageError = usageError(of: arguments) else { return }
+        let result = "exit \(ExitCode.validationFailure.rawValue)"
+        try? failures.record(vm: vm, arguments: arguments, result: result, output: Data(usageError.message.utf8))
+        guard usageError.hasUsage else { throw ValidationError(String(usageError.message.dropFirst("Error: ".count))) }
+        FileHandle.standardError.write(Data((usageError.message + "\n").utf8))
+        throw ExitCode.validationFailure
+    }
+
+    /// What is wrong with a command's arguments, as it is printed: nil when hobo-ui would take
+    /// them. `hasUsage` is false for no command at all, which ArgumentParser prints with
+    /// `hobo ui`'s usage.
+    static func usageError(of arguments: [String]) -> (message: String, hasUsage: Bool)? {
+        guard !arguments.isEmpty else { return ("Error: give a command: \(commandList)", false) }
         do {
             _ = try HoboUI.parseAsRoot(arguments)
+            return nil
         } catch {
             // With the usage of the command that failed (`hobo ui <vm> key <cmd+k>`), not of `hobo ui`.
             var message = HoboUI.usageError(for: error)
             if let hint = HoboUI.scrollHint(for: arguments) ?? HoboUI.refOptionHint(for: arguments) ?? HoboUI.atAppHint(for: arguments), let usage = message.range(of: "Usage:") {
                 message = "Error: \(hint)\n" + message[usage.lowerBound...]
             }
-            FileHandle.standardError.write(Data((message + "\n").utf8))
-            throw ExitCode.validationFailure
+            return (message, true)
         }
     }
 
