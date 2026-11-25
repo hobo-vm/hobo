@@ -28,6 +28,14 @@ struct UsageTests {
         #expect(try String(contentsOf: failures.file, encoding: .utf8) == recorded)
     }
 
+    /// A hint takes the place of ArgumentParser's error, above the usage of the command that failed.
+    @Test func aUIUsageErrorLeadsWithItsHint() throws {
+        let arguments = ["scroll", "e99", "--down", "600"]
+        let hint = try #require(HoboUI.scrollHint(for: arguments))
+        let usageError = try #require(UICommand.usageError(of: arguments))
+        #expect(usageError.hasPrefix("Error: \(hint)\nUsage: hobo ui <vm> scroll"))
+    }
+
     @Test func uiHelpIsAboutTheCommandNamed() {
         #expect(UICommand.helpSubject(of: ["key", "--help"]) == HoboUI.Key.self)
         #expect(UICommand.helpSubject(of: ["help", "key"]) == HoboUI.Key.self)
