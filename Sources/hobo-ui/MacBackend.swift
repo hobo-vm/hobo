@@ -54,6 +54,14 @@ struct MacBackend: UIBackend {
 
     func element(at point: CGPoint) -> AXElement? { AXElement.at(point) }
 
+    /// loginwindow keeps a picture of the boot screen over the desktop (its "snapshot window") from
+    /// auto-login until the Dock and desktop say they're ready, about 3 s on an idle host and far
+    /// longer on a busy one: apps launch and answer accessibility under it, and a click goes to it.
+    /// A locked screen is loginwindow's too, and doesn't go, so the wait is bounded.
+    func coversWhileLoggingIn(_ element: AXElement) -> Bool {
+        NSRunningApplication(processIdentifier: element.pid)?.bundleIdentifier == "com.apple.loginwindow"
+    }
+
     /// Makes the app frontmost and raises the element's window, through accessibility (an app
     /// activating another from the background is refused).
     func bringForward(_ element: AXElement, of app: RunningApp) {

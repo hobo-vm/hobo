@@ -135,6 +135,8 @@ public final class RemoteBackend: UIBackend {
         try? element(call("at", self.point(point)))
     }
 
+    public func coversWhileLoggingIn(_ element: RemoteElement) -> Bool { false }
+
     public func bringForward(_ element: RemoteElement, of app: RunningApp) {
         _ = try? call("raise", ["id": element.id, "pid": Int(app.identity.pid)])
     }

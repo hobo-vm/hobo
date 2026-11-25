@@ -35,6 +35,11 @@ public protocol UIBackend {
     /// The element a click at `point` would reach, whichever app it's in.
     func element(at point: CGPoint) -> Element?
 
+    /// Whether `element`, found over what a click was meant for, is the cover the system keeps
+    /// over the desktop while it logs in, which goes by itself: `UIDriver` waits for it rather
+    /// than fail the click.
+    func coversWhileLoggingIn(_ element: Element) -> Bool
+
     /// Brings the element's app forward and raises its window, waiting a moment for it to take.
     func bringForward(_ element: Element, of app: RunningApp)
     /// The on-screen windows over `area`, as stacked now; `UIDriver` waits for them to stop

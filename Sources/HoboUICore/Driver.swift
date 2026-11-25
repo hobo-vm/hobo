@@ -234,6 +234,9 @@ public struct UIDriver<Backend: UIBackend> {
         lineage(element).last { UIRole.windows.contains(attributes($0).role) } ?? element
     }
 
+    /// How long a click waits for the login cover (`UIBackend.coversWhileLoggingIn`) to go.
+    static var loginCoverWait: TimeInterval { 30 }
+
     /// The element's centre, if a click there would reach it, once the windows over the element's
     /// window have stopped animating.
     func hitPoint(_ element: Element, node: SnapshotNode) throws -> CGPoint {
@@ -251,8 +254,19 @@ public struct UIDriver<Backend: UIBackend> {
         if ScrollVisibility.obstruction(of: centre, areas: scrollAreas(around: element)) != nil {
             throw UIError.failed("\(AppSnapshot.line(node)) is scrolled out of view; scroll --to \(node.ref) first")
         }
-        guard let hit = backend.element(at: centre) else {
-            throw UIError.failed("nothing answers at \(AppSnapshot.line(node))'s centre")
+        func hitTest() throws -> Element {
+            guard let hit = backend.element(at: centre) else {
+                throw UIError.failed("nothing answers at \(AppSnapshot.line(node))'s centre")
+            }
+            return hit
+        }
+        var hit = try hitTest()
+        // A cover the system takes away itself is waited for: a guest that is slow to log in still
+        // has one up when its apps already answer.
+        let coverGone = Date().addingTimeInterval(Self.loginCoverWait)
+        while backend.coversWhileLoggingIn(hit), Date() < coverGone {
+            backend.pause(0.25)
+            hit = try hitTest()
         }
         // Hit-testing can land on something inside the element (a cell's text), or on a container of
         // it that doesn't hit-test its children; either way the click reaches it.
