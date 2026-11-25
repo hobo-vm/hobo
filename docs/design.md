@@ -763,10 +763,10 @@ global VMs on 2026-11-01.
         (`UIFailureLog`, written by `GuestChannel.ui`, and by `UICommand` for a usage error,
         which fails on the host as `exit 64` before a VM is asked): its command line, its exit
         status or the error that kept it from running, and what it printed, the newest last, the
-        oldest dropped past 1 MB. A test script ran `hobo ui … wait` under `>/dev/null 2>&1` in an ephemeral
-        clone; the wait failed once in two runs and nothing was left to say why. The record is
-        the host's, not the VM's (`<key>.log` goes with the VM), so it outlives an ephemeral
-        clone. There is no command to read it: it is a text file. `hobo ui <command> --help`
+        oldest dropped past 1 MB. A test script ran `hobo ui … wait` under `>/dev/null 2>&1` in
+        an ephemeral clone; the wait failed once in two runs and nothing was left to say why. The
+        record is the host's, not the VM's (`<key>.log` goes with the VM), so it outlives an
+        ephemeral clone. There is no command to read it: it is a text file. `hobo ui <command> --help`
         without a VM prints that command's help (`Entry` checks before ArgumentParser, which
         takes the command for the VM's name and printed `hobo ui`'s overview).
       - `choose <path>` (2026-11-11) picks a file or folder in the open or save panel an app is
