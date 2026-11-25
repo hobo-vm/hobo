@@ -838,6 +838,12 @@ let integrationEnabled = environment["HOBO_INTEGRATION"] == "1"
         #expect(try ui(["click", "e99999", "--app", "TextEdit"]) == 1, "an unknown ref fails")
         #expect(try ui(["wait", "--text", "never there", "--app", "TextEdit", "--timeout", "0.5"]) == 1)
 
+        // An app that launches after the wait for it has begun: the wait once went on reading the
+        // list of apps it began with, and timed out with the app on screen.
+        #expect(try run(hobo, ["exec", vm, "--", "sh", "-c", "(sleep 3; open -a Calculator) >/dev/null 2>&1 &"], in: work, environment: env) == 0)
+        #expect(try ui(["wait", "--app", "Calculator", "--timeout", "20"]) == 0)
+        #expect(try run(hobo, ["exec", vm, "--", "osascript", "-e", "quit app \"Calculator\""], in: work, environment: env) == 0)
+
         // Finder's icon view: drag a file onto a folder, and find it moved on disk.
         #expect(try run(hobo, ["exec", vm, "--", "sh", "-c", "mkdir -p ~/DragTest/Folder && touch ~/DragTest/a.txt && open ~/DragTest"], in: work, environment: env) == 0)
         #expect(try ui(["wait", "--text", "a.txt", "--app", "Finder"]) == 0)

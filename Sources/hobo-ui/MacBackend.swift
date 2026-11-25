@@ -211,5 +211,13 @@ struct MacBackend: UIBackend {
 
     func type(_ text: String) { Input.type(text) }
 
-    func pause(_ seconds: Double) { Input.pause(seconds) }
+    /// Runs the main run loop for the time, rather than sleeping the thread: `NSWorkspace` brings
+    /// `runningApplications` up to date only there, so a `wait --app` that slept between its looks
+    /// never saw an app that launched after it began, and timed out with the app on screen.
+    func pause(_ seconds: Double) {
+        let end = Date().addingTimeInterval(seconds)
+        // Returns at once when the run loop has no sources, so what's left of the time is slept.
+        RunLoop.current.run(until: end)
+        Input.pause(max(0, end.timeIntervalSinceNow))
+    }
 }
