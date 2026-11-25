@@ -46,13 +46,17 @@ public struct UIFailureLog: Sendable {
         var kept = output.prefix(outputLimit)
         if kept.count < output.count { kept += Data("\n… (\(output.count - kept.count) more bytes)".utf8) }
         try handle.write(contentsOf: Data(Self.entry(vm: vm, arguments: arguments, result: result, output: kept, at: date).utf8))
-        guard try handle.offset() > limit else { return }
+        if try handle.offset() > limit { try dropOldestEntries(from: handle) }
+    }
+
+    /// Rewrites the file as the entries that start in its newest half-limit of bytes.
+    private func dropOldestEntries(from handle: FileHandle) throws {
         try handle.seek(toOffset: 0)
         let all = try handle.readToEnd() ?? Data()
-        // From the first entry that starts in the newest half.
         let newestHalf: Range<Int> = max(0, all.count - limit / 2)..<all.count
-        let boundary = all.range(of: Data(("\n" + Self.marker).utf8), in: newestHalf)
-        let start = boundary.map { $0.lowerBound + 1 } ?? all.count
+        let firstKeptEntry = all.range(of: Data(("\n" + Self.marker).utf8), in: newestHalf)
+        // Past the newline that ends the entry before it.
+        let start = firstKeptEntry.map { $0.lowerBound + 1 } ?? all.count
         try handle.truncate(atOffset: 0)
         try handle.write(contentsOf: all[start...])
     }
