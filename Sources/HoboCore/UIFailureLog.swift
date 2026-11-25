@@ -25,12 +25,9 @@ public struct UIFailureLog: Sendable {
     /// The entry for a `hobo ui <vm> <arguments>` that ended with `result` (`exit 1`, or the error
     /// that kept it from running) after printing `output`.
     static func entry(vm: String, arguments: [String], result: String, output: Data, at date: Date) -> String {
-        let words = (["hobo", "ui", vm] + arguments).map { word in
-            word.range(of: #"^[A-Za-z0-9_@%+=:,./-]+$"#, options: .regularExpression) != nil ? word : shellQuote(word)
-        }
         let body = String(decoding: output, as: UTF8.self).trimmingCharacters(in: .newlines)
         // The command line has lines of its own when an argument does (`type` with a file's text).
-        let heading = "\(date.formatted(.iso8601)) \(words.joined(separator: " ")): \(result)"
+        let heading = "\(date.formatted(.iso8601)) \(shellCommandLine(["hobo", "ui", vm] + arguments)): \(result)"
         let lines = (heading + (body.isEmpty ? "" : "\n" + body)).split(separator: "\n", omittingEmptySubsequences: false)
             .map { $0.hasPrefix(marker) ? " " + $0 : String($0) }
         return marker + lines.joined(separator: "\n") + "\n\n"

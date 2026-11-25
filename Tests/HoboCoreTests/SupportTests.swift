@@ -308,6 +308,11 @@ import Testing
     @Test func shellQuoteEscapesSingleQuotes() {
         #expect(shellQuote("it's") == #"'it'\''s'"#)
     }
+
+    /// A regular expression's `$` also matches before a last newline, which left `x\n` bare.
+    @Test func aCommandLineQuotesOnlyWhatTheShellWouldChange() {
+        #expect(shellCommandLine(["hobo", "ui", "dev-1", "wait", "--text", "3 photos", "", "a;b", "x\n", "é"]) == "hobo ui dev-1 wait --text '3 photos' '' 'a;b' 'x\n' 'é'")
+    }
 }
 
 /// `python3 -m http.server` on a free port, serving `directory`.
