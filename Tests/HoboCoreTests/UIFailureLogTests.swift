@@ -33,6 +33,13 @@ import Testing
         #expect(try contents().split(separator: "\n").map(String.init) == ["=== 2027-01-15T08:00:00Z hobo ui dev snapshot: exit 1", " === text", "more"])
     }
 
+    /// `hobo ui dev type "$(cat notes.adoc)"`: an argument's lines are lines of the entry too.
+    @Test func anArgumentsLineThatLooksLikeAnEntryIsIndented() throws {
+        defer { cleanUp() }
+        try UIFailureLog(file: file).record(vm: "dev", arguments: ["type", "Title\n=== Section"], result: "exit 1", output: Data("no focus\n".utf8), at: date)
+        #expect(try contents().split(separator: "\n").map(String.init) == ["=== 2027-01-15T08:00:00Z hobo ui dev type 'Title", " === Section': exit 1", "no focus"])
+    }
+
     @Test func pastItsLimitTheOldestEntriesGo() throws {
         defer { cleanUp() }
         let log = UIFailureLog(file: file, limit: 2000)

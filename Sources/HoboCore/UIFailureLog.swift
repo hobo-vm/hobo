@@ -28,10 +28,12 @@ public struct UIFailureLog: Sendable {
         let words = (["hobo", "ui", vm] + arguments).map { word in
             word.range(of: #"^[A-Za-z0-9_@%+=:,./-]+$"#, options: .regularExpression) != nil ? word : shellQuote(word)
         }
-        let lines = String(decoding: output, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false)
+        let body = String(decoding: output, as: UTF8.self).trimmingCharacters(in: .newlines)
+        // The command line has lines of its own when an argument does (`type` with a file's text).
+        let heading = "\(date.formatted(.iso8601)) \(words.joined(separator: " ")): \(result)"
+        let lines = (heading + (body.isEmpty ? "" : "\n" + body)).split(separator: "\n", omittingEmptySubsequences: false)
             .map { $0.hasPrefix(marker) ? " " + $0 : String($0) }
-        let body = lines.joined(separator: "\n").trimmingCharacters(in: .newlines)
-        return "\(marker)\(date.formatted(.iso8601)) \(words.joined(separator: " ")): \(result)\n" + (body.isEmpty ? "" : body + "\n") + "\n"
+        return marker + lines.joined(separator: "\n") + "\n\n"
     }
 
     /// Adds an entry, then drops the oldest entries if the file has outgrown its limit. Under a
