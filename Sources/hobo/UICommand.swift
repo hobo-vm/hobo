@@ -63,19 +63,21 @@ struct UICommand: AsyncParsableCommand, JSONPassthrough {
     /// as `GuestChannel.ui` records a command that reached the VM and failed there: this one
     /// fails before any VM is asked, and is as lost to a script that discards its output.
     static func validate(vm: String, arguments: [String], failures: UIFailureLog) throws {
-        guard let usageError = usageError(of: arguments) else { return }
+        guard let message = usageError(of: arguments) else { return }
         let result = "exit \(ExitCode.validationFailure.rawValue)"
-        try? failures.record(vm: vm, arguments: arguments, result: result, output: Data(usageError.message.utf8))
-        guard usageError.hasUsage else { throw ValidationError(String(usageError.message.dropFirst("Error: ".count))) }
-        FileHandle.standardError.write(Data((usageError.message + "\n").utf8))
+        try? failures.record(vm: vm, arguments: arguments, result: result, output: Data(message.utf8))
+        // No command at all is ArgumentParser's to print, which adds `hobo ui`'s usage.
+        guard !arguments.isEmpty else { throw ValidationError(noCommandMessage) }
+        FileHandle.standardError.write(Data((message + "\n").utf8))
         throw ExitCode.validationFailure
     }
 
+    static var noCommandMessage: String { "give a command: \(commandList)" }
+
     /// What is wrong with a command's arguments, as it is printed: nil when hobo-ui would take
-    /// them. `hasUsage` is false for no command at all, which ArgumentParser prints with
-    /// `hobo ui`'s usage.
-    static func usageError(of arguments: [String]) -> (message: String, hasUsage: Bool)? {
-        guard !arguments.isEmpty else { return ("Error: give a command: \(commandList)", false) }
+    /// them.
+    static func usageError(of arguments: [String]) -> String? {
+        guard !arguments.isEmpty else { return "Error: \(noCommandMessage)" }
         do {
             _ = try HoboUI.parseAsRoot(arguments)
             return nil
@@ -85,7 +87,7 @@ struct UICommand: AsyncParsableCommand, JSONPassthrough {
             if let hint = HoboUI.scrollHint(for: arguments) ?? HoboUI.refOptionHint(for: arguments) ?? HoboUI.atAppHint(for: arguments), let usage = message.range(of: "Usage:") {
                 message = "Error: \(hint)\n" + message[usage.lowerBound...]
             }
-            return (message, true)
+            return message
         }
     }
 

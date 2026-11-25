@@ -15,9 +15,9 @@ struct UsageTests {
 
         #expect(throws: ExitCode.validationFailure) { try UICommand.validate(vm: "dev", arguments: ["wait", "--bogus"], failures: failures) }
         let usageError = try #require(UICommand.usageError(of: ["wait", "--bogus"]))
-        #expect(usageError.message.hasPrefix("Error: ") && usageError.message.contains("Usage: hobo ui <vm> wait"))
+        #expect(usageError.hasPrefix("Error: ") && usageError.contains("Usage: hobo ui <vm> wait"))
         var recorded = try String(contentsOf: failures.file, encoding: .utf8)
-        #expect(recorded.hasSuffix(" hobo ui dev wait --bogus: exit 64\n\(usageError.message)\n\n"))
+        #expect(recorded.hasSuffix(" hobo ui dev wait --bogus: exit 64\n\(usageError)\n\n"))
 
         #expect(throws: ValidationError.self) { try UICommand.validate(vm: "dev", arguments: [], failures: failures) }
         recorded = try String(contentsOf: failures.file, encoding: .utf8)
